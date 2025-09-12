@@ -1,8 +1,6 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
-// export const config = { runtime: 'nodejs20.x' };
-
 async function launchBrowser() {
   const executablePath = await chromium.executablePath();
   return puppeteer.launch({
