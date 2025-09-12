@@ -10,7 +10,7 @@ async function launchBrowser() {
     args: [...chromium.args, '--font-render-hinting=none'],
     defaultViewport: chromium.defaultViewport,
     executablePath,
-    headless: 'shell', // recommended with recent puppeteer-core + @sparticuz/chromium
+    headless: 'shell',
     ignoreHTTPSErrors: true,
   });
 }
@@ -36,22 +36,34 @@ export default async function handler(req, res) {
   try {
     const page = await browser.newPage();
 
-    // Inject form data BEFORE navigation so output.html reads sessionStorage
+    // Use PRINT CSS so .no-print is hidden and @page rules apply
+    await page.emulateMediaType('print');
+
+    // Inject data BEFORE navigation so output.html reads sessionStorage
     await page.evaluateOnNewDocument((data) => {
       try { sessionStorage.setItem('schedule4Data', JSON.stringify(data || {})); } catch {}
     }, body.data || {});
 
-    // Ensure print CSS applies like the screen you preview
-    await page.emulateMediaType('screen');
-
-    // Navigate and wait for render to stabilize
+    // Navigate and wait for base render
     await page.goto(targetUrl, { waitUntil: ['load', 'networkidle0'] }).catch(() => {});
     await page.waitForSelector('#page', { timeout: 15000 }).catch(() => {});
 
-    // Wait for web fonts (prevents layout shifts in the PDF)
+    // Ensure web fonts are ready (prevents layout shifts)
     try {
       await page.evaluate(() => (document.fonts && document.fonts.ready) ? document.fonts.ready : null);
     } catch (_) {}
+
+    // Wait until at least one checklist badge has content (✓ / R / N/A)
+    await page.waitForFunction(() => {
+      const badges = Array.from(document.querySelectorAll('.checklist-status'));
+      return badges.some(b => (b.textContent || '').trim().length > 0);
+    }, { timeout: 5000 }).catch(() => { /* not fatal if none were set */ });
+
+    // Also wait for signature image to load if present
+    await page.waitForFunction(() => {
+      const img = document.getElementById('signatureImg');
+      return !img || img.complete;
+    }, { timeout: 5000 }).catch(() => {});
 
     const pdfBuffer = await page.pdf({
       format: 'Letter',
@@ -60,7 +72,7 @@ export default async function handler(req, res) {
       margin: { top: 0, right: 0, bottom: 0, left: 0 }
     });
 
-    // Return pure binary; avoid any implicit string encoding
+    // Return pure binary; avoid implicit string encoding
     res.status(200);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
