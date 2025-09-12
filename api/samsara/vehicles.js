@@ -1,4 +1,4 @@
-// /api/samsara/vehicles.js
+// /api/samsara/vehicles.jsa
 // No Tags scope required: do NOT call /tags.
 // Fetch /fleet/vehicles and filter by tag names if present; otherwise optional regex, else return all.
 export default async function handler(req, res) {

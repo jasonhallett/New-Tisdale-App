@@ -1,6 +1,5 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
-
 export const config = { runtime: 'nodejs20.x' };
 
 function sanitizeHtml(html) {
