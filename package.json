@@ -1,5 +1,9 @@
 {
   "name": "schedule-4-inspections",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@sparticuz/chromium": "^124.0.1",
+    "puppeteer-core": "^22.12.1"
+  }
 }
