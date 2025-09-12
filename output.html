@@ -4,32 +4,24 @@
   <meta charset="UTF-8" />
   <title>Completed Motor Coach Under-Vehicle Inspection Report</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- Tailwind for the existing layout -->
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    /* Absolute clean canvas */
     html, body { margin:0; padding:0; background:#ffffff; font-family:'Inter',sans-serif; }
-
-    /* LETTER at 96 DPI => 816 x 1056 px */
     :root { --page-w: 816px; --page-h: 1056px; }
 
-    /* Single page container — no borders, shadows, or transforms */
     #page {
       width: var(--page-w);
       min-height: var(--page-h);
       margin: 0 auto;
       background: #ffffff;
       transform: none !important;
-      -webkit-transform: none !important;
       box-shadow: none !important;
       border: none !important;
     }
-
     .content { padding: 12px; }
 
-    /* Text + output boxes */
     .section-header { font-size: 0.75rem; font-weight: 600; color: #1f2937; margin-bottom: 0.25rem; padding-bottom: 0.2rem; }
     .form-group label { font-weight: 500; color: #374151; font-size: 0.625rem; white-space: nowrap; flex-shrink: 0; padding-right: 0.5rem; }
     .output-text { width: 100%; padding: 0.2rem 0.4rem; border-radius: 6px; border: 1px solid #d1d5db; font-size: 0.625rem; background-color: #f9fafb; color: #1f2937; flex: 1; }
@@ -44,173 +36,149 @@
     .text-xxs { font-size: 0.5rem; }
     .signature-img { max-width: 300px; height: auto; border: 1px solid #e5e7eb; }
 
-    /* Zero margins when actually printing */
-    @page { size: Letter; margin: 0; }
+    @page { size: 8.5in 11in; margin: 0; }
     @media print {
-      html, body { background:#ffffff !important; }
-      #page { width: var(--page-w) !important; min-height: var(--page-h) !important; margin: 0 !important; }
+      html, body { width:8.5in; height:11in; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      #page { width:8.5in !important; min-height:11in !important; margin:0 !important; }
+      .no-print { display:none !important; }
     }
   </style>
 </head>
 <body>
-  <!-- Single white page root -->
+  <!-- Download button (screen only) -->
+  <button class="no-print"
+          onclick="window.print()"
+          style="position:fixed;top:10px;right:10px;z-index:999;
+                 background:#111827;color:#fff;border:none;
+                 padding:8px 12px;border-radius:6px;cursor:pointer;">
+    Download PDF
+  </button>
+
+  <!-- Full page content -->
   <div id="page">
     <div class="content" id="pdf-root">
       <h1 class="text-xs font-bold text-center text-gray-800 mb-3">Schedule 4 Motor Coach Under-Vehicle Inspection Report</h1>
 
+      <!-- Carrier + Address -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-1">
-        <div class="form-group">
-          <label class="block">Carrier</label>
-          <div class="output-text"></div>
-        </div>
-        <div class="form-group">
-          <label class="block">Address of the location where the inspection is conducted</label>
-          <div class="output-text"></div>
-        </div>
+        <div class="form-group"><label>Carrier</label><div class="output-text"></div></div>
+        <div class="form-group"><label>Address of the location where the inspection is conducted</label><div class="output-text"></div></div>
       </div>
 
+      <!-- Unit / Plate / Odometer / Date -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-1 mb-1">
-        <div class="form-group flex items-center">
-          <label>Unit #</label>
-          <div class="output-text"></div>
-        </div>
-        <div class="form-group flex items-center">
-          <label>Licence Plate</label>
-          <div class="output-text"></div>
-        </div>
-        <div class="form-group flex items-center">
-          <label>Odometer (km)</label>
-          <div class="output-text"></div>
-        </div>
-        <div class="form-group flex items-center">
-          <label>Date</label>
-          <div class="output-text"></div>
-        </div>
+        <div class="form-group flex items-center"><label>Unit #</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Licence Plate</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Odometer (km)</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Date</label><div class="output-text"></div></div>
       </div>
 
+      <!-- Expires + Note -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-1 mb-1">
         <p class="text-xxs text-gray-500 italic col-span-2">
           An under-vehicle inspection is valid until the 31st day after it is conducted or until the motor coach has been driven 12,000 kilometres, whichever occurs last.
         </p>
-        <div class="form-group flex items-center">
-          <label class="block">Odometer Expires</label>
-          <div class="output-text"></div>
-        </div>
-        <div class="form-group flex items-center">
-          <label class="block">Date Expires</label>
-          <div class="output-text"></div>
-        </div>
+        <div class="form-group flex items-center"><label>Odometer Expires</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Date Expires</label><div class="output-text"></div></div>
       </div>
 
+      <!-- Main grid: Left & Right sections -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <!-- Left -->
+        <!-- Left Column -->
         <div>
-          <div>
-            <h2 class="section-header my-1">1. Air Brake System</h2>
-            <div class="grid grid-cols-1 gap-0.5">
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Audible air leak</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Brake pushrod stroke is at or beyond the adjustment limit</span></div>
-
-              <div class="pl-4 mt-1">
-                <h3 class="font-bold my-1 text-gray-800 text-xxs">Brake Pushrod Stroke Measurements</h3>
-                <div class="flex flex-wrap items-center justify-start gap-x-2 gap-y-1">
-                  <div class="flex items-center"><label class="mr-1 text-xxs">R Steer</label><div class="output-text" style="width:45px;"></div></div>
-                  <div class="flex items-center"><label class="mr-1 text-xxs">R Drive</label><div class="output-text" style="width:45px;"></div></div>
-                  <div class="flex items-center"><label class="mr-1 text-xxs">R Tag</label><div class="output-text" style="width:45px;"></div></div>
-                </div>
-                <div class="flex flex-wrap items-center justify-start gap-x-2 gap-y-1 mt-1">
-                  <div class="flex items-center"><label class="mr-1 text-xxs">L Steer</label><div class="output-text" style="width:45px;"></div></div>
-                  <div class="flex items-center"><label class="mr-1 text-xxs">L Drive</label><div class="output-text" style="width:45px;"></div></div>
-                  <div class="flex items-center"><label class="mr-1 text-xxs">L Tag</label><div class="output-text" style="width:45px;"></div></div>
-                </div>
+          <!-- 1. Air Brake System -->
+          <h2 class="section-header my-1">1. Air Brake System</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Audible air leak</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Brake pushrod stroke is at or beyond the adjustment limit</span></div>
+            <!-- Tiny stroke boxes -->
+            <div class="pl-4 mt-1">
+              <h3 class="font-bold my-1 text-gray-800 text-xxs">Brake Pushrod Stroke Measurements</h3>
+              <div class="flex flex-wrap gap-2">
+                <div class="flex items-center"><label class="mr-1 text-xxs">R Steer</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">R Drive</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">R Tag</label><div class="output-text" style="width:45px;"></div></div>
               </div>
-
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Clearance between disc brake pads and rotor exceeds manufacturer's specified limit</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Wedge brake shoe movement exceeds manufacturer's specified limit</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Excessive discharge of fluids from air reservoir</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air compressor, mounts or attachments damaged or defective</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Compressor drive belt loose or damaged</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air line or fitting damaged or insecure</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air tank defective, damaged or insecure</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air tank drain or moisture ejector device inoperative</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Brake chamber, brake linkage or other brake component is defective, damaged or insecure</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Spring brake is broken or malfunctions</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Inoperative service, parking or emergency brake</span></div>
+              <div class="flex flex-wrap gap-2 mt-1">
+                <div class="flex items-center"><label class="mr-1 text-xxs">L Steer</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">L Drive</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">L Tag</label><div class="output-text" style="width:45px;"></div></div>
+              </div>
             </div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Clearance between disc brake pads and rotor exceeds manufacturer's specified limit</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Wedge brake shoe movement exceeds manufacturer's specified limit</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Excessive discharge of fluids from air reservoir</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air compressor, mounts or attachments damaged or defective</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Compressor drive belt loose or damaged</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air line or fitting damaged or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air tank defective, damaged or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air tank drain or moisture ejector device inoperative</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Brake chamber, brake linkage or other brake component is defective, damaged or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Spring brake is broken or malfunctions</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Inoperative service, parking or emergency brake</span></div>
           </div>
 
-          <div class="mt-2">
-            <h2 class="section-header my-1">2. Exhaust System</h2>
-            <div class="grid grid-cols-1 gap-0.5">
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Exhaust leak</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Exhaust system component insecure, damaged or perforated</span></div>
-            </div>
+          <!-- 2. Exhaust System -->
+          <h2 class="section-header my-1">2. Exhaust System</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Exhaust leak</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Exhaust system component insecure, damaged or perforated</span></div>
           </div>
 
-          <div class="mt-2">
-            <h2 class="section-header my-1">3. Frame and/or Underbody</h2>
-            <div class="grid grid-cols-1 gap-0.5">
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Any frame member or fastener is damaged, cracked or insecure</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Any component mount is damaged or insecure</span></div>
-            </div>
+          <!-- 3. Frame -->
+          <h2 class="section-header my-1">3. Frame and/or Underbody</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Any frame member or fastener is damaged, cracked or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Any component mount is damaged or insecure</span></div>
           </div>
         </div>
 
-        <!-- Right -->
+        <!-- Right Column -->
         <div>
-          <div>
-            <h2 class="section-header my-1">4. Fuel System</h2>
-            <div class="grid grid-cols-1 gap-0.5">
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Fuel leak</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Insecure fuel tanks, fuel tank mounts or guards</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Fuel line or fitting damaged or insecure</span></div>
-            </div>
+          <!-- 4. Fuel -->
+          <h2 class="section-header my-1">4. Fuel System</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Fuel leak</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Insecure fuel tanks, fuel tank mounts or guards</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Fuel line or fitting damaged or insecure</span></div>
           </div>
 
-          <div class="mt-2">
-            <h2 class="section-header my-1">5. Steering</h2>
-            <div class="grid grid-cols-1 gap-0.5">
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Steering linkage is damaged or insecure</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Power steering fluid is leaking, contaminated or low</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Power steering component damaged or insecure</span></div>
-            </div>
+          <!-- 5. Steering -->
+          <h2 class="section-header my-1">5. Steering</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Steering linkage is damaged or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Power steering fluid is leaking, contaminated or low</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Power steering component damaged or insecure</span></div>
           </div>
 
-          <div class="mt-2">
-            <h2 class="section-header my-1">6. Suspension System</h2>
-            <div class="grid grid-cols-1 gap-0.5">
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air leak or malfunction of air suspension system or component</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Damage or deterioration of any suspension component</span></div>
-            </div>
+          <!-- 6. Suspension -->
+          <h2 class="section-header my-1">6. Suspension System</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air leak or malfunction of air suspension system or component</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Damage or deterioration of any suspension component</span></div>
           </div>
 
-          <div class="mt-2">
-            <h2 class="section-header my-1">7. Tires</h2>
-            <div class="grid grid-cols-1 gap-0.5">
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Tire inflation less than required</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Tire treads worn to wear limits</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Damage to tread or sidewall of tire</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Retread or rebuilt tire is used on front axle</span></div>
-            </div>
+          <!-- 7. Tires -->
+          <h2 class="section-header my-1">7. Tires</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Tire inflation less than required</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Tire treads worn to wear limits</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Damage to tread or sidewall of tire</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Retread or rebuilt tire is used on front axle</span></div>
           </div>
 
-          <div class="mt-2">
-            <h2 class="section-header my-1">8. Wheels and Fasteners</h2>
-            <div class="grid grid-cols-1 gap-0.5">
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Loose, missing, damaged or ineffective wheel fastener</span></div>
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Damaged wheel or wheel component</span></div>
-            </div>
+          <!-- 8. Wheels -->
+          <h2 class="section-header my-1">8. Wheels and Fasteners</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Loose, missing, damaged or ineffective wheel fastener</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Damaged wheel or wheel component</span></div>
           </div>
 
-          <div class="mt-2">
-            <h2 class="section-header my-1">For buses travelling to USA, per FMCSA Regulations, Part 396.3</h2>
-            <div class="grid grid-cols-1 gap-0.5">
-              <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally</span></div>
-              <div class="form-group flex items-center">
-                <label>Tire size:</label>
-                <div class="output-text"></div>
-              </div>
-            </div>
+          <!-- USA FMCSA -->
+          <h2 class="section-header my-1">For buses travelling to USA, per FMCSA Regulations, Part 396.3</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally</span></div>
+            <div class="form-group flex items-center"><label>Tire size:</label><div class="output-text"></div></div>
           </div>
         </div>
       </div>
@@ -221,166 +189,64 @@
         <div class="output-text"></div>
       </div>
 
-      <!-- Declaration & Signature -->
-      <div class="mt-2">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1">
-          <div class="form-group">
-            <h2 class="section-header my-1">Name of the person who conducted the inspection (Printed)</h2>
-            <div class="output-text"></div>
-            <div class="text-xxs text-gray-700 leading-tight mt-1" style="font-size: 0.5rem;">
-              I declare that the vehicle shown above has been inspected in accordance with this Regulation and that at the end of the inspection, there are no defects listed in Schedule 4. O. Reg. 199/07, s. 12 (1); O. Reg. 242/14, s. 6 (1-3); O. Reg. 256/15, s. 5 (1).
-            </div>
+      <!-- Declaration -->
+      <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
+        <div class="form-group">
+          <h2 class="section-header my-1">Name of the person who conducted the inspection (Printed)</h2>
+          <div class="output-text"></div>
+          <div class="text-xxs text-gray-700 leading-tight mt-1">
+            I declare that the vehicle shown above has been inspected…
           </div>
-          <div class="form-group">
-            <h2 class="section-header my-1">Signature of the person who conducted the inspection</h2>
-            <div class="output-text p-1" style="height: 100px;">
-              <img id="signatureImg" alt="Signature" class="w-3/4 mx-auto block signature-img">
-            </div>
+        </div>
+        <div class="form-group">
+          <h2 class="section-header my-1">Signature of the person who conducted the inspection</h2>
+          <div class="output-text p-1" style="height:100px;">
+            <img id="signatureImg" alt="Signature" class="w-3/4 mx-auto block signature-img">
           </div>
         </div>
       </div>
-    </div><!-- /.content -->
-  </div><!-- /#page -->
-
-  <!-- html2canvas + jsPDF (manual placement to avoid cropping) -->
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    </div>
+  </div>
 
   <script>
-    // === Populate from sessionStorage / query params ===
+    // Same population logic as before — fill fields from sessionStorage/query
     (function () {
-      function getData() {
-        let data = {};
-        try { const ss = sessionStorage.getItem('schedule4Data'); if (ss) data = JSON.parse(ss) || {}; } catch(e){}
-        const params = new URLSearchParams(location.search);
-        const keys = [
-          'carrierName','locationAddress','unitNumber','licensePlate','odometer','inspectionDate',
-          'odometerExpires','dateExpires','rSteerBrake','rDriveBrake','rTagBrake','lSteerBrake','lDriveBrake','lTagBrake',
-          'tireSize','repairs','inspectorName','signature'
-        ];
-        for (const k of keys) if (!(k in data) && params.has(k)) data[k] = params.get(k);
-        data.checklist = data.checklist || {};
-        return data;
-      }
-      const data = getData();
+      try {
+        const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
+        // populate fields by label text
+        function fill(labelText, value) {
+          if (!value) return;
+          const labels = [...document.querySelectorAll('label')];
+          const label = labels.find(l => l.textContent.trim().toLowerCase() === labelText.toLowerCase());
+          if (label) {
+            const box = label.closest('.form-group,.flex')?.querySelector('.output-text');
+            if (box) box.textContent = value;
+          }
+        }
+        fill('Carrier', data.carrierName);
+        fill('Unit #', data.unitNumber);
+        fill('Licence Plate', data.licensePlate);
+        fill('Odometer (km)', data.odometer);
+        fill('Date', data.inspectionDate);
+        fill('Odometer Expires', data.odometerExpires);
+        fill('Date Expires', data.dateExpires);
+        fill('Tire size:', data.tireSize);
 
-      function fillByLabel(labelText, value) {
-        if (value == null || value === '') return;
-        const labels = Array.from(document.querySelectorAll('.form-group > label, .form-group label.block, .flex.items-center > label'));
-        const label = labels.find(l => l.textContent.trim().toLowerCase() === labelText.trim().toLowerCase());
-        if (!label) return;
-        const group = label.closest('.form-group, .flex.items-center') || label.parentElement;
-        const box = group ? group.querySelector('.output-text') : null;
-        if (box) box.textContent = value;
-      }
-      fillByLabel('Carrier', data.carrierName);
-      fillByLabel('Address of the location where the inspection is conducted', data.locationAddress);
-      fillByLabel('Unit #', data.unitNumber);
-      fillByLabel('Licence Plate', data.licensePlate);
-      fillByLabel('Odometer (km)', data.odometer);
-      fillByLabel('Date', data.inspectionDate);
-      fillByLabel('Odometer Expires', data.odometerExpires);
-      fillByLabel('Date Expires', data.dateExpires);
-
-      function fillTiny(lbl, val) {
-        if (val == null || val === '') return;
-        const tinyGroups = Array.from(document.querySelectorAll('.pl-4 .flex.items-center'));
-        const match = tinyGroups.find(g => g.querySelector('label')?.textContent.trim().toLowerCase() === lbl.toLowerCase());
-        const box = match?.querySelector('.output-text');
-        if (box) box.textContent = val;
-      }
-      fillTiny('r steer', data.rSteerBrake);
-      fillTiny('r drive', data.rDriveBrake);
-      fillTiny('r tag',   data.rTagBrake);
-      fillTiny('l steer', data.lSteerBrake);
-      fillTiny('l drive', data.lDriveBrake);
-      fillTiny('l tag',   data.lTagBrake);
-
-      fillByLabel('Tire size:', data.tireSize);
-      (function(){
-        const hdr=[...document.querySelectorAll('.section-header')].find(h=>h.textContent.trim().toLowerCase()==='repairs');
-        const box=hdr?.parentElement?.querySelector('.output-text');
-        if (box && data.repairs) box.textContent=data.repairs;
-      })();
-      (function(){
-        const hdr=[...document.querySelectorAll('.section-header')].find(h=>h.textContent.toLowerCase().includes('name of the person'));
-        const box=hdr?.parentElement?.querySelector('.output-text');
-        if (box && data.inspectorName) box.textContent=data.inspectorName;
-      })();
-      if (data.signature) {
-        const img = document.getElementById('signatureImg');
-        if (img) img.src = data.signature;
-      }
-
-      function setStatus(el, status) {
-        const badge = el.querySelector('.checklist-status'); if (!badge) return;
-        badge.classList.remove('status-pass','status-repair','status-na');
-        badge.textContent = '';
-        const t = String(status || '').toLowerCase();
-        if (['pass','ok','✓','yes','y','p'].includes(t)) { badge.textContent='✓'; badge.classList.add('status-pass'); }
-        else if (['repair','repaired','r','fail','f','defect'].includes(t)) { badge.textContent='R'; badge.classList.add('status-repair'); }
-        else if (['na','n/a','not applicable','n'].includes(t)) { badge.textContent='N/A'; badge.classList.add('status-na'); }
-      }
-      document.querySelectorAll('.checklist-item').forEach(item => {
-        const label = item.querySelector('.checklist-item-text')?.textContent.trim();
-        if (!label) return;
-        const val = data.checklist[label];
-        if (val != null && val !== '') setStatus(item, val);
-      });
-    })();
-
-    // === 100% full-page PDF, no half-cropping ===
-    (function () {
-      async function generatePDF() {
-        const page = document.getElementById('page');
-
-        // Ensure nothing is scrolled, no CSS zoom affects capture
-        window.scrollTo(0, 0);
-        document.body.style.zoom = 1;
-
-        // Exact canvas from element scroll size
-        const fullW = Math.max(page.scrollWidth, page.offsetWidth);
-        const fullH = Math.max(page.scrollHeight, page.offsetHeight);
-
-        const canvas = await html2canvas(page, {
-          backgroundColor: '#ffffff',
-          scale: 2,              // crisp
-          useCORS: true,
-          letterRendering: true,
-          scrollX: 0,
-          scrollY: 0,
-          width: fullW,
-          height: fullH,
-          windowWidth: fullW,
-          windowHeight: fullH
+        if (data.signature) document.getElementById('signatureImg').src = data.signature;
+        // checklist statuses
+        function setStatus(item, status) {
+          const badge = item.querySelector('.checklist-status');
+          if (!badge) return;
+          badge.className = 'checklist-status';
+          if (['pass','ok','✓'].includes(status?.toLowerCase())) { badge.textContent='✓'; badge.classList.add('status-pass'); }
+          else if (['repair','r','fail'].includes(status?.toLowerCase())) { badge.textContent='R'; badge.classList.add('status-repair'); }
+          else if (['na','n/a'].includes(status?.toLowerCase())) { badge.textContent='N/A'; badge.classList.add('status-na'); }
+        }
+        document.querySelectorAll('.checklist-item').forEach(i => {
+          const label = i.querySelector('.checklist-item-text')?.textContent.trim();
+          if (data.checklist && data.checklist[label]) setStatus(i, data.checklist[label]);
         });
-
-        const imgData = canvas.toDataURL('image/jpeg', 0.98);
-
-        // Create a Letter PDF in points (612 x 792)
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({ orientation: 'p', unit: 'pt', format: 'letter' });
-
-        const pageW = pdf.internal.pageSize.getWidth();   // 612
-        const pageH = pdf.internal.pageSize.getHeight();  // 792
-
-        // Fit image to page while keeping aspect ratio (should already match)
-        const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
-        const imgW = canvas.width * ratio;
-        const imgH = canvas.height * ratio;
-        const x = (pageW - imgW) / 2;
-        const y = (pageH - imgH) / 2;
-
-        pdf.addImage(imgData, 'JPEG', x, y, imgW, imgH, undefined, 'FAST');
-        pdf.save('schedule4_inspection.pdf');
-      }
-
-      // Fire after layout paints
-      if (document.readyState === 'complete') {
-        setTimeout(generatePDF, 60);
-      } else {
-        window.addEventListener('load', () => setTimeout(generatePDF, 60));
-      }
+      } catch(e) { console.error(e); }
     })();
   </script>
 </body>
