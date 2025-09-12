@@ -1,8 +1,16 @@
 {
   "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/pdf/print",
+      "destination": "/api/pdf/print.js"
+    }
+  ],
   "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs20.x"
+    "api/pdf/print.js": {
+      "runtime": "nodejs20.x",
+      "memory": 1024,
+      "maxDuration": 60
     }
   }
 }
