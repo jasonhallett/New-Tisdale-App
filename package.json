@@ -1,0 +1,12 @@
+{
+  "name": "schedule-4-inspection",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "vercel-build": "echo 'No build step'"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "^124.0.1",
+    "puppeteer-core": "^22.12.1"
+  }
+}
