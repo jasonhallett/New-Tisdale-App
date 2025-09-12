@@ -10,7 +10,7 @@ async function launchBrowser() {
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
     executablePath,
-    // Use the modern headless shell that @sparticuz/chromium provides
+    // Recommended with recent puppeteer-core + @sparticuz/chromium
     headless: 'shell',
     ignoreHTTPSErrors: true,
   });
@@ -33,9 +33,11 @@ export default async function handler(req, res) {
   const page = await browser.newPage();
 
   try {
-    // Inject the data BEFORE navigation so output.html can read sessionStorage
+    // Inject data BEFORE navigation so output.html can read sessionStorage
     await page.evaluateOnNewDocument((data) => {
-      sessionStorage.setItem('schedule4Data', JSON.stringify(data || {}));
+      try {
+        sessionStorage.setItem('schedule4Data', JSON.stringify(data || {}));
+      } catch {}
     }, body.data || {});
 
     await page.goto(`${baseUrl}${body.path || '/output.html'}`, {
@@ -45,7 +47,7 @@ export default async function handler(req, res) {
     const pdf = await page.pdf({
       format: 'Letter',
       printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 }
     });
 
     res.setHeader('Content-Type', 'application/pdf');
