@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -514,10 +513,6 @@
         <button type="submit" class="px-6 py-3 bg-indigo-600 text-white font-medium rounded-md shadow-lg hover:bg-indigo-700 transition">
           Submit & Generate PDF
         </button>
-        <button id="btn-preview" type="button" class="px-6 py-3 bg-white text-gray-700 border border-gray-300 font-medium rounded-md shadow-lg hover:bg-gray-50 transition">
-          Preview
-        </button>
-
         <button type="reset" class="px-6 py-3 bg-gray-200 text-gray-800 font-medium rounded-md shadow-lg hover:bg-gray-300 transition">
           Reset
         </button>
@@ -755,56 +750,10 @@
           checklist
         };
 
-        
-        if (window.__previewOnly) {
-          sessionStorage.setItem('schedule4Data', JSON.stringify(payload));
-          window.__previewOnly = false;
-          window.open('output.html', '_blank');
-          return;
-        }
-
-        // store locally as well (useful for quick preview/debug)
         sessionStorage.setItem('schedule4Data', JSON.stringify(payload));
-
-        try {
-          const res = await fetch('/api/pdf/print', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              path: '/output.html',
-              data: payload,
-              filename: 'Schedule-4-Inspection.pdf'
-            })
-          });
-          if (!res.ok) throw new Error(await res.text());
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'Schedule-4-Inspection.pdf';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(url);
-        } catch (err) {
-          console.error('Server PDF failed:', err);
-          alert('PDF generation failed. Please try again.\n' + (err?.message || err));
-        }
-    
+        window.location.href = 'output.html';
       });
     });
-    // Preview button: open output.html with current data in a new tab
-    const btnPreview = document.getElementById('btn-preview');
-    if (btnPreview) {
-      btnPreview.addEventListener('click', (e) => {
-        e.preventDefault();
-        window.__previewOnly = true;
-        const form = document.querySelector('form');
-        if (form && form.requestSubmit) form.requestSubmit();
-        else form.submit();
-      });
-    }
-
-</script>
+  </script>
 </body>
 </html>
