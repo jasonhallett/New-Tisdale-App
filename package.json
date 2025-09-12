@@ -3,8 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "puppeteer": "latest",
-    "puppeteer-core": "^22.12.1",
-    "@sparticuz/chromium": "^124.0.1"
+    "@sparticuz/chromium": "^124.0.1",
+    "puppeteer-core": "^22.12.1"
   }
 }
