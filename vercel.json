@@ -1,11 +1,5 @@
 {
   "version": 2,
-  "rewrites": [
-    {
-      "source": "/api/pdf/print",
-      "destination": "/api/pdf/print.js"
-    }
-  ],
   "functions": {
     "api/pdf/print.js": {
       "runtime": "nodejs20.x",
