@@ -48,7 +48,10 @@
     .grid-3 { display:grid; grid-template-columns:repeat(1,minmax(0,1fr)); gap:1rem; }
     @media (min-width:640px){ .grid-3{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
 
-    #signatureCanvas { border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair; }
+    #signatureCanvas {
+  border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair;
+  width:400px; height:100px; /* display size */
+}
     .footer-note{ font-size:0.875rem; color:#6b7280; margin-top:1rem; }
   </style>
 
@@ -520,7 +523,8 @@ body::before, body::after, html::before, html::after,
           </div>
           <div class="form-group">
             <label class="block text-sm">Signature of the person who conducted the inspection</label>
-<canvas id="signatureCanvas" width="400" height="150" class="w-3/4 mx-auto block"></canvas>
+<canvas id="signatureCanvas" width="400" height="100" class="mx-auto block"></canvas>
+
             <button type="button" id="clearSignatureBtn" class="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition">Clear Signature</button>
           </div>
         </div>
@@ -588,7 +592,10 @@ body::before, body::after, html::before, html::after,
       const canvas = document.getElementById('signatureCanvas');
       const ctx = canvas.getContext('2d');
       let isDrawing=false, lastX=0, lastY=0;
-      function resizeCanvas(){ const p=canvas.parentElement; canvas.width=p.offsetWidth; canvas.height=150; }
+
+      function resizeCanvas(){ canvas.width=400; canvas.height=100; }
+
+
       window.addEventListener('resize', resizeCanvas); resizeCanvas();
       function draw(e){
         if(!isDrawing) return;
