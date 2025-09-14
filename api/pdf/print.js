@@ -105,21 +105,6 @@ export default async function handler(req, res) {
           badge.textContent = String(raw).toUpperCase();
         }
       });
-
-    // Hide any stray page counters and prevent trailing blank page
-    try {
-      await page.addStyleTag({ content: `
-        body::before, body::after, html::before, html::after,
-        #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
-        .page-number, .pageNumber, [data-page-number] { display: none !important; }
-        @media print {
-          .page, #page { page-break-after: auto !important; break-after: auto !important; }
-          .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
-        }
-      `});
-    } catch {}
-
-
     }, body.data || {});
 
     // Wait until at least one badge is visible (✓ SVG, or R/N/A text)
@@ -134,7 +119,8 @@ export default async function handler(req, res) {
       return !img || img.complete;
     }, { timeout: 5000 }).catch(() => {});
 
-    const pdfBuffer = await page.pdf({ pageRanges: '1', format: 'Letter',
+    const pdfBuffer = await page.pdf({
+      format: 'Letter',
       printBackground: true,
       preferCSSPageSize: true,
       margin: { top: 0, right: 0, bottom: 0, left: 0 }

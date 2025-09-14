@@ -1,12 +1,3 @@
 {
-  "version": 2,
-  "functions": {
-    "api/pdf/print.js": {
-      "memory": 1536,
-      "maxDuration": 60,
-      "regions": [
-        "iad1"
-      ]
-    }
-  }
+  "version": 2
 }
