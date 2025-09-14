@@ -523,7 +523,10 @@ body::before, body::after, html::before, html::after,
           </div>
           <div class="form-group">
             <label class="block text-sm">Signature of the person who conducted the inspection</label>
-<canvas id="signatureCanvas" width="400" height="100" class="mx-auto block"></canvas>
+<canvas id="signatureCanvas" width="400" height="100" class="mx-auto block" style="background-color:transparent;"></canvas>
+<input type="hidden" id="technician_id" name="technician_id" />
+<input type="hidden" id="app_user_id" name="app_user_id" />
+
 
             <button type="button" id="clearSignatureBtn" class="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition">Clear Signature</button>
           </div>
@@ -866,5 +869,26 @@ body::before, body::after, html::before, html::after,
     })();
 
     </script>
+
+<script>
+  (function syncLoggedInIds() {
+    try {
+      const ls = (k) => localStorage.getItem(k);
+      const fromObj = JSON.parse(ls('loggedInUser') || '{}');
+      const uid =
+        ls('loggedInUserId') ||
+        ls('sessionUserId') ||
+        ls('currentUserId') ||
+        fromObj.id ||
+        '';
+
+      const techEl = document.getElementById('technician_id');
+      const appEl  = document.getElementById('app_user_id');
+      if (techEl && !techEl.value) techEl.value = uid;
+      if (appEl  && !appEl.value)  appEl.value  = uid;
+    } catch (e) {}
+  })();
+</script>
+
 </body>
 </html>

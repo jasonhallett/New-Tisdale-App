@@ -51,7 +51,7 @@ export default async function handler(req, res) {
 
     // ---- Extract / normalize fields ----
     const technician_id = loggedInUserId;
-    const app_user_id = isUuidish(body?.app_user_id) ? body.app_user_id : technician_id;
+    const app_user_id = isUuidish(body?.app_user_id) ? body.app_user_id : (technician_id;) || (form.get("app_user_id") || null)
 
     // Name and tech info (do NOT persist back to user/technician tables)
     const technician_name =
