@@ -24,6 +24,21 @@ export default async function handler(req, res) {
   }
 
   const payload = body?.payload || body?.data || body || {};
+  /* DISC BRAKES NA NORMALIZATION */
+  try {
+    const checklist = payload && payload.checklist;
+    const discFlags = [
+      payload?.rSteerBrake, payload?.rDriveBrake, payload?.rTagBrake,
+      payload?.lSteerBrake, payload?.lDriveBrake, payload?.lTagBrake
+    ];
+    const isDisc = Array.isArray(discFlags) && discFlags.some(v => String(v||'').toLowerCase() === 'disc');
+    if (isDisc && checklist && typeof checklist === 'object') {
+      const L1 = 'Brake pushrod stroke is at or beyond the adjustment limit';
+      const L2 = "Wedge brake shoe movement exceeds manufacturer's specified limit";
+      if (checklist[L1] && checklist[L1] !== 'na') checklist[L1] = 'na';
+      if (checklist[L2] && checklist[L2] !== 'na') checklist[L2] = 'na';
+    }
+  } catch (_) {}
 
   const technicianName = pick(payload, ['technicianName', 'inspectorName', 'inspector', 'name']) || 'Unknown';
   const sto = pick(payload, ['technicianSTO', 'stoRegistrationNumber', 'sto', 'stoNumber']) || null;
@@ -36,13 +51,13 @@ export default async function handler(req, res) {
   const odometerKm = intish(pick(payload, ['odometerKm', 'odometerKM', 'odometer']));
   const odometerSource = enumish(pick(payload, ['odometerSource']), ['obd', 'gps', 'manual', 'unknown'], 'unknown');
 
-  const expiryDate = dateish(pick(payload, ['expiryDate', 'inspectionExpiryDate']));
-  const nextServiceOdometerKm = intish(pick(payload, ['nextServiceOdometerKm', 'nextServiceOdometer', 'nextOdometerKm']));
+  const expiryDate = dateish(pick(payload, ['expiryDate', 'inspectionDate', 'dateExpires']));
+  const nextServiceOdometerKm = intish(pick(payload, ['nextServiceOdometerKm', 'nextServiceOdometer', 'odometerExpires']));
 
-  const location = pick(payload, ['location', 'shopLocation', 'facility']) || null;
+  const location = pick(payload, ['location', 'locationAddress', 'shopLocation', 'facility']) || null;
   const notes = pick(payload, ['notes', 'repairs', 'repairNotes', 'comments']) || null;
 
-  const performedAt = datetimeish(pick(payload, ['performedAt', 'timestamp', 'submittedAt', 'dateTime', 'date'])) || new Date();
+  const performedAt = datetimeish(pick(payload, ['performedAt', 'timestamp', 'submittedAt', 'dateTime', 'inspectionDate', 'date'])) || new Date();
 
   const sigField = pick(payload, ['signature', 'signatureDataUrl', 'signatureDataURL']);
   const sigParsed = parseDataUrl(sigField);

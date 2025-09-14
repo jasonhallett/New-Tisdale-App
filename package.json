@@ -7,7 +7,6 @@
   },
   "dependencies": {
     "@sparticuz/chromium": "138.0.2",
-    "puppeteer-core": "^24.20.0",
-    "@neondatabase/serverless": "latest"
+    "puppeteer-core": "^24.20.0"
   }
 }
