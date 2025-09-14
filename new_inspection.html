@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Schedule 4 Motor Coach Under-Vehicle Inspection Report</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="auth-guard.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
     body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
@@ -516,6 +517,11 @@ body::before, body::after, html::before, html::after,
           </div>
           <div class="form-group">
             <label class="block text-sm">Signature of the person who conducted the inspection</label>
+            
+            <button type="button" id="autoSignBtn" class="mt-3 inline-flex items-center px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+              Click to Declare &amp; Sign
+            </button>
+
             <canvas id="signatureCanvas" width="400" height="150" class="w-full"></canvas>
             <button type="button" id="clearSignatureBtn" class="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition">Clear Signature</button>
           </div>
@@ -718,6 +724,10 @@ body::before, body::after, html::before, html::after,
         }
 
         // Build payload for output.html
+        // capture selected vehicle ID and signature source
+        const selectedVehicleId = (unitSelect.value && unitSelect.value !== 'other') ? String(unitSelect.value) : null;
+        let signatureSource = 'drawn';
+        try { const ss = sessionStorage.getItem('__signatureSource'); if (ss) signatureSource = ss; } catch(_){}
         const unitNumber = (unitSelect.value && unitSelect.value!=='other')
           ? (unitSelect.options[unitSelect.selectedIndex]?.textContent || '')
           : (unitOtherInput.value || '');
@@ -740,6 +750,8 @@ body::before, body::after, html::before, html::after,
         const signatureDataURL = canvas.toDataURL('image/png');
 
         const payload = {
+          samsaraVehicleId: selectedVehicleId,
+          signatureSource: signatureSource,
           carrierName: document.getElementById('carrier').value || '',
           locationAddress: document.getElementById('address').value || '',
           unitNumber,
@@ -767,6 +779,70 @@ body::before, body::after, html::before, html::after,
         window.location.href = 'output.html';
       });
     });
-  </script>
+  
+    // Prefill from technician profile + Declare & Sign
+    (function(){
+      let cachedProfile = null;
+      async function loadProfile(){
+        if (cachedProfile) return cachedProfile;
+        try {
+          const res = await fetch('/api/technicians/me', { credentials: 'include' });
+          if (!res.ok) return null;
+          const j = await res.json();
+          cachedProfile = j;
+          return j;
+        } catch { return null; }
+      }
+      function drawSignatureFromDataUrl(dataUrl){
+        try{
+          const canvas = document.getElementById('signatureCanvas');
+          const ctx = canvas.getContext('2d');
+          const img = new Image();
+          img.onload = function(){
+            // clear
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            // fit
+            const sx = canvas.width / img.width;
+            const sy = canvas.height / img.height;
+            const s = Math.min(sx, sy) * 0.95;
+            const w = img.width * s, h = img.height * s;
+            const x = (canvas.width - w)/2, y = (canvas.height - h)/2;
+            ctx.drawImage(img, x, y, w, h);
+            try { sessionStorage.setItem('__signatureSource','applied'); } catch(e){}
+          };
+          img.src = dataUrl;
+        }catch(_){}
+      }
+      document.addEventListener('DOMContentLoaded', async () => {
+        const prof = await loadProfile();
+        if (prof){
+          // Prefill defaults if empty
+          try {
+            const carrier = document.getElementById('carrier');
+            const address = document.getElementById('address');
+            if (carrier && (!carrier.value || carrier.value.trim()==='') && prof.defaultCarrier) carrier.value = prof.defaultCarrier;
+            if (address && (!address.value || address.value.trim()==='') && prof.defaultInspectionStationAddress) address.value = prof.defaultInspectionStationAddress;
+          } catch(_){}
+        }
+        const btn = document.getElementById('autoSignBtn');
+        if (btn){
+          btn.addEventListener('click', async () => {
+            const prof2 = await loadProfile();
+            if (!prof2){ return; }
+            // Check declaration
+            const decl = document.getElementById('declaration-checkbox'); if (decl) decl.checked = true;
+            // Fill name
+            const nameEl = document.getElementById('inspector-name'); if (nameEl && prof2.fullName) nameEl.value = prof2.fullName;
+            // Fill defaults (even if already filled, prefer profile)
+            const carrier = document.getElementById('carrier'); if (carrier && prof2.defaultCarrier) carrier.value = prof2.defaultCarrier;
+            const address = document.getElementById('address'); if (address && prof2.defaultInspectionStationAddress) address.value = prof2.defaultInspectionStationAddress;
+            // Signature
+            if (prof2.signatureDataUrl) drawSignatureFromDataUrl(prof2.signatureDataUrl);
+          });
+        }
+      });
+    })();
+
+    </script>
 </body>
 </html>
