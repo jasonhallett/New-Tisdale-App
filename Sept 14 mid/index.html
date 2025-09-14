@@ -763,23 +763,7 @@ body::before, body::after, html::before, html::after,
           checklist
         };
 
-        
-  // Save to server in the background (non-blocking)
-  try {
-    const json = JSON.stringify({ payload });
-    if (navigator.sendBeacon) {
-      const blob = new Blob([json], { type: 'application/json' });
-      navigator.sendBeacon('/api/inspections', blob);
-    } else {
-      fetch('/api/inspections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: json,
-        keepalive: true
-      }).catch(() => {});
-    }
-  } catch (e) { /* no-op */ }
-  sessionStorage.setItem('schedule4Data', JSON.stringify(payload));
+        sessionStorage.setItem('schedule4Data', JSON.stringify(payload));
         window.location.href = 'output.html';
       });
     });
