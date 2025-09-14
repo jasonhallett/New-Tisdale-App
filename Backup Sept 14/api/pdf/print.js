@@ -1,15 +1,3 @@
-/* 
- * Non-functional cleanup note (2025-09-14)
- * - Added file header comments only. No logic, UI, or runtime behavior changes.
- * - Expected env vars (for reference):
- *   - SAMSARA_API_TOKEN (used by Samsara endpoints)
- *   - APP_BASE_URL (used by PDF printer for absolute URL resolution)
- * - Vercel serverless routes expected:
- *   - /api/pdf/print (this file)
- *   - /api/samsara/vehicles
- *   - /api/samsara/vehicle-stats
- * Everything else is left exactly as-is.
- */
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
