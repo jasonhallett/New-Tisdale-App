@@ -1,7 +1,7 @@
 // /api/technicians/me/signature.js — Auth-ready skeleton to update saved signature
 export const config = { runtime: 'nodejs' };
 
-import { sql, parseDataUrl } from '../../../db.js';
+import { sql, parseDataUrl } from '../../db.js';
 
 /**
  * Placeholder auth extractor. Once login is implemented,
