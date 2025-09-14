@@ -1,16 +1,8 @@
-// /api/technicians/me/signature.js — Auth-ready skeleton to update saved signature
+// /api/technicians/signature.js — Update saved signature for current technician
 export const config = { runtime: 'nodejs' };
 
 import { sql, parseDataUrl } from '../../db.js';
-
-/**
- * Placeholder auth extractor. Once login is implemented,
- * replace this to read from your session/cookie/JWT.
- * For now, this returns null to enforce 401.
- */
-function getAuthIdentity(req) {
-  return null; // TODO: integrate real auth
-}
+import { getAuthIdentity } from '../../auth.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'PUT') {
@@ -19,19 +11,13 @@ export default async function handler(req, res) {
   }
 
   const auth = getAuthIdentity(req);
-  if (!auth) {
-    return res.status(401).json({ error: 'Unauthorized', details: 'Login required' });
+  if (!auth?.userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   let body = '';
-  try {
-    body = await readRawBody(req);
-  } catch (e) {
-    return res.status(400).json({ error: 'Failed to read body' });
-  }
-
-  let json;
-  try { json = JSON.parse(body); } catch { json = {}; }
+  try { body = await readRawBody(req); } catch { return res.status(400).json({ error: 'Bad request' }); }
+  let json; try { json = JSON.parse(body); } catch { json = {}; }
 
   const dataUrl = json?.signatureDataUrl || json?.signature || null;
   const parsed = parseDataUrl(dataUrl);
@@ -42,14 +28,14 @@ export default async function handler(req, res) {
   try {
     await sql`
       UPDATE technicians
-      SET signature_image = ${parsed.bytes},
-          signature_image_mime = ${parsed.mime},
-          signature_last_updated = now()
-      WHERE app_user_id = ${auth.userId}
+         SET signature_image = ${parsed.bytes},
+             signature_image_mime = ${parsed.mime},
+             signature_last_updated = now()
+       WHERE app_user_id = ${auth.userId}
     `;
     return res.status(204).end();
   } catch (e) {
-    console.error('PUT /api/technicians/me/signature failed', e);
+    console.error('PUT /api/technicians/signature failed', e);
     return res.status(500).json({ error: 'Server error' });
   }
 }
@@ -57,9 +43,8 @@ export default async function handler(req, res) {
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
     try {
-      let data = '';
-      req.setEncoding('utf8');
-      req.on('data', chunk => { data += chunk; if (data.length > 5_000_000) req.destroy(); });
+      let data=''; req.setEncoding('utf8');
+      req.on('data', c => { data += c; if (data.length > 5_000_000) req.destroy(); });
       req.on('end', () => resolve(data));
       req.on('error', reject);
     } catch (err) { reject(err); }

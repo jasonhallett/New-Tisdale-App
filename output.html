@@ -295,30 +295,5 @@ body::before, body::after, html::before, html::after,
     }
     // === Puppeteer Server PDF END ===
   </script>
-
-  <script>
-  // --- fallback save to DB ---
-  document.addEventListener('DOMContentLoaded', () => {
-    try {
-      const savedFlag = sessionStorage.getItem('__sched4_db_send');
-      if (savedFlag !== '1') {
-        const raw = sessionStorage.getItem('schedule4Data');
-        if (raw) {
-          const payload = JSON.parse(raw);
-          const json = JSON.stringify({ payload });
-          fetch('/api/inspections', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: json,
-            keepalive: true
-          }).then(() => {
-            sessionStorage.setItem('__sched4_db_send','1');
-          }).catch(() => {});
-        }
-      }
-    } catch (e) {}
-  });
-  </script>
-
 </body>
 </html>

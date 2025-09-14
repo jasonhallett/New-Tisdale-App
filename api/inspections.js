@@ -1,5 +1,6 @@
 // /api/inspections.js — Save Schedule 4 submissions to Neon/Postgres
 export const config = { runtime: 'nodejs' };
+import crypto from 'crypto';
 
 import { sql, parseDataUrl } from '../db.js';
 
@@ -24,6 +25,8 @@ export default async function handler(req, res) {
   }
 
   const payload = body?.payload || body?.data || body || {};
+  const clientSubmissionId = strish(payload.clientSubmissionId);
+  const dedupeHash = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
   /* DISC BRAKES NA NORMALIZATION */
   try {
     const checklist = payload && payload.checklist;
@@ -44,7 +47,11 @@ export default async function handler(req, res) {
   const sto = pick(payload, ['technicianSTO', 'stoRegistrationNumber', 'sto', 'stoNumber']) || null;
   const tradeCodes = arrish(pick(payload, ['technicianTradeCodes', 'tradeCodes']));
 
-  const vehicleId = strish(pick(payload, ['vehicleId', 'selectedVehicleId', 'samsaraVehicleId']));
+  let vehicleId = strish(pick(payload, ['vehicleId','selectedVehicleId','samsaraVehicleId','vehicle_id','unitId','selectedUnitId']));
+  /* VEHICLE ID FALLBACKS */
+  if (!vehicleId && typeof payload?.selectedVehicle === 'object') {
+    vehicleId = strish(payload.selectedVehicle.id || payload.selectedVehicle.vehicleId || payload.selectedVehicle.unitId);
+  }
   const vehicleName = pick(payload, ['vehicleName', 'unit', 'unitNumber', 'unitName']) || null;
   const licensePlate = pick(payload, ['licensePlate', 'plate', 'plateNumber']) || null;
 
@@ -86,7 +93,9 @@ export default async function handler(req, res) {
         next_service_odometer_km,
         location,
         notes,
-        payload_json
+        payload_json,
+        client_submission_id,
+        dedupe_hash
       ) VALUES (
         NULL,
         NULL,
@@ -106,8 +115,11 @@ export default async function handler(req, res) {
         ${nextServiceOdometerKm},
         ${location},
         ${notes},
-        ${payload}
+        ${payload},
+        ${clientSubmissionId},
+        ${dedupeHash}
       )
+      ON CONFLICT (dedupe_hash) DO NOTHING
       RETURNING id, created_at;
     `;
 

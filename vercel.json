@@ -1,9 +1,3 @@
 {
-  "version": 2,
-  "routes": [
-    {
-      "src": "/api/pdf/print",
-      "dest": "/api/print/index.js"
-    }
-  ]
+  "version": 2
 }

@@ -1,16 +1,8 @@
-// /api/technicians/me.js — Auth-ready skeleton (returns only the signed-in technician profile)
+// /api/technicians/me.js — Authenticated profile for current technician
 export const config = { runtime: 'nodejs' };
 
 import { sql } from '../../db.js';
-
-/**
- * Placeholder auth extractor. Once login is implemented,
- * replace this to read from your session/cookie/JWT.
- * For now, this returns null to enforce 401.
- */
-function getAuthIdentity(req) {
-  return null; // TODO: integrate real auth
-}
+import { getAuthIdentity } from '../../auth.js';
 
 function toDataUrl(mime, buf) {
   if (!buf || !mime) return null;
@@ -25,12 +17,11 @@ export default async function handler(req, res) {
   }
 
   const auth = getAuthIdentity(req);
-  if (!auth) {
-    return res.status(401).json({ error: 'Unauthorized', details: 'Login required' });
+  if (!auth?.userId || !auth?.technicianId) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
-    // Example when auth is ready: use auth.userId or auth.email
     const rows = await sql`
       SELECT
         t.id AS technician_id,
@@ -46,7 +37,7 @@ export default async function handler(req, res) {
         t.is_active
       FROM technicians t
       JOIN app_users a ON a.id = t.app_user_id
-      WHERE a.id = ${auth.userId} AND t.is_active = true AND a.is_active = true
+      WHERE a.id = ${auth.userId} AND t.id = ${auth.technicianId} AND t.is_active = true AND a.is_active = true
       LIMIT 1
     `;
     if (!rows.length) {
