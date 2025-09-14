@@ -59,7 +59,7 @@ export default async function handler(req, res) {
     }
 
     const token = signJWT({ uid: u.app_user_id, tid: u.technician_id, role: u.role }, { expSeconds: 60*60*12 });
-    setSessionCookie(res, token, { maxAgeSeconds: 60*60*12 });
+    setSessionCookie(res, token, { maxAgeSeconds: 60*60*24*7 });
     return res.status(200).json({ ok: true, user: { fullName: u.full_name, email: u.email, role: u.role } });
   } catch (e) {
     console.error('POST /api/auth/login failed', e);

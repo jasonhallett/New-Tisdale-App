@@ -2,7 +2,7 @@
 export const config = { runtime: 'nodejs' };
 import crypto from 'crypto';
 
-import { sql, parseDataUrl } from '../db.js';
+import { sql, parseDataUrl } from './db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

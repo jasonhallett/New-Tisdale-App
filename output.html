@@ -295,5 +295,24 @@ body::before, body::after, html::before, html::after,
     }
     // === Puppeteer Server PDF END ===
   </script>
+
+  <script>
+  // Fallback save to DB if first attempt was missed
+  document.addEventListener('DOMContentLoaded', () => {
+    try {
+      const raw = sessionStorage.getItem('schedule4Data');
+      if (!raw) return;
+      const payload = JSON.parse(raw);
+      const jsonBody = JSON.stringify({ payload });
+      fetch('/api/inspections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: jsonBody,
+        keepalive: true
+      }).catch(() => {});
+    } catch (e) {}
+  });
+  </script>
+
 </body>
 </html>

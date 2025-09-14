@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script defer>
+(async () => {
+  try {
+    const r = await fetch('/api/technicians/me', { credentials: 'include' });
+    if (r.ok) window.location.href = 'new_inspection.html';
+  } catch {}
+})();
+</script>
+
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>TBL — Technician Login</title>

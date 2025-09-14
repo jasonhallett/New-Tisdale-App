@@ -773,6 +773,23 @@ body::before, body::after, html::before, html::after,
           checklist
         };
 
+        
+        // Background save to database (non-blocking)
+        try {
+          const jsonBody = JSON.stringify({ payload });
+          if (navigator.sendBeacon) {
+            const blob = new Blob([jsonBody], { type: 'application/json' });
+            navigator.sendBeacon('/api/inspections', blob);
+          } else {
+            fetch('/api/inspections', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: jsonBody,
+              keepalive: true
+            }).catch(() => {});
+          }
+        } catch (e) { /* no-op */ }
+
         sessionStorage.setItem('schedule4Data', JSON.stringify(payload));
         window.location.href = 'output.html';
       });
