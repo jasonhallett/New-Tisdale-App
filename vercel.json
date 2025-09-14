@@ -3,7 +3,7 @@
   "routes": [
     {
       "src": "/api/inspections",
-      "dest": "/inspections.js"
+      "dest": "/api/inspections.js"
     }
   ]
 }
