@@ -22,6 +22,6 @@ export default async function handler(req, res) {
     })) });
   } catch (e) {
     console.error('GET /api/technicians/list failed', e);
-    return res.status(500).json({ error: 'Server error' });
+    return res.status(500).json({ error: 'Server error', detail: String(e?.message || e), code: e?.code || null });
   }
 }

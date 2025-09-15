@@ -2,11 +2,19 @@
 import { neon } from '@neondatabase/serverless';
 
 const { DATABASE_URL } = process.env;
-if (!DATABASE_URL) {
-  throw new Error('Missing DATABASE_URL env var for Neon/Postgres');
+let _sql = null;
+if (DATABASE_URL) {
+  _sql = neon(DATABASE_URL);
 }
+export const sql = (...args) => {
+  if (!_sql) {
+    const err = new Error('Missing DATABASE_URL env var for Neon/Postgres');
+    err.code = 'NO_DATABASE_URL';
+    throw err;
+  }
+  return _sql(...args);
+};
 
-export const sql = neon(DATABASE_URL);
 
 export function parseDataUrl(dataUrl) {
   if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
