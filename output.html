@@ -26,7 +26,8 @@
     .status-na { color: #4b5563; background-color: #e5e7eb; }
 
     .text-xxs { font-size: 0.5rem; }
-    .signature-img { max-width: 300px; height: auto; border: 1px solid #e5e7eb; }
+    .signature-img { width: 400px; height: 100px; border: 1px solid #e5e7eb; object-fit: contain; }
+
 
     @page { size: 8.5in 11in; margin: 0; }
     @media print {
@@ -197,7 +198,8 @@ body::before, body::after, html::before, html::after,
         <div class="form-group">
           <h2 class="section-header my-1">Signature of the person who conducted the inspection</h2>
           <div class="output-text p-1" style="height:100px;">
-            <img id="signatureImg" alt="Signature" class="w-3/4 mx-auto block signature-img">
+            <img id="signatureImg" alt="Signature" class="mx-auto block signature-img">
+
           </div>
         </div>
       </div>
