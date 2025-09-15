@@ -26,12 +26,7 @@
     .status-na { color: #4b5563; background-color: #e5e7eb; }
 
     .text-xxs { font-size: 0.5rem; }
-    .signature-img{
-  width: 400px;
-  height: 100px;
-  object-fit: contain;
-  background-color: transparent;
-}
+    .signature-img { width: 400px; height: 100px; border: 1px solid #e5e7eb; object-fit: contain; }
 
 
     @page { size: 8.5in 11in; margin: 0; }
@@ -304,21 +299,72 @@ body::before, body::after, html::before, html::after,
   </script>
 
   <script>
-  // Fallback save to DB if first attempt was missed
-  document.addEventListener('DOMContentLoaded', () => {
-    try {
-      const raw = sessionStorage.getItem('schedule4Data');
-      if (!raw) return;
-      const payload = JSON.parse(raw);
-      const jsonBody = JSON.stringify({ payload });
-      fetch('/api/inspections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: jsonBody,
-        keepalive: true
-      }).catch(() => {});
-    } catch (e) {}
-  });
+  // Fallback save to DB (robust)
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const pick = (k) => sessionStorage.getItem(k) || localStorage.getItem(k);
+    let raw = pick('schedule4_payload') || pick('schedule4Data') || pick('schedule4Payload') || pick('finalPayload');
+    if (!raw) return;
+    let payload = {};
+    try { payload = JSON.parse(raw); } catch { return; }
+
+    if (payload && typeof payload === 'object' && payload.payload && typeof payload.payload === 'object') {
+      payload = payload.payload;
+    }
+
+    // Map signature data URL -> fields
+    const moveSig = (obj) => {
+      const s = obj.signature || obj.technician_signature_image;
+      if (typeof s === 'string' && s.startsWith('data:')) {
+        const [meta, b64] = s.split(',', 2);
+        const mime = (meta.match(/^data:([^;]+)/)||[])[1] || 'image/png';
+        obj.technician_signature_image = b64 || '';
+        obj.technician_signature_image_mime = mime;
+        obj.signature_source = obj.signature_source || 'applied';
+        delete obj.signature;
+      }
+    };
+    moveSig(payload);
+
+    // Ensure technician_id if we can infer
+    if (payload.technician_id == null) {
+      const u = payload.current_user || payload.user || {};
+      if (u && u.id != null) payload.technician_id = u.id;
+    }
+
+    // Deep-strip nullish
+    const stripNullish = (v) => {
+      if (Array.isArray(v)) {
+        const arr = v.map(stripNullish).filter((x) => x !== undefined);
+        return arr.length ? arr : undefined;
+      } else if (v && typeof v === 'object') {
+        const out = {};
+        for (const [k, val] of Object.entries(v)) {
+          const sv = stripNullish(val);
+          if (sv !== undefined) out[k] = sv;
+        }
+        return Object.keys(out).length ? out : undefined;
+      } else {
+        return (v === null || v === undefined) ? undefined : v;
+      }
+    };
+    const clean = stripNullish(payload) || {};
+
+    // POST top-level shape (not wrapped in { payload })
+    const res = await fetch('/api/inspections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(clean),
+      keepalive: true,
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(()=>''); 
+      console.error('Save failed', res.status, txt);
+    }
+  } catch (e) {
+    console.error('Fallback save exception', e);
+  }
+});
   </script>
 
 </body>
