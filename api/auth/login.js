@@ -2,7 +2,6 @@
 export const config = { runtime: 'nodejs' };
 import crypto from 'crypto';
 import { sql } from '../../db.js';
-import { readRawBody } from '../../utils/body.js';
 import { signJWT, setSessionCookie } from '../../auth.js';
 
 function parsePHC(phc) {
@@ -68,7 +67,12 @@ export default async function handler(req, res) {
   }
 }
 
-);
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    try {
+      let data = '';
+      req.setEncoding('utf8');
+      req.on('data', chunk => { data += chunk; if (data.length > 1_000_000) req.destroy(); });
       req.on('end', () => resolve(data));
       req.on('error', reject);
     } catch (err) { reject(err); }
