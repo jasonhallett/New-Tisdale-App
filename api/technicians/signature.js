@@ -2,6 +2,7 @@
 export const config = { runtime: 'nodejs' };
 
 import { sql, parseDataUrl } from '../../db.js';
+import { readRawBody } from '../../utils/body.js';
 import { getAuthIdentity } from '../../auth.js';
 
 export default async function handler(req, res) {
@@ -21,14 +22,14 @@ export default async function handler(req, res) {
 
   const dataUrl = json?.signatureDataUrl || json?.signature || null;
   const parsed = parseDataUrl(dataUrl);
-  if (!parsed?.bytes || !parsed?.mime) {
+  if (!parsed?.buffer || !parsed?.mime) {
     return res.status(400).json({ error: 'Invalid or missing signatureDataUrl' });
   }
 
   try {
     await sql`
       UPDATE technicians
-         SET signature_image = ${parsed.bytes},
+         SET signature_image = ${parsed.buffer},
              signature_image_mime = ${parsed.mime},
              signature_last_updated = now()
        WHERE app_user_id = ${auth.userId}
@@ -40,11 +41,7 @@ export default async function handler(req, res) {
   }
 }
 
-function readRawBody(req) {
-  return new Promise((resolve, reject) => {
-    try {
-      let data=''; req.setEncoding('utf8');
-      req.on('data', c => { data += c; if (data.length > 5_000_000) req.destroy(); });
+);
       req.on('end', () => resolve(data));
       req.on('error', reject);
     } catch (err) { reject(err); }

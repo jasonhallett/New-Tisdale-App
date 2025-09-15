@@ -33,7 +33,11 @@ export function verifyJWT(token) {
   const [h, p, s] = parts;
   const data = `${h}.${p}`;
   const expected = b64url(crypto.createHmac('sha256', secret).update(data).digest());
-  if (!crypto.timingSafeEqual(Buffer.from(s), Buffer.from(expected))) return null;
+const sigBuf = Buffer.from(s || '', 'utf8');
+const expBuf = Buffer.from(expected || '', 'utf8');
+if (sigBuf.length !== expBuf.length) return null;
+if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+
   let payload;
   try { payload = JSON.parse(fromB64url(p)); } catch { return null; }
   if (!payload || (payload.exp && Math.floor(Date.now()/1000) > payload.exp)) return null;

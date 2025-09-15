@@ -16,11 +16,13 @@ export function parseDataUrl(dataUrl) {
     const mime = match[1];
     const isBase64 = !!match[3];
     const tail = match[4] || '';
-    const bytes = isBase64
+    const buffer = isBase64
       ? Buffer.from(tail, 'base64')
       : Buffer.from(decodeURIComponent(tail), 'utf8');
-    return { mime, bytes };
+    // Back-compat alias (some older code might still read .bytes)
+    return { mime, buffer, bytes: buffer };
   } catch (_) {
     return null;
   }
+}
 }
