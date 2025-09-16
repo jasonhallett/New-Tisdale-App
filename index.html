@@ -28,7 +28,16 @@
     .err { color:#b91c1c; font-size: 14px; min-height: 1.2em; margin-top: 10px; }
     .muted { font-size: 12px; color:#6b7280; margin-top:10px; }
     .row { display:flex; align-items:center; gap:8px; margin-top:10px; }
-    .row label { margin:0; }
+ 
+
+    .row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;           /* space between box and text */
+  margin: 0;          /* override earlier margin */
+  font-size: 14px;
+  cursor: pointer;    /* makes clicking text toggle checkbox */
+}
   </style>
 </head>
 <body>
@@ -42,7 +51,7 @@
     <!-- NEW: remember-me checkbox -->
     <div class="row">
       <input id="remember7" type="checkbox" />
-      <label for="remember7">Stay logged in on this device for 7 days</label>
+      Stay logged in on this device for 7 days
     </div>
 
     <button id="btn">Sign In</button>
