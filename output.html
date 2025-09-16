@@ -30,15 +30,38 @@
 
 
     @page { size: 8.5in 11in; margin: 0; }
-    /* ✅ PDF-only shrink to avoid cut edges */
     @media print {
-      .body.pdf-export #page {
+      html, body {
+        width: 8.5in;
+        height: 11in;
+        margin: 0;
+        padding: 0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      #page {
+        width: 8.5in !important;
+        min-height: 11in !important;
+        margin: 0 !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      /* ✅ PDF-only shrink to avoid cut edges */
+      body.pdf-export #page {
         transform: scale(0.95);
         transform-origin: top left;
         width: 95%;
         margin: 0 auto;
       }
-      .no-print { display:none !important; }
+
+      /* ✅ PDF-only force hide buttons */
+      body.pdf-export .no-print {
+        display: none !important;
+      }
     }
   </style>
 
