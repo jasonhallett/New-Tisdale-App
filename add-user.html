@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Add User</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0b1220; }
+    .card { background: #0f172a; }
+    .label { color: #cbd5e1; }
+    .hint { color: #94a3b8; }
+  </style>
+</head>
+<body class="min-h-screen text-slate-100">
+  <div class="max-w-2xl mx-auto p-6">
+    <div class="card rounded-2xl shadow-xl p-6">
+      <h1 class="text-2xl font-semibold mb-1">Add User</h1>
+      <p class="hint mb-6">Create an account, assign role(s), and (optionally) set Technician details.</p>
+
+      <form id="form" class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="label block text-sm mb-1">Full Name</label>
+            <input id="full_name" type="text" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2" placeholder="Jane Doe" />
+          </div>
+          <div>
+            <label class="label block text-sm mb-1">Email <span class="text-pink-400">*</span></label>
+            <input id="email" type="email" required class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2" placeholder="jane@example.com" />
+          </div>
+          <div>
+            <label class="label block text-sm mb-1">Phone</label>
+            <input id="phone" type="tel" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2" placeholder="+1 (555) 555-5555" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="label block text-sm mb-1">Set Password (optional)</label>
+            <input id="password" type="password" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2" placeholder="••••••••" />
+            <p class="hint text-xs mt-1">If provided, we will hash to PHC ($scrypt$...).</p>
+          </div>
+          <div>
+            <label class="label block text-sm mb-1">Active</label>
+            <select id="is_active" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2">
+              <option value="true" selected>Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="label block text-sm mb-2">Roles</label>
+          <div id="roles" class="flex flex-wrap gap-4"></div>
+          <p class="hint text-sm mt-1">If you choose <b>TECHNICIAN</b>, the section below will appear.</p>
+        </div>
+
+        <div id="tech" class="hidden border-t border-slate-700 pt-6">
+          <h2 class="text-xl font-semibold mb-3">Technician Details</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="md:col-span-2">
+              <label class="label block text-sm mb-1">STO Registration #</label>
+              <input id="sto" type="text" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2" placeholder="e.g., STO-123456" />
+            </div>
+            <div class="md:col-span-2">
+              <label class="label block text-sm mb-1">Trade Codes</label>
+              <input id="trade_codes" type="text" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2" placeholder="Comma-separated e.g. 310T, 310S" />
+            </div>
+            <div>
+              <label class="label block text-sm mb-1">Default Carrier</label>
+              <input id="default_carrier" type="text" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2" placeholder="(optional)" />
+            </div>
+            <div>
+              <label class="label block text-sm mb-1">Default Station Address</label>
+              <input id="default_station_address" type="text" class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2" placeholder="(optional)" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button id="save" type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500">Save User</button>
+          <span id="status" class="hint text-sm"></span>
+        </div>
+      </form>
+    </div>
+
+    <div class="card rounded-2xl shadow-xl p-6 mt-8">
+      <h2 class="text-xl font-semibold mb-3">Admin Tools</h2>
+      <div class="flex gap-3 flex-wrap">
+        <button id="seed" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">Seed Roles</button>
+        <button id="loadTechs" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">List Technicians</button>
+      </div>
+      <pre id="out" class="mt-4 text-xs bg-black/30 rounded-lg p-3 overflow-x-auto"></pre>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_ROLES = ['ADMIN','TECHNICIAN','FINANCE','SALES','OPERATIONS','HR'];
+
+    const rolesDiv = document.getElementById('roles');
+    const tech = document.getElementById('tech');
+    const statusEl = document.getElementById('status');
+    const out = document.getElementById('out');
+
+    async function loadRoles() {
+      try {
+        const r = await fetch('/api/roles/list');
+        const j = await r.json();
+        const list = (j.ok && Array.isArray(j.roles) && j.roles.length) ? j.roles.map(x => x.role_name) : DEFAULT_ROLES;
+        renderRoles(list);
+      } catch {
+        renderRoles(DEFAULT_ROLES);
+      }
+    }
+
+    function renderRoles(list) {
+      rolesDiv.innerHTML='';
+      list.forEach(name => {
+        const id = 'role_' + name;
+        const label = document.createElement('label');
+        label.className = 'inline-flex items-center gap-2 cursor-pointer select-none';
+        label.innerHTML = \`
+          <input type="checkbox" class="roleBox w-4 h-4" id="\${id}" value="\${name}" />
+          <span class="text-sm">\${name}</span>
+        \`;
+        rolesDiv.appendChild(label);
+      });
+      rolesDiv.addEventListener('change', onRoleChange);
+    }
+
+    function selectedRoles() {
+      return Array.from(document.querySelectorAll('.roleBox')).filter(cb => cb.checked).map(cb => cb.value);
+    }
+    function onRoleChange() {
+      const sel = selectedRoles();
+      if (sel.includes('TECHNICIAN')) tech.classList.remove('hidden'); else tech.classList.add('hidden');
+    }
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      statusEl.textContent='';
+      const payload = {
+        full_name: document.getElementById('full_name').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        roles: selectedRoles(),
+        is_active: document.getElementById('is_active').value === 'true'
+      };
+      const pw = document.getElementById('password').value;
+      if (pw) payload.password = pw;
+
+      if (payload.roles.includes('TECHNICIAN')) {
+        payload.technicianProfile = {
+          sto_registration_number: document.getElementById('sto').value.trim() || null,
+          trade_codes: (document.getElementById('trade_codes').value || '').split(',').map(s => s.trim()).filter(Boolean),
+          default_carrier: document.getElementById('default_carrier').value.trim() || null,
+          default_station_address: document.getElementById('default_station_address').value.trim() || null
+        };
+      }
+
+      try {
+        const resp = await fetch('/api/users/create', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed');
+        statusEl.textContent='Saved ✔';
+        statusEl.classList.remove('text-rose-400'); statusEl.classList.add('text-green-400');
+        e.target.reset(); tech.classList.add('hidden');
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + (err.message || 'Failed');
+        statusEl.classList.add('text-rose-400');
+      }
+    });
+
+    document.getElementById('seed').addEventListener('click', async () => {
+      out.textContent = 'Seeding roles...';
+      const r = await fetch('/api/roles/seed', { method:'POST' });
+      out.textContent = await r.text();
+    });
+
+    document.getElementById('loadTechs').addEventListener('click', async () => {
+      out.textContent = 'Loading TECHNICIAN users...';
+      const r = await fetch('/api/users/list?role=TECHNICIAN');
+      out.textContent = await r.text();
+    });
+
+    loadRoles();
+  </script>
+</body>
+</html>
