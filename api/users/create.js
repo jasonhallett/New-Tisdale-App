@@ -1,9 +1,25 @@
-// /api/users/create.js — upsert app_user (+phone), assign roles; upsert technician if TECHNICIAN
-// Assumes db.js is in the project root.
+// /api/users/create.js — POST upsert app_user + assign roles; upsert technician if TECHNICIAN
+// Assumes db.js is at the project root (../../db.js).
 export const config = { runtime: 'nodejs' };
 
 import crypto from 'crypto';
 import { sql } from '../../db.js';
+
+// helpers
+function toPHCScrypt(password) {
+  const ln = 14, r = 8, p = 1;
+  const salt = crypto.randomBytes(16);
+  const key = crypto.scryptSync(password, salt, 32, { N: 2 ** ln, r, p });
+  return `$scrypt$ln=${ln},r=${r},p=${p}$${salt.toString('base64')}$${key.toString('base64')}`;
+}
+async function columnExists(table, col) {
+  const rows = await sql`
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema='public' AND table_name=${table} AND column_name=${col}
+     LIMIT 1
+  `;
+  return !!rows.length;
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -11,7 +27,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  // Read JSON body
+  // Read JSON body safely
   let body = '';
   req.setEncoding('utf8');
   await new Promise((resolve, reject) => {
@@ -30,28 +46,37 @@ export default async function handler(req, res) {
   }
 
   const full_name    = json.full_name?.trim() || null;
-  const phone        = (json.phone || '').trim() || null; // will be used only if column exists
+  const phone        = (json.phone || '').trim() || null; // optional; only saved if column exists
   const is_active    = (json.is_active === undefined) ? true : !!json.is_active;
   const roles        = Array.isArray(json.roles) ? json.roles.map(r => String(r||'').toUpperCase().trim()).filter(Boolean) : [];
   const replaceRoles = !!json.replaceRoles;
 
+  // Optional password hashing to PHC ($scrypt$...) supported by your login
   let password_phc = (json.password_phc || '').trim() || null;
   if (!password_phc && json.password) password_phc = toPHCScrypt(json.password);
 
   try {
     const hasPhone = await columnExists('app_users', 'phone');
 
-    // Upsert app_user
+    // 1) Upsert into app_users (no pgcrypto required)
     let app_user_id;
     const existing = await sql`SELECT id FROM app_users WHERE email = ${email} LIMIT 1`;
+
     if (existing.length) {
       app_user_id = existing[0].id;
-      const sets = [ sql`full_name = ${full_name}`, sql`is_active = COALESCE(${is_active}, is_active)`, sql`updated_at = now()` ];
+
+      const sets = [
+        sql`full_name = ${full_name}`,
+        sql`is_active = COALESCE(${is_active}, is_active)`,
+        sql`updated_at = now()`,
+      ];
       if (password_phc !== null) sets.splice(1, 0, sql`password_phc = ${password_phc}`);
-      if (hasPhone) sets.splice(1, 0, sql`phone = ${phone}`);
+      if (hasPhone)              sets.splice(1, 0, sql`phone = ${phone}`);
+
       await sql`UPDATE app_users SET ${sql.join(sets, sql`, `)} WHERE id = ${app_user_id}`;
     } else {
       app_user_id = crypto.randomUUID();
+
       if (hasPhone) {
         await sql`
           INSERT INTO app_users (id, email, full_name, phone, password_phc, is_active, created_at, updated_at)
@@ -65,7 +90,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // Ensure roles and assign
+    // 2) Ensure roles exist, then assign (requires RBAC migration)
     if (roles.length) {
       try {
         await sql`
@@ -74,13 +99,15 @@ export default async function handler(req, res) {
           ON CONFLICT DO NOTHING
         `;
       } catch (e) {
-        if (String(e?.message||'').includes('relation "roles" does not exist')) {
-          return res.status(500).json({ ok:false, error:'DB schema missing: table "roles" not found. Run the RBAC migration SQL.' });
+        if (String(e?.message || '').includes('relation "roles" does not exist')) {
+          return res.status(500).json({ ok: false, error: 'DB schema missing: table "roles" not found. Run the RBAC migration SQL.' });
         }
         throw e;
       }
 
-      if (replaceRoles) await sql`DELETE FROM user_roles WHERE user_id = ${app_user_id}`;
+      if (replaceRoles) {
+        await sql`DELETE FROM user_roles WHERE user_id = ${app_user_id}`;
+      }
 
       try {
         await sql`
@@ -89,14 +116,14 @@ export default async function handler(req, res) {
           ON CONFLICT DO NOTHING
         `;
       } catch (e) {
-        if (String(e?.message||'').includes('relation "user_roles" does not exist')) {
-          return res.status(500).json({ ok:false, error:'DB schema missing: table "user_roles" not found. Run the RBAC migration SQL.' });
+        if (String(e?.message || '').includes('relation "user_roles" does not exist')) {
+          return res.status(500).json({ ok: false, error: 'DB schema missing: table "user_roles" not found. Run the RBAC migration SQL.' });
         }
         throw e;
       }
     }
 
-    // Technician upsert if TECHNICIAN selected
+    // 3) Upsert technicians row if TECHNICIAN selected
     if (roles.includes('TECHNICIAN') && json.technicianProfile) {
       const tp = json.technicianProfile || {};
       const trade_codes = Array.isArray(tp.trade_codes)
@@ -104,6 +131,7 @@ export default async function handler(req, res) {
         : (typeof tp.trade_codes === 'string'
             ? tp.trade_codes.split(',').map(s => s.trim()).filter(Boolean)
             : []);
+
       const existsTech = await sql`SELECT id FROM technicians WHERE app_user_id = ${app_user_id} LIMIT 1`;
       if (existsTech.length) {
         await sql`
@@ -125,9 +153,19 @@ export default async function handler(req, res) {
       }
     }
 
-    // Final state
-    const userRow  = (await sql`SELECT id, email, full_name, ${hasPhone and sql('phone') or sql('NULL::text AS phone')}, role, is_active FROM app_users WHERE id = ${app_user_id}`)[0];
+    // 4) Return final state (with phone if present)
+    const phoneCol = (await columnExists('app_users', 'phone'))
+      ? sql`phone`
+      : sql`NULL::text AS phone`;
+
+    const userRow  = (await sql`
+      SELECT id, email, full_name, ${phoneCol}, role, is_active
+        FROM app_users
+       WHERE id = ${app_user_id}
+    `)[0];
+
     const roleRows = await sql`SELECT role_name FROM user_roles WHERE user_id = ${app_user_id} ORDER BY role_name`;
+
     const tech     = await sql`
       SELECT sto_registration_number, trade_codes, default_carrier, default_station_address, is_active
         FROM technicians WHERE app_user_id = ${app_user_id} LIMIT 1
@@ -143,23 +181,6 @@ export default async function handler(req, res) {
     });
   } catch (e) {
     console.error('POST /api/users/create failed', e);
-    return res.status(500).json({ ok:false, error:'Server error' });
+    return res.status(500).json({ ok: false, error: 'Server error' });
   }
-}
-
-function toPHCScrypt(password) {
-  const ln = 14, r = 8, p = 1;
-  const salt = crypto.randomBytes(16);
-  const key = crypto.scryptSync(password, salt, 32, { N: 2 ** ln, r, p });
-  return `$scrypt$ln=${ln},r=${r},p=${p}$${salt.toString('base64')}$${key.toString('base64')}`;
-}
-
-async function columnExists(table, col) {
-  const rows = await sql`
-    SELECT 1
-      FROM information_schema.columns
-     WHERE table_schema='public' AND table_name=${table} AND column_name=${col}
-     LIMIT 1
-  `;
-  return !!rows.length;
 }
