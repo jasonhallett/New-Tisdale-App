@@ -27,6 +27,8 @@
     button:disabled { opacity:.6; cursor:not-allowed; }
     .err { color:#b91c1c; font-size: 14px; min-height: 1.2em; margin-top: 10px; }
     .muted { font-size: 12px; color:#6b7280; margin-top:10px; }
+    .row { display:flex; align-items:center; gap:8px; margin-top:10px; }
+    .row label { margin:0; }
   </style>
 </head>
 <body>
@@ -36,6 +38,13 @@
     <select id="tech"></select>
     <label for="pw">Password</label>
     <input id="pw" type="password" autocomplete="current-password" />
+
+    <!-- NEW: remember-me checkbox -->
+    <div class="row">
+      <input id="remember7" type="checkbox" />
+      <label for="remember7">Stay logged in on this device for 7 days</label>
+    </div>
+
     <button id="btn">Sign In</button>
     <div class="err" id="err"></div>
     <div class="muted">After login, you’ll be taken to the menu.</div>
@@ -47,6 +56,7 @@
   const btn = document.getElementById('btn');
   const err = document.getElementById('err');
   const pw  = document.getElementById('pw');
+  const rememberEl = document.getElementById('remember7');
 
   try {
     const res = await fetch('/api/technicians/list', { credentials: 'include' });
@@ -65,10 +75,11 @@
     try {
       const technicianId = sel.value;
       const password = pw.value;
+      const remember = !!rememberEl.checked;
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianId, password }),
+        body: JSON.stringify({ technicianId, password, remember }),
         credentials: 'include'
       });
       if (!res.ok) {

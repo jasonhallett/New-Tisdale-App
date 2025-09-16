@@ -1,4 +1,4 @@
-// /api/auth/login.js — Minimal login: technicianId + password -> HttpOnly JWT cookie
+// /api/auth/login.js — login with adjustable session length (8h vs 7d) based on 'remember' flag
 export const config = { runtime: 'nodejs' };
 import crypto from 'crypto';
 import { sql } from '../../db.js';
@@ -29,44 +29,6 @@ function verifyPasswordPHC(password, phc) {
   try { return crypto.timingSafeEqual(derived, key); } catch { return false; }
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow','POST');
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  let body = '';
-  try { body = await readRawBody(req); } catch { return res.status(400).json({ error: 'Bad request' }); }
-  let json; try { json = JSON.parse(body); } catch { json = {}; }
-  const technicianId = json?.technicianId;
-  const password = json?.password || '';
-
-  if (!technicianId || !password) {
-    return res.status(400).json({ error: 'Missing credentials' });
-  }
-
-  try {
-    const rows = await sql`
-      SELECT a.id AS app_user_id, a.full_name, a.email, a.role, a.password_phc, t.id AS technician_id
-      FROM technicians t
-      JOIN app_users a ON a.id = t.app_user_id
-      WHERE t.id = ${technicianId} AND t.is_active = true AND a.is_active = true
-      LIMIT 1
-    `;
-    const u = rows?.[0];
-    if (!u || !u.password_phc || !verifyPasswordPHC(password, u.password_phc)) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const token = signJWT({ uid: u.app_user_id, tid: u.technician_id, role: u.role }, { expSeconds: 60*60*12 });
-    setSessionCookie(res, token, { maxAgeSeconds: 60*60*24*7 });
-    return res.status(200).json({ ok: true, user: { fullName: u.full_name, email: u.email, role: u.role } });
-  } catch (e) {
-    console.error('POST /api/auth/login failed', e);
-    return res.status(500).json({ error: 'Server error' });
-  }
-}
-
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
     try {
@@ -77,4 +39,61 @@ function readRawBody(req) {
       req.on('error', reject);
     } catch (err) { reject(err); }
   });
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow','POST');
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Parse body
+  let body = '';
+  try { body = await readRawBody(req); } catch { return res.status(400).json({ error: 'Bad request' }); }
+  let json; try { json = JSON.parse(body); } catch { json = {}; }
+
+  const technicianId = json?.technicianId;
+  const password = json?.password || '';
+  // remember can be boolean or "true"/"false" string; default false (8h)
+  let remember = json?.remember;
+  if (typeof remember === 'string') remember = (remember.toLowerCase() === 'true');
+  remember = !!remember;
+
+  if (!technicianId || !password) {
+    return res.status(400).json({ error: 'Missing credentials' });
+  }
+
+  try {
+    const rows = await sql`
+      SELECT a.id AS app_user_id, a.full_name, a.email, a.role, a.password_phc,
+             t.id AS technician_id, t.is_active AS technician_active, a.is_active AS user_active
+      FROM technicians t
+      JOIN app_users a ON a.id = t.app_user_id
+      WHERE t.id = ${technicianId}
+      LIMIT 1
+    `;
+    const u = rows?.[0];
+    if (!u || !u.password_phc || !verifyPasswordPHC(password, u.password_phc)) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    if (!u.user_active || u.technician_active === false) {
+      return res.status(403).json({ error: 'User inactive' });
+    }
+
+    // Session length: 7 days if remember, else 8 hours
+    const sessionSeconds = remember ? (7 * 24 * 60 * 60) : (8 * 60 * 60);
+
+    // Token + cookie durations MATCH to avoid mid-session 401s
+    const token = signJWT({ uid: u.app_user_id, tid: u.technician_id, role: u.role }, { expSeconds: sessionSeconds });
+    setSessionCookie(res, token, { maxAgeSeconds: sessionSeconds });
+
+    return res.status(200).json({
+      ok: true,
+      user: { fullName: u.full_name, email: u.email, role: u.role },
+      session: { remember, expiresInSeconds: sessionSeconds }
+    });
+  } catch (e) {
+    console.error('POST /api/auth/login failed', e);
+    return res.status(500).json({ error: 'Server error' });
+  }
 }
