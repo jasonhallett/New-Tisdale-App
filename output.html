@@ -291,7 +291,7 @@ body::before, body::after, html::before, html::after,
     async function downloadServerPDF() {
       try {
         const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
-        const res = await fetch('/api/print', {
+        const res = await fetch('/api/pdf/print', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: '/output.html', data, filename: 'Schedule-4-Inspection.pdf' })
