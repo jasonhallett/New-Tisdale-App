@@ -31,29 +31,9 @@
 
     @page { size: 8.5in 11in; margin: 0; }
     @media print {
-      html, body {
-        width: 8.5in;
-        height: 11in;
-        margin: 0;
-        padding: 0;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-
-      #page {
-        width: 8.5in !important;
-        min-height: 11in !important;
-        margin: 0 !important;
-      }
-
-      .no-print {
-        display: none !important;
-      }
-
-      /* ✅ PDF-only force hide buttons */
-      body.pdf-export .no-print {
-        display: none !important;
-      }
+      html, body { width:8.5in; height:11in; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      #page { width:8.5in !important; min-height:11in !important; margin:0 !important; }
+      .no-print { display:none !important; }
     }
   </style>
 
@@ -69,6 +49,23 @@ body::before, body::after, html::before, html::after,
 }
 </style>
 
+<style id="scale-95-all">
+  /* Scale the printable page to 95% in all contexts and center it */
+  #page {
+    transform: scale(0.95);
+    transform-origin: top center;
+  }
+  @media print {
+    #page {
+      transform: scale(0.95) !important;
+      transform-origin: top center !important;
+    }
+    /* Ensure toolbars never appear in print/PDF */
+    .no-print, body.pdf-export .no-print {
+      display: none !important;
+    }
+  }
+</style>
 </head>
 <body>
   <!-- Buttons -->

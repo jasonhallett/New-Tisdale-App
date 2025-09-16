@@ -1,13 +1,8 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { readFile } from 'fs/promises';
 
+// Function files must use "nodejs" (NOT "nodejs20.x")
 export const config = { runtime: 'nodejs' };
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function launchBrowser() {
   const executablePath = await chromium.executablePath();
@@ -44,12 +39,10 @@ export default async function handler(req, res) {
     // Use PRINT CSS so .no-print is hidden and @page rules apply
     await page.emulateMediaType('print');
 
-    // If you pass data, inject before navigation so output.html reads sessionStorage
-    if (body.data) {
-      await page.evaluateOnNewDocument((data) => {
-        try { sessionStorage.setItem('schedule4Data', JSON.stringify(data || {})); } catch {}
-      }, body.data);
-    }
+    // Inject data BEFORE navigation so output.html reads sessionStorage
+    await page.evaluateOnNewDocument((data) => {
+      try { sessionStorage.setItem('schedule4Data', JSON.stringify(data || {})); } catch {}
+    }, body.data || {});
 
     // Navigate and wait for base render
     await page.goto(targetUrl, { waitUntil: ['load', 'networkidle0'] }).catch(() => {});
@@ -60,61 +53,61 @@ export default async function handler(req, res) {
       await page.evaluate(() => (document.fonts && document.fonts.ready) ? document.fonts.ready : null);
     } catch (_) {}
 
-    // Normalize & force-set checklist badges if your output.html relies on it (left intact)
-    try {
-      await page.evaluate((data) => {
-        if (!data || !data.checklist) return;
-        const norm = (s) => String(s ?? '').trim().toLowerCase();
-        const CHECK_SVG =
-          '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-top:-1px;"><path d="M2 6l2.5 2.5L10 3"/></svg>';
+    // Normalize & force-set checklist badges (✓ via SVG / R / N/A via text)
+    await page.evaluate((data) => {
+      const checklist = (data && data.checklist) || {};
+      const norm = (s) => String(s ?? '').trim().toLowerCase();
 
-        const isPass = (v) => {
-          const n = norm(v);
-          return n === '✓' || n === '✔' || n === 'ok' || n === 'okay' || n === 'yes' || n === 'y' ||
-                 n === 'true' || n === '1' || n === 'pass' || n === 'p' || n === '✅';
-        };
-        const isRepair = (v) => {
-          const n = norm(v);
-          return n === 'r' || n === 'repair' || n === 'repaired' || n === 'fail' || n === 'f' ||
-                 n === 'defect' || n === 'x' || n === '✗' || n === '✘';
-        };
-        const isNA = (v) => {
-          const n = norm(v);
-          return n === 'na' || n === 'n/a' || n === 'not applicable' || n === 'n';
-        };
+      const isPass = (v) => {
+        const n = norm(v);
+        return n === '✓' || n === '✔' || n === 'ok' || n === 'okay' || n === 'yes' || n === 'y' ||
+               n === 'true' || n === '1' || n === 'pass' || n === 'p' || n === '✅';
+      };
+      const isRepair = (v) => {
+        const n = norm(v);
+        return n === 'r' || n === 'repair' || n === 'repaired' || n === 'fail' || n === 'f' ||
+               n === 'defect' || n === 'x' || n === '✗' || n === '✘';
+      };
+      const isNA = (v) => {
+        const n = norm(v);
+        return n === 'na' || n === 'n/a' || n === 'not applicable' || n === 'n';
+      };
 
-        document.querySelectorAll('.checklist-item').forEach((item) => {
-          const label = item.querySelector('.checklist-item-text')?.textContent?.trim();
-          if (!label) return;
-          const raw = data.checklist[label];
-          if (raw == null || norm(raw) === '') return;
+      const CHECK_SVG =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-top:-1px;"><path d="M2 6l2.5 2.5L10 3"/></svg>';
 
-          const badge = item.querySelector('.checklist-status');
-          if (!badge) return;
+      document.querySelectorAll('.checklist-item').forEach((item) => {
+        const label = item.querySelector('.checklist-item-text')?.textContent?.trim();
+        if (!label) return;
+        const raw = checklist[label];
+        if (raw == null || norm(raw) === '') return;
 
-          // reset content & classes
-          badge.classList.remove('status-pass', 'status-repair', 'status-na');
-          badge.textContent = '';
-          badge.innerHTML = '';
+        const badge = item.querySelector('.checklist-status');
+        if (!badge) return;
 
-          if (isPass(raw)) {
-            badge.classList.add('status-pass');
-            badge.innerHTML = CHECK_SVG; // SVG checkmark
-          } else if (isRepair(raw)) {
-            badge.classList.add('status-repair');
-            badge.textContent = 'R';
-          } else if (isNA(raw)) {
-            badge.classList.add('status-na');
-            badge.textContent = 'N/A';
-          } else {
-            badge.classList.add('status-repair');
-            badge.textContent = String(raw).toUpperCase();
-          }
-        });
-      }, body.data || {});
-    } catch (_) {}
+        // reset content & classes
+        badge.classList.remove('status-pass', 'status-repair', 'status-na');
+        badge.textContent = '';
+        badge.innerHTML = '';
 
-    // Wait until at least one badge is visible (best effort)
+        if (isPass(raw)) {
+          badge.classList.add('status-pass');
+          badge.innerHTML = CHECK_SVG; // <-- SVG checkmark (font-independent)
+        } else if (isRepair(raw)) {
+          badge.classList.add('status-repair');
+          badge.textContent = 'R';
+        } else if (isNA(raw)) {
+          badge.classList.add('status-na');
+          badge.textContent = 'N/A';
+        } else {
+          // If value exists but doesn't match known sets, show raw (debug-friendly)
+          badge.classList.add('status-repair');
+          badge.textContent = String(raw).toUpperCase();
+        }
+      });
+    }, body.data || {});
+
+    // Wait until at least one badge is visible (✓ SVG, or R/N/A text)
     await page.waitForFunction(() => {
       const badges = Array.from(document.querySelectorAll('.checklist-status'));
       return badges.some(b => b.innerHTML.includes('<svg') || ['✓','R','N/A'].includes((b.textContent || '').trim()));
@@ -126,15 +119,10 @@ export default async function handler(req, res) {
       return !img || img.complete;
     }, { timeout: 5000 }).catch(() => {});
 
-    // Add PDF-only class for print CSS (e.g., body.pdf-export .no-print {display:none})
-    await page.evaluate(() => { document.body.classList.add('pdf-export'); });
-
-    // ✅ 95% scale applied here — PDF only
     const pdfBuffer = await page.pdf({
       format: 'Letter',
       printBackground: true,
       preferCSSPageSize: true,
-      scale: 0.95,
       margin: { top: 0, right: 0, bottom: 0, left: 0 }
     });
 
@@ -149,6 +137,6 @@ export default async function handler(req, res) {
     console.error(err);
     res.status(500).json({ error: err.message });
   } finally {
-    try { await browser.close(); } catch {}
+    await browser.close();
   }
 }
