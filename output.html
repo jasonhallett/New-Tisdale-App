@@ -49,25 +49,6 @@ body::before, body::after, html::before, html::after,
 }
 </style>
 
-<style id="scale-95-print">
-  @media print {
-    /* Hide toolbars/buttons in both print and server PDF */
-    .no-print, body.pdf-export .no-print { display: none !important; }
-
-    /* Center and scale the page content for letter size:
-       width = 8.5in, height = 11in, scale = 0.95
-       Horizontal translate = (8.5 * 0.05) / 2 = 0.2125in
-       Vertical translate   = (11  * 0.05) / 2 = 0.275in */
-    #page {
-      transform: translate(0.2125in, 0.275in) scale(0.95) !important;
-      transform-origin: top left !important;
-    }
-    body.pdf-export #page {
-      transform: translate(0.2125in, 0.275in) scale(0.95) !important;
-      transform-origin: top left !important;
-    }
-  }
-</style>
 </head>
 <body>
   <!-- Buttons -->
@@ -227,6 +208,15 @@ body::before, body::after, html::before, html::after,
 
   <script>
     (function () {
+      function friendlyOdoSource(v) {
+        const n = String(v || '').toLowerCase();
+        if (n === 'samsara') return 'Samsara';
+        if (n === 'user_entered') return 'User Entered';
+        if (n === 'gps') return 'GPS'; // legacy mapping if present
+        if (n === 'obd') return 'OBD'; // legacy mapping if present
+        if (n === 'manual') return 'User Entered';
+        return 'Unknown';
+      }
       function getData() {
         let data = {};
         try { const ss = sessionStorage.getItem('schedule4Data'); if (ss) data = JSON.parse(ss) || {}; } catch(e){}
@@ -256,6 +246,24 @@ body::before, body::after, html::before, html::after,
       fillByLabel('Unit #', data.unitNumber);
       fillByLabel('Licence Plate', data.licensePlate);
       fillByLabel('Odometer (km)', data.odometer);
+      // /*ODO_SOURCE_RENDER*/ inject "Odometer Source" row after the Odometer row if missing
+      try {
+        const labels = Array.from(document.querySelectorAll('label'));
+        const odoLabel = labels.find(l => l.textContent.trim().toLowerCase() === 'odometer (km)'.toLowerCase());
+        const odoGroup = odoLabel && odoLabel.closest('.form-group');
+        const existing = labels.find(l => l.textContent.trim().toLowerCase() === 'odometer source'.toLowerCase());
+        const srcText = friendlyOdoSource(data.odometerSource || (data.odometer_source));
+        if (odoGroup && !existing) {
+          const g = document.createElement('div');
+          g.className = 'form-group';
+          g.innerHTML = '<h2 class="section-header my-1">Odometer Source</h2><div class="output-text"></div>';
+          odoGroup.parentNode.insertBefore(g, odoGroup.nextSibling);
+          g.querySelector('.output-text').textContent = srcText;
+        } else if (existing) {
+          const box = existing.closest('.form-group')?.querySelector('.output-text');
+          if (box) box.textContent = srcText;
+        }
+      } catch (e) {}
       fillByLabel('Date Inspected', data.inspectionDate);
       fillByLabel('Odometer Expires', data.odometerExpires);
       fillByLabel('Date Expires', data.dateExpires);

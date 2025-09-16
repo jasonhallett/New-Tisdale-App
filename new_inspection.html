@@ -566,6 +566,8 @@ body::before, body::after, html::before, html::after,
       const inspectionDateInput = document.getElementById('inspection-date');
       const expiryDateInput = document.getElementById('expiry-date');
       const odometerInput = document.getElementById('odometer');
+      let _samsaraOdometerKm = null;
+      let _odometerSource = _odometerSource || 'unknown';
       const expiryOdometerInput = document.getElementById('expiry-odometer');
 
       function formatOdometer(input){

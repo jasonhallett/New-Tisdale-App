@@ -64,7 +64,17 @@ export default async function handler(req, res) {
   const licensePlate = pick(payload, ['licensePlate', 'plate', 'plateNumber']) || null;
 
   const odometerKm = intish(pick(payload, ['odometerKm', 'odometerKM', 'odometer']));
-  const odometerSource = enumish(pick(payload, ['odometerSource']), ['obd', 'gps', 'manual', 'unknown'], 'unknown');
+  // Infer canonical odometer source: samsara | user_entered | unknown
+  const hintSource = enumish(pick(payload, ['odometerSource']), ['samsara', 'user_entered', 'unknown'], null);
+  const samsaraOdometerKm = intish(pick(payload, ['samsaraOdometerKm', 'samsara_odometer_km', 'samsaraOdometerKM']));
+  let odometerSource = 'unknown';
+  if (hintSource) {
+    odometerSource = hintSource;
+  } else if (samsaraOdometerKm != null && odometerKm != null) {
+    odometerSource = (samsaraOdometerKm === odometerKm) ? 'samsara' : 'user_entered';
+  } else if (samsaraOdometerKm != null) {
+    odometerSource = 'samsara';
+  }
 
   const expiryDate = dateish(pick(payload, ['expiryDate', 'inspectionDate', 'dateExpires']));
   const nextServiceOdometerKm = intish(pick(payload, ['nextServiceOdometerKm', 'nextServiceOdometer', 'odometerExpires']));
