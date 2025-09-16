@@ -49,6 +49,16 @@ body::before, body::after, html::before, html::after,
 }
 </style>
 
+<style id="print-scale-95">
+  @media print {
+    .no-print { display: none !important; }
+    /* center the 95% scaled page on Letter */
+    #page {
+      transform: translate(0.2125in, 0.275in) scale(0.95) !important;
+      transform-origin: top left !important;
+    }
+  }
+</style>
 </head>
 <body>
   <!-- Buttons -->
@@ -281,7 +291,7 @@ body::before, body::after, html::before, html::after,
     async function downloadServerPDF() {
       try {
         const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
-        const res = await fetch('/api/pdf/print', {
+        const res = await fetch('/api/print', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: '/output.html', data, filename: 'Schedule-4-Inspection.pdf' })

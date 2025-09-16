@@ -728,7 +728,7 @@
       discToggle.addEventListener('change', ()=> setDiscMode(discToggle.checked));
 
       // Validation + handoff
-      form.addEventListener('submit', (e) => {
+      form.addEventListener('submit', async (e) => {
         e.preventDefault();
         let errors = [];
 
@@ -826,22 +826,36 @@
           checklist
         };
 
-        // Background save to database (non-blocking)
+        
+        // Save to DB first, blocking navigation until success
         try {
-          const jsonBody = JSON.stringify({ payload });
-          if (navigator.sendBeacon) {
-            const blob = new Blob([jsonBody], { type: 'application/json' });
-            navigator.sendBeacon('/api/inspections', blob);
-          } else {
-            fetch('/api/inspections', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: jsonBody,
-              keepalive: true
-            }).catch(() => {});
+          const resp = await fetch('/api/inspections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ payload })
+          });
+          if (!resp.ok) {
+            const text = await resp.text().catch(()=>'');
+            throw new Error(`Save failed (${resp.status}) ${text}`);
           }
-        } catch (e) { /* no-op */ }
+        } catch (err) {
+          const box = document.getElementById('message-box');
+          if (box) {
+            box.classList.remove('hidden');
+            box.classList.add('text-red-600');
+            box.classList.remove('text-green-600');
+            box.innerHTML = '<strong>Could not save to database.</strong><br>'
+              + 'Reason: ' + (err && err.message ? err.message : 'Unknown error')
+              + '<br>Please try again.';
+            box.scrollIntoView({ behavior: 'smooth' });
+          } else {
+            alert('Could not save to database: ' + (err && err.message ? err.message : 'Unknown error'));
+          }
+          return;
+        }
 
+        // Persist payload for output + navigate
         sessionStorage.setItem('schedule4Data', JSON.stringify(payload));
         window.location.href = 'output.html';
       });
