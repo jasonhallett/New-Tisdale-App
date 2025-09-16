@@ -49,24 +49,23 @@
     @media (min-width:640px){ .grid-3{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
 
     #signatureCanvas {
-  border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair;
-  width:400px; height:100px; /* display size */
-}
+      border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair;
+      width:400px; height:100px; /* display size */
+    }
     .footer-note{ font-size:0.875rem; color:#6b7280; margin-top:1rem; }
   </style>
 
-<style id="single-page-fix">
-/* Hide stray page counters like "/1" on screen && in print */
-body::before, body::after, html::before, html::after,
-#page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
-.page-number, .pageNumber, [data-page-number] { display: none !important; }
+  <style id="single-page-fix">
+    /* Hide stray page counters like "/1" on screen && in print */
+    body::before, body::after, html::before, html::after,
+    #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
+    .page-number, .pageNumber, [data-page-number] { display: none !important; }
 
-@media print {
-  .page, #page { page-break-after: auto !important; break-after: auto !important; }
-  .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
-}
-</style>
-
+    @media print {
+      .page, #page { page-break-after: auto !important; break-after: auto !important; }
+      .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
+    }
+  </style>
 </head>
 <body class="bg-gray-100 p-4 sm:p-8">
   <div class="form-container">
@@ -506,9 +505,9 @@ body::before, body::after, html::before, html::after,
       <!-- Declaration + Signature -->
       <div class="mb-8">
         <h2 class="section-header">Declaration</h2>
-<div class="mt-2 mb-4">
-  <button type="button" id="autoSignBtn" class="inline-flex items-center px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">Click to Declare &amp; Sign</button>
-</div>
+        <div class="mt-2 mb-4">
+          <button type="button" id="autoSignBtn" class="inline-flex items-center px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">Click to Declare &amp; Sign</button>
+        </div>
 
         <div class="mb-4">
           <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
@@ -523,8 +522,7 @@ body::before, body::after, html::before, html::after,
           </div>
           <div class="form-group">
             <label class="block text-sm">Signature of the person who conducted the inspection</label>
-<canvas id="signatureCanvas" width="400" height="100" class="mx-auto block"></canvas>
-
+            <canvas id="signatureCanvas" width="400" height="100" class="mx-auto block"></canvas>
             <button type="button" id="clearSignatureBtn" class="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition">Clear Signature</button>
           </div>
         </div>
@@ -568,6 +566,10 @@ body::before, body::after, html::before, html::after,
       const odometerInput = document.getElementById('odometer');
       const expiryOdometerInput = document.getElementById('expiry-odometer');
 
+      // Track odometer provenance
+      let _samsaraOdometerKm = null;
+      let _odometerSource = 'unknown';
+
       function formatOdometer(input){
         let v = (input.value||'').replace(/,/g,'');
         if (v!=='' && !/^\d+$/.test(v)) v = v.replace(/\D/g,'');
@@ -588,14 +590,23 @@ body::before, body::after, html::before, html::after,
       odometerInput.addEventListener('input', ()=> formatOdometer(odometerInput));
       odometerInput.addEventListener('blur', calculateExpiryOdometer);
 
+      // If the tech edits the odometer after a Samsara prefill, mark as user_entered
+      odometerInput.addEventListener('input', ()=>{
+        const val = getNumericValue(odometerInput);
+        if (!isNaN(val)) {
+          if (_samsaraOdometerKm != null) {
+            if (val !== _samsaraOdometerKm) _odometerSource = 'user_entered';
+          } else {
+            _odometerSource = 'user_entered';
+          }
+        }
+      });
+
       // Signature pad
       const canvas = document.getElementById('signatureCanvas');
       const ctx = canvas.getContext('2d');
       let isDrawing=false, lastX=0, lastY=0;
-
       function resizeCanvas(){ canvas.width=400; canvas.height=100; }
-
-
       window.addEventListener('resize', resizeCanvas); resizeCanvas();
       function draw(e){
         if(!isDrawing) return;
@@ -636,10 +647,14 @@ body::before, body::after, html::before, html::after,
           const opt=document.createElement('option'); opt.textContent='Error loading vehicles'; opt.value=''; unitSelect.appendChild(opt);
         }
       }
+
       unitSelect.addEventListener('change', async ()=>{
-        if (unitSelect.value==='other'){ unitSelect.classList.add('hidden'); unitOtherInput.classList.remove('hidden'); unitOtherInput.focus(); return; }
+        if (unitSelect.value==='other'){
+          unitSelect.classList.add('hidden'); unitOtherInput.classList.remove('hidden'); unitOtherInput.focus(); return;
+        }
         const picked = vehicleIndex.get(unitSelect.value); if(!picked) return;
         if (picked.licensePlate) licensePlateInput.value = picked.licensePlate;
+
         try{
           const res = await fetch('/api/samsara/vehicle-stats?id='+encodeURIComponent(picked.id));
           const payload = await res.json();
@@ -648,9 +663,39 @@ body::before, body::after, html::before, html::after,
             const km = Math.round(payload.odometerMeters/1000);
             odometerInput.value = km.toLocaleString('en-US');
             expiryOdometerInput.value = (km+12000).toLocaleString('en-US');
+
+            // Track Samsara source + confirm with technician
+            _samsaraOdometerKm = km;
+            _odometerSource = 'samsara';
+            try {
+              const confirmed = window.confirm(`Samsara reports ${km.toLocaleString('en-CA')} km for the current unit.\nIs this accurate on the vehicle's dash?`);
+              if (!confirmed) {
+                let corrected = window.prompt('Enter the current odometer (km):', km.toLocaleString('en-CA'));
+                if (corrected != null) {
+                  corrected = String(corrected).replace(/[^0-9]/g, '');
+                  const val = parseInt(corrected, 10);
+                  if (!isNaN(val)) {
+                    odometerInput.value = val.toLocaleString('en-US');
+                    expiryOdometerInput.value = (val + 12000).toLocaleString('en-US');
+                    _odometerSource = 'user_entered';
+                  } else {
+                    _odometerSource = 'user_entered';
+                    odometerInput.focus();
+                    if (odometerInput.select) odometerInput.select();
+                  }
+                } else {
+                  _odometerSource = 'user_entered';
+                  odometerInput.focus();
+                  if (odometerInput.select) odometerInput.select();
+                }
+              }
+            } catch (_) {}
           }
-        }catch(e){ console.error('odometer fetch failed', e); }
+        }catch(e){
+          console.error('odometer fetch failed', e);
+        }
       });
+
       loadVehicles();
       // ---------- End Samsara ----------
 
@@ -729,7 +774,6 @@ body::before, body::after, html::before, html::after,
         }
 
         // Build payload for output.html
-        // capture selected vehicle ID && signature source
         const selectedVehicleId = (unitSelect.value && unitSelect.value !== 'other') ? String(unitSelect.value) : null;
         let signatureSource = 'drawn';
         try { const ss = sessionStorage.getItem('__signatureSource'); if (ss) signatureSource = ss; } catch(_){}
@@ -782,7 +826,6 @@ body::before, body::after, html::before, html::after,
           checklist
         };
 
-        
         // Background save to database (non-blocking)
         try {
           const jsonBody = JSON.stringify({ payload });
@@ -803,7 +846,7 @@ body::before, body::after, html::before, html::after,
         window.location.href = 'output.html';
       });
     });
-  
+
     // Prefill from technician profile + Declare & Sign
     (function(){
       let cachedProfile = null;
@@ -866,7 +909,6 @@ body::before, body::after, html::before, html::after,
         }
       });
     })();
-
-    </script>
+  </script>
 </body>
 </html>
