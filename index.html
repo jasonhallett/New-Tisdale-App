@@ -27,31 +27,49 @@
     button:disabled { opacity:.6; cursor:not-allowed; }
     .err { color:#b91c1c; font-size: 14px; min-height: 1.2em; margin-top: 10px; }
     .muted { font-size: 12px; color:#6b7280; margin-top:10px; }
-    .row { display:flex; align-items:center; gap:8px; margin-top:10px; }
- 
 
-    .row label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;           /* space between box and text */
-  margin: 0;          /* override earlier margin */
-  font-size: 14px;
-  cursor: pointer;    /* makes clicking text toggle checkbox */
-}
+    /* row wrapper below password */
+    .row { display:flex; align-items:center; gap:8px; margin-top:10px; }
+
+    /* ✅ Make checkbox NOT full-width and inline with text */
+    input[type="checkbox"] {
+      width: auto;
+      height: auto;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      margin: 0;
+      appearance: auto;
+    }
+
+    /* ✅ Keep checkbox + text on one line, aligned left */
+    .row .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;      /* space between box and text */
+      margin: 0;     /* override global label margins */
+      font-size: 14px;
+      color: #374151;
+      cursor: pointer; /* clicking text toggles checkbox */
+    }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>Technician Login</h1>
+
     <label for="tech">Technician</label>
     <select id="tech"></select>
+
     <label for="pw">Password</label>
     <input id="pw" type="password" autocomplete="current-password" />
 
-    <!-- NEW: remember-me checkbox -->
+    <!-- ✅ Remember-me checkbox: left-aligned, text to the right on the same line -->
     <div class="row">
-      <input id="remember7" type="checkbox" />
-      Stay logged in on this device for 7 days
+      <label class="check" for="remember7">
+        <input id="remember7" type="checkbox" />
+        <span>Stay logged in on this device for 7 days</span>
+      </label>
     </div>
 
     <button id="btn">Sign In</button>
@@ -71,7 +89,9 @@
     const res = await fetch('/api/technicians/list', { credentials: 'include' });
     if (!res.ok) throw new Error('Load error');
     const data = await res.json();
-    sel.innerHTML = (data.technicians || []).map(t => `<option value="${t.technicianId}">${t.fullName}</option>`).join('');
+    sel.innerHTML = (data.technicians || [])
+      .map(t => `<option value="${t.technicianId}">${t.fullName}</option>`)
+      .join('');
   } catch (e) {
     err.textContent = 'Unable to load technicians.';
     btn.disabled = true;
