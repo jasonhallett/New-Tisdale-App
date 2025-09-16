@@ -49,20 +49,22 @@ body::before, body::after, html::before, html::after,
 }
 </style>
 
-<style id="scale-95-all">
-  /* Scale the printable page to 95% in all contexts and center it */
-  #page {
-    transform: scale(0.95);
-    transform-origin: top center;
-  }
+<style id="scale-95-print">
   @media print {
+    /* Hide toolbars/buttons in both print and server PDF */
+    .no-print, body.pdf-export .no-print { display: none !important; }
+
+    /* Center and scale the page content for letter size:
+       width = 8.5in, height = 11in, scale = 0.95
+       Horizontal translate = (8.5 * 0.05) / 2 = 0.2125in
+       Vertical translate   = (11  * 0.05) / 2 = 0.275in */
     #page {
-      transform: scale(0.95) !important;
-      transform-origin: top center !important;
+      transform: translate(0.2125in, 0.275in) scale(0.95) !important;
+      transform-origin: top left !important;
     }
-    /* Ensure toolbars never appear in print/PDF */
-    .no-print, body.pdf-export .no-print {
-      display: none !important;
+    body.pdf-export #page {
+      transform: translate(0.2125in, 0.275in) scale(0.95) !important;
+      transform-origin: top left !important;
     }
   }
 </style>
