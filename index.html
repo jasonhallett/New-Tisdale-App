@@ -5,7 +5,7 @@
 (async () => {
   try {
     const r = await fetch('/api/technicians/me', { credentials: 'include' });
-    if (r.ok) window.location.href = 'new_inspection.html';
+    if (r.ok) window.location.href = 'menu.html';
   } catch {}
 })();
 </script>
@@ -38,7 +38,7 @@
     <input id="pw" type="password" autocomplete="current-password" />
     <button id="btn">Sign In</button>
     <div class="err" id="err"></div>
-    <div class="muted">After login, you’ll be taken to the inspection form.</div>
+    <div class="muted">After login, you’ll be taken to the menu.</div>
   </div>
 
 <script>
@@ -75,7 +75,7 @@
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || 'Login failed');
       }
-      window.location.href = 'new_inspection.html';
+      window.location.href = 'menu.html';
     } catch (e) {
       err.textContent = e.message || 'Login failed';
       btn.disabled = false;
