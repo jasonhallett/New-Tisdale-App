@@ -1,7 +1,7 @@
 // /api/inspections.js — Save Schedule 4 submissions to Neon/Postgres
 export const config = { runtime: 'nodejs' };
-import crypto from 'crypto';
 
+import crypto from 'crypto';
 import { sql, parseDataUrl } from '../db.js';
 import { getAuthIdentity } from '../auth.js';
 
@@ -26,37 +26,37 @@ export default async function handler(req, res) {
 
   let body;
   try {
-    body = JSON.parse(rawBody);
+    body = JSON.parse(rawBody || '{}');
   } catch {
-    body = { payload: rawBody };
+    body = typeof req.body === 'object' && req.body ? req.body : { payload: rawBody };
   }
 
   const payload = body?.payload || body?.data || body || {};
-  const clientSubmissionId = strish(payload.clientSubmissionId);
+  const clientSubmissionId = strish(pick(payload, ['clientSubmissionId', 'client_submission_id']));
   const dedupeHash = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 
-  /* DISC BRAKES NA NORMALIZATION */
+  /* Normalize NA for drum-only checks if disc brakes are used */
   try {
     const checklist = payload && payload.checklist;
     const discFlags = [
       payload?.rSteerBrake, payload?.rDriveBrake, payload?.rTagBrake,
       payload?.lSteerBrake, payload?.lDriveBrake, payload?.lTagBrake
     ];
-    const isDisc = Array.isArray(discFlags) && discFlags.some(v => String(v||'').toLowerCase() === 'disc');
+    const isDisc = discFlags.some(v => String(v ?? '').toLowerCase() === 'disc');
     if (isDisc && checklist && typeof checklist === 'object') {
       const L1 = 'Brake pushrod stroke is at or beyond the adjustment limit';
       const L2 = "Wedge brake shoe movement exceeds manufacturer's specified limit";
-      if (checklist[L1] && checklist[L1] !== 'na') checklist[L1] = 'na';
-      if (checklist[L2] && checklist[L2] !== 'na') checklist[L2] = 'na';
+      if (L1 in checklist) checklist[L1] = 'na';
+      if (L2 in checklist) checklist[L2] = 'na';
     }
   } catch (_) {}
 
+  // --- Technican / vehicle / misc fields ---
   const technicianName = pick(payload, ['technicianName', 'inspectorName', 'inspector', 'name']) || 'Unknown';
   const sto = pick(payload, ['technicianSTO', 'stoRegistrationNumber', 'sto', 'stoNumber']) || null;
   const tradeCodes = arrish(pick(payload, ['technicianTradeCodes', 'tradeCodes']));
 
   let vehicleId = strish(pick(payload, ['vehicleId','selectedVehicleId','samsaraVehicleId','vehicle_id','unitId','selectedUnitId']));
-  /* VEHICLE ID FALLBACKS */
   if (!vehicleId && typeof payload?.selectedVehicle === 'object') {
     vehicleId = strish(payload.selectedVehicle.id || payload.selectedVehicle.vehicleId || payload.selectedVehicle.unitId);
   }
@@ -64,17 +64,24 @@ export default async function handler(req, res) {
   const licensePlate = pick(payload, ['licensePlate', 'plate', 'plateNumber']) || null;
 
   const odometerKm = intish(pick(payload, ['odometerKm', 'odometerKM', 'odometer']));
-  // Infer canonical odometer source: samsara | user_entered | unknown
-  const hintSource = enumish(pick(payload, ['odometerSource']), ['samsara', 'user_entered', 'unknown'], null);
   const samsaraOdometerKm = intish(pick(payload, ['samsaraOdometerKm', 'samsara_odometer_km', 'samsaraOdometerKM']));
-  let odometerSource = 'unknown';
-  if (hintSource) {
-    odometerSource = hintSource;
+
+  // Canonical odometer source inference: samsara | user_entered | unknown
+  const hintCanonical = enumish(pick(payload, ['odometerSource']), ['samsara','user_entered','unknown'], null);
+  let odometerSourceCanonical = 'unknown';
+  if (hintCanonical) {
+    odometerSourceCanonical = hintCanonical;
   } else if (samsaraOdometerKm != null && odometerKm != null) {
-    odometerSource = (samsaraOdometerKm === odometerKm) ? 'samsara' : 'user_entered';
+    odometerSourceCanonical = (samsaraOdometerKm === odometerKm) ? 'samsara' : 'user_entered';
   } else if (samsaraOdometerKm != null) {
-    odometerSource = 'samsara';
+    odometerSourceCanonical = 'samsara';
   }
+  // Map canonical → DB enum (gps|manual|obd|unknown)
+  const odometerSource = (
+    odometerSourceCanonical === 'samsara' ? 'gps' :
+    odometerSourceCanonical === 'user_entered' ? 'manual' :
+    'unknown'
+  );
 
   const expiryDate = dateish(pick(payload, ['expiryDate', 'inspectionDate', 'dateExpires']));
   const nextServiceOdometerKm = intish(pick(payload, ['nextServiceOdometerKm', 'nextServiceOdometer', 'odometerExpires']));
@@ -123,12 +130,12 @@ export default async function handler(req, res) {
         ${signatureBytes},
         ${signatureMime},
         ${signatureSource},
-        ${performedAt?.toISOString?.() || performedAt},
+        ${toIso(performedAt)},
         ${vehicleId},
         ${vehicleName},
         ${licensePlate},
         ${odometerKm},
-        ${odometerSource},
+        ${odometerSource},              -- mapped to enum: gps/manual/unknown
         ${expiryDate},
         ${nextServiceOdometerKm},
         ${location},
@@ -138,11 +145,18 @@ export default async function handler(req, res) {
         ${dedupeHash}
       )
       ON CONFLICT (dedupe_hash) DO NOTHING
-      RETURNING id, created_at;
+      RETURNING id, created_at, technician_id, app_user_id, odometer_source;
     `;
 
     const row = rows?.[0] || null;
-    return res.status(201).json({ ok: true, id: row?.id, createdAt: row?.created_at });
+    return res.status(201).json({
+      ok: true,
+      id: row?.id,
+      createdAt: row?.created_at,
+      technicianId: row?.technician_id,
+      appUserId: row?.app_user_id,
+      odometerSource
+    });
   } catch (e) {
     console.error('Insert schedule4 failed:', e);
     const msg = e?.message || String(e);
@@ -150,7 +164,8 @@ export default async function handler(req, res) {
   }
 }
 
-// helpers
+/* ---------------- helpers ---------------- */
+
 function pick(obj, keys) {
   if (!obj) return undefined;
   for (const k of keys) {
@@ -160,17 +175,32 @@ function pick(obj, keys) {
 }
 function strish(v) { return v == null ? null : String(v); }
 function intish(v) { const n = Number(v); return Number.isFinite(n) ? Math.round(n) : null; }
-function arrish(v) { return Array.isArray(v) ? v : (v ? String(v).split(/[;,]/).map(s => s.trim()).filter(Boolean) : []); }
-function enumish(v, allowed, dflt) { v = v && String(v).toLowerCase(); return allowed.includes(v) ? v : dflt; }
+function arrish(v) {
+  if (Array.isArray(v)) return v;
+  if (!v) return [];
+  return String(v).split(/[;,]/).map(s => s.trim()).filter(Boolean);
+}
+function enumish(v, allowed, dflt) {
+  v = v && String(v).toLowerCase();
+  return allowed.includes(v) ? v : dflt;
+}
 function dateish(v) {
   if (!v) return null;
-  try { const d = new Date(v); return Number.isFinite(d.getTime()) ? d.toISOString().slice(0,10) : null; } catch { return null; }
+  try {
+    const d = new Date(v);
+    return Number.isFinite(d.getTime()) ? d.toISOString().slice(0,10) : null;
+  } catch { return null; }
 }
 function datetimeish(v) {
   if (!v) return null;
-  try { const d = new Date(v); return Number.isFinite(d.getTime()) ? d : null; } catch { return null; }
+  try {
+    const d = new Date(v);
+    return Number.isFinite(d.getTime()) ? d : null;
+  } catch { return null; }
 }
-
+function toIso(v) {
+  return (v && typeof v.toISOString === 'function') ? v.toISOString() : v;
+}
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
     try {
