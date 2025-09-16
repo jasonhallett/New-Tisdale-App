@@ -1,13 +1,16 @@
-// /api/users/create.js — POST upsert app_user + roles + technician (FIXED)
+// /api/users/create.js — POST upsert app_user + assign roles; upsert technician if TECHNICIAN
+// Assumes db.js is in the project root (../../db.js from here)
 export const config = { runtime: 'nodejs' };
+
 import crypto from 'crypto';
-import { sql } from '../../db.js';
+import { sql } from '../../db.js'; // <-- root-level db.js
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    res.setHeader('Allow','POST');
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
+
   // Read JSON body safely
   let body = '';
   req.setEncoding('utf8');
@@ -16,28 +19,30 @@ export default async function handler(req, res) {
     req.on('end', resolve);
     req.on('error', reject);
   });
+
   let json = {};
-  try { json = JSON.parse(body || '{}'); } catch { return res.status(400).json({ error: 'Bad JSON' }); }
+  try { json = JSON.parse(body || '{}'); }
+  catch { return res.status(400).json({ ok: false, error: 'Bad JSON' }); }
 
   const email = (json.email || '').trim();
-  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return res.status(400).json({ error: 'Valid email is required' });
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ ok: false, error: 'Valid email is required' });
   }
 
-  const full_name = json.full_name?.trim() || null;
-  const phone = json.phone?.trim() || null;
-  const is_active = (json.is_active === undefined) ? true : !!json.is_active;
-  const roles = Array.isArray(json.roles) ? json.roles.map(r => String(r||'').toUpperCase().trim()).filter(Boolean) : [];
+  const full_name    = json.full_name?.trim() || null;
+  const phone        = json.phone?.trim() || null;
+  const is_active    = (json.is_active === undefined) ? true : !!json.is_active;
+  const roles        = Array.isArray(json.roles) ? json.roles.map(r => String(r||'').toUpperCase().trim()).filter(Boolean) : [];
   const replaceRoles = !!json.replaceRoles;
 
-  // Optional password hash to PHC ($scrypt$...)
+  // Optional password hashing to PHC ($scrypt$...)
   let password_phc = (json.password_phc || '').trim() || null;
   if (!password_phc && json.password) password_phc = toPHCScrypt(json.password);
 
   try {
-    // Upsert app_user by email
-    const existing = await sql`SELECT id FROM app_users WHERE email = ${email} LIMIT 1`;
+    // 1) Upsert into app_users (no pgcrypto needed)
     let app_user_id;
+    const existing = await sql`SELECT id FROM app_users WHERE email = ${email} LIMIT 1`;
     if (existing.length) {
       app_user_id = existing[0].id;
       await sql`
@@ -50,31 +55,54 @@ export default async function handler(req, res) {
          WHERE id = ${app_user_id}
       `;
     } else {
-      const rows = await sql`
-        INSERT INTO app_users (id, email, full_name, phone, password_phc, is_active, created_at, updated_at)
-        VALUES (gen_random_uuid(), ${email}, ${full_name}, ${phone}, ${password_phc}, ${is_active}, now(), now())
-        RETURNING id
-      `;
-      app_user_id = rows[0].id;
-    }
-
-    // Ensure roles and assign
-    if (roles.length) {
-      await sql`INSERT INTO roles (role_name) SELECT role_name FROM unnest(${roles}::text[]) AS role_name ON CONFLICT DO NOTHING`;
-      if (replaceRoles) await sql`DELETE FROM user_roles WHERE user_id = ${app_user_id}`;
+      app_user_id = crypto.randomUUID();
       await sql`
-        INSERT INTO user_roles (user_id, role_name)
-        SELECT ${app_user_id}, role_name FROM unnest(${roles}::text[]) AS role_name
-        ON CONFLICT DO NOTHING
+        INSERT INTO app_users (id, email, full_name, phone, password_phc, is_active, created_at, updated_at)
+        VALUES (${app_user_id}, ${email}, ${full_name}, ${phone}, ${password_phc}, ${is_active}, now(), now())
       `;
     }
 
-    // Technician profile upsert if TECHNICIAN role included
+    // 2) Ensure roles exist, then assign
+    if (roles.length) {
+      try {
+        await sql`
+          INSERT INTO roles (role_name)
+          SELECT role_name FROM unnest(${roles}::text[]) AS role_name
+          ON CONFLICT DO NOTHING
+        `;
+      } catch (e) {
+        if (String(e?.message || '').includes('relation "roles" does not exist')) {
+          return res.status(500).json({ ok: false, error: 'DB schema missing: table "roles" not found. Run the RBAC migration SQL first.' });
+        }
+        throw e;
+      }
+
+      if (replaceRoles) {
+        await sql`DELETE FROM user_roles WHERE user_id = ${app_user_id}`;
+      }
+
+      try {
+        await sql`
+          INSERT INTO user_roles (user_id, role_name)
+          SELECT ${app_user_id}, role_name FROM unnest(${roles}::text[]) AS role_name
+          ON CONFLICT DO NOTHING
+        `;
+      } catch (e) {
+        if (String(e?.message || '').includes('relation "user_roles" does not exist')) {
+          return res.status(500).json({ ok: false, error: 'DB schema missing: table "user_roles" not found. Run the RBAC migration SQL first.' });
+        }
+        throw e;
+      }
+    }
+
+    // 3) Upsert technicians row if TECHNICIAN selected
     if (roles.includes('TECHNICIAN') && json.technicianProfile) {
-      const tp = json.technicianProfile;
+      const tp = json.technicianProfile || {};
       const trade_codes = Array.isArray(tp.trade_codes)
         ? tp.trade_codes
-        : (typeof tp.trade_codes === 'string' ? tp.trade_codes.split(',').map(s => s.trim()).filter(Boolean) : []);
+        : (typeof tp.trade_codes === 'string'
+            ? tp.trade_codes.split(',').map(s => s.trim()).filter(Boolean)
+            : []);
       const existsTech = await sql`SELECT id FROM technicians WHERE app_user_id = ${app_user_id} LIMIT 1`;
       if (existsTech.length) {
         await sql`
@@ -88,17 +116,18 @@ export default async function handler(req, res) {
            WHERE app_user_id = ${app_user_id}
         `;
       } else {
+        const tech_id = crypto.randomUUID();
         await sql`
           INSERT INTO technicians (id, app_user_id, sto_registration_number, trade_codes, default_carrier, default_station_address, is_active, created_at, updated_at)
-          VALUES (gen_random_uuid(), ${app_user_id}, ${tp.sto_registration_number}, ${trade_codes}::text[], ${tp.default_carrier}, ${tp.default_station_address}, true, now(), now())
+          VALUES (${tech_id}, ${app_user_id}, ${tp.sto_registration_number}, ${trade_codes}::text[], ${tp.default_carrier}, ${tp.default_station_address}, true, now(), now())
         `;
       }
     }
 
-    // Final state
-    const userRow = (await sql`SELECT id, email, full_name, phone, role, is_active FROM app_users WHERE id = ${app_user_id}`)[0];
+    // 4) Return final state
+    const userRow  = (await sql`SELECT id, email, full_name, phone, role, is_active FROM app_users WHERE id = ${app_user_id}`)[0];
     const roleRows = await sql`SELECT role_name FROM user_roles WHERE user_id = ${app_user_id} ORDER BY role_name`;
-    const tech = await sql`
+    const tech     = await sql`
       SELECT sto_registration_number, trade_codes, default_carrier, default_station_address, is_active
         FROM technicians WHERE app_user_id = ${app_user_id} LIMIT 1
     `;
