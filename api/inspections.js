@@ -3,11 +3,18 @@ export const config = { runtime: 'nodejs' };
 import crypto from 'crypto';
 
 import { sql, parseDataUrl } from '../db.js';
+import { getAuthIdentity } from '../auth.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Require authenticated session so we can attach technician/app user IDs
+  const auth = getAuthIdentity(req);
+  if (!auth?.userId || !auth?.technicianId) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   let rawBody = '';
@@ -27,6 +34,7 @@ export default async function handler(req, res) {
   const payload = body?.payload || body?.data || body || {};
   const clientSubmissionId = strish(payload.clientSubmissionId);
   const dedupeHash = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+
   /* DISC BRAKES NA NORMALIZATION */
   try {
     const checklist = payload && payload.checklist;
@@ -97,8 +105,8 @@ export default async function handler(req, res) {
         client_submission_id,
         dedupe_hash
       ) VALUES (
-        NULL,
-        NULL,
+        ${auth.technicianId},
+        ${auth.userId},
         ${technicianName},
         ${sto},
         ${tradeCodes},
