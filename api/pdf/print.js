@@ -92,7 +92,7 @@ export default async function handler(req, res) {
 
         if (isPass(raw)) {
           badge.classList.add('status-pass');
-          badge.innerHTML = CHECK_SVG; // <-- SVG checkmark (font-independent)
+          badge.innerHTML = CHECK_SVG; // <-- SVG checkmark
         } else if (isRepair(raw)) {
           badge.classList.add('status-repair');
           badge.textContent = 'R';
@@ -100,14 +100,13 @@ export default async function handler(req, res) {
           badge.classList.add('status-na');
           badge.textContent = 'N/A';
         } else {
-          // If value exists but doesn't match known sets, show raw (debug-friendly)
           badge.classList.add('status-repair');
           badge.textContent = String(raw).toUpperCase();
         }
       });
     }, body.data || {});
 
-    // Wait until at least one badge is visible (✓ SVG, or R/N/A text)
+    // Wait until at least one badge is visible
     await page.waitForFunction(() => {
       const badges = Array.from(document.querySelectorAll('.checklist-status'));
       return badges.some(b => b.innerHTML.includes('<svg') || ['✓','R','N/A'].includes((b.textContent || '').trim()));
@@ -118,6 +117,11 @@ export default async function handler(req, res) {
       const img = document.getElementById('signatureImg');
       return !img || img.complete;
     }, { timeout: 5000 }).catch(() => {});
+
+    // 👉 Add PDF-only class so CSS scaling kicks in
+    await page.evaluate(() => {
+      document.body.classList.add('pdf-export');
+    });
 
     const pdfBuffer = await page.pdf({
       format: 'Letter',
