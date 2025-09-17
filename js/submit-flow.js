@@ -1,25 +1,17 @@
-/* submit-flow.js — Clean path with UPSERT + server-side PDF (print.js)
- * - Single submit handler (capture phase) prevents other handlers from firing
- * - Builds the SAME canonical payload your API expects: { payload: ... }
- * - Upserts: PUT /api/inspections/:id when we already have an id, else POST /api/inspections
- * - Server-side PDF: POST /api/print with { filename, path: '/output.html?id=...', data: payload }
- * - Opens /pdf_viewer.html with a blob URL
- *
- * In new_inspection.html:
- *   <form id="inspectionForm" action="#" data-inspection-form>
- *   ...
- *   <script defer src="/assets/submit-flow.js"></script>
- *
- * Optional:
- *   <input type="hidden" id="inspection-id" name="inspectionId" />
- * If present, we read/write the inspection id here. We also mirror it in sessionStorage.__inspectionId
+/* submit-flow.js — Upsert + DB-only render + correct print route
+ * - Single submit handler (capture phase) prevents other handlers
+ * - Sends { payload, ...columnMap } to your API so column mappings fill (no more NULLs)
+ * - Upserts to /api/inspections or /api/inspections/:id (PUT) if we have an id
+ * - Generates PDF via your server function at /api/pdf/print (uses /output.html?id=...)
  */
 
 (function () {
   // ---------- CONFIG ----------
   const CONFIG = {
     saveBase: "/api/inspections",
-    printEndpoint: "/api/print",
+    // Use the route where your puppeteer file is deployed. Your error shows 404 on /api/print,
+    // but your setup typically uses /api/pdf/print
+    printEndpoint: "/api/pdf/print",
     reportPath: (id) => `/output.html?id=${encodeURIComponent(id)}`,
     filenameFrom: (payload) => {
       const unit = (payload.unitNumber || "Unit").toString().replace(/[^\w\-]+/g, "_");
@@ -34,13 +26,11 @@
     function ensure() {
       if (el) return;
       el = document.createElement("div");
-      el.id = "submit-progress-overlay";
       Object.assign(el.style, {
         position: "fixed", inset: "0", display: "none",
         alignItems: "center", justifyContent: "center",
         background: "rgba(0,0,0,.6)", backdropFilter: "blur(2px)", zIndex: "9999"
       });
-
       const box = document.createElement("div");
       Object.assign(box.style, {
         minWidth: "260px", maxWidth: "90vw", padding: "18px 20px",
@@ -49,7 +39,6 @@
         font: "500 14px/1.3 Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
         boxShadow: "0 10px 30px rgba(0,0,0,.35)", textAlign: "center"
       });
-
       const spinner = document.createElement("div");
       Object.assign(spinner.style, {
         width: "24px", height: "24px",
@@ -60,19 +49,15 @@
       const style = document.createElement("style");
       style.textContent = "@keyframes spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }";
       document.head.appendChild(style);
-
       textEl = document.createElement("div");
       textEl.textContent = "Working...";
-
-      box.appendChild(spinner);
-      box.appendChild(textEl);
-      el.appendChild(box);
-      document.body.appendChild(el);
+      box.appendChild(spinner); box.appendChild(textEl);
+      el.appendChild(box); document.body.appendChild(el);
     }
-    function show(msg) { ensure(); textEl.textContent = msg || "Working..."; el.style.display = "flex"; document.documentElement.style.overflow="hidden"; }
-    function update(msg) { ensure(); textEl.textContent = msg || textEl.textContent; }
-    function hide() { if (!el) return; el.style.display="none"; document.documentElement.style.overflow=""; }
-    function error(msg) { ensure(); textEl.textContent = msg || "An error occurred."; }
+    const show = (m) => { ensure(); textEl.textContent = m || "Working..."; el.style.display = "flex"; document.documentElement.style.overflow="hidden"; };
+    const update = (m) => { ensure(); textEl.textContent = m || textEl.textContent; };
+    const hide = () => { if (!el) return; el.style.display="none"; document.documentElement.style.overflow=""; };
+    const error = (m) => { ensure(); textEl.textContent = m || "An error occurred."; };
     return { show, update, hide, error };
   })();
 
@@ -112,88 +97,152 @@
     });
     return out;
   }
-
-  function getExistingInspectionId() {
-    const fromHidden = byId("inspection-id")?.value?.trim();
-    if (fromHidden) return fromHidden;
-    try {
-      const fromSession = sessionStorage.getItem("__inspectionId");
-      if (fromSession) return fromSession;
-    } catch(_) {}
-    const fromQuery = new URLSearchParams(location.search).get("id");
-    if (fromQuery) return fromQuery;
-    return null;
+  function existingInspectionId() {
+    const hid = byId("inspection-id")?.value?.trim();
+    if (hid) return hid;
+    try { const ss = sessionStorage.getItem("__inspectionId"); if (ss) return ss; } catch(_){}
+    const q = new URLSearchParams(location.search).get("id");
+    return q || null;
   }
-
   function rememberInspectionId(id) {
-    try { sessionStorage.setItem("__inspectionId", id); } catch(_) {}
-    const hidden = byId("inspection-id");
-    if (hidden) hidden.value = id;
+    try { sessionStorage.setItem("__inspectionId", id); } catch(_){}
+    const hidden = byId("inspection-id"); if (hidden) hidden.value = id;
   }
 
-  async function saveInspection(payload) {
-    // UPSERT: if we already have an id, try PUT first; else POST.
-    const existingId = getExistingInspectionId();
-    if (existingId) {
-      const res = await fetch(`${CONFIG.saveBase}/${encodeURIComponent(existingId)}`, {
+  // Build canonical payload + flat column map (snake_case) for the API
+  function makePayloadAndColumns() {
+    const unitSelect = getUnitSelect();
+    const unitOtherInput = getUnitOtherInput();
+
+    const selectedVehicleId =
+      (unitSelect && unitSelect.value && unitSelect.value !== "other")
+        ? String(unitSelect.value)
+        : null;
+
+    let signatureSource = "drawn";
+    try { const ss = sessionStorage.getItem("__signatureSource"); if (ss) signatureSource = ss; } catch(_){}
+
+    const unitNumber =
+      (unitSelect && unitSelect.value && unitSelect.value !== "other")
+        ? (unitSelect.options[unitSelect.selectedIndex]?.textContent || "")
+        : (unitOtherInput ? unitOtherInput.value || "" : "");
+
+    const payload = {
+      samsaraVehicleId: selectedVehicleId,
+      signatureSource,
+      carrierName: valById("carrier"),
+      locationAddress: valById("address"),
+      unitNumber,
+      licensePlate: valById("license-plate"),
+      odometer: cleanNumberString(valById("odometer")),
+      inspectionDate: valById("inspection-date"),
+      dateExpires: valById("expiry-date"),
+      odometerExpires: cleanNumberString(valById("expiry-odometer")),
+
+      rSteerBrake: valById("r-steer"),
+      rDriveBrake: valById("r-drive"),
+      rTagBrake:   valById("r-tag"),
+      lSteerBrake: valById("l-steer"),
+      lDriveBrake: valById("l-drive"),
+      lTagBrake:   valById("l-tag"),
+
+      tireSize: valById("tire-size"),
+      repairs: valById("repairs-notes"),
+      inspectorName: valById("inspector-name"),
+
+      odometerSource: (window._odometerSource ?? valById("odometer-source") ?? ""),
+      samsaraOdometerKm: (window._samsaraOdometerKm ?? (function(){ const v = valById("samsara-odometer-km"); return v ? Number(v) : null; })()),
+
+      signature: getSignatureDataURL(),
+      checklist: buildChecklist()
+    };
+
+    // Flat map for SQL columns (adjust names to match your schema)
+    const columns = {
+      carrier_name: payload.carrierName || null,
+      location_address: payload.locationAddress || null,
+      unit_number: payload.unitNumber || null,
+      license_plate: payload.licensePlate || null,
+      odometer_km: payload.odometer ? Number(payload.odometer) : null,
+      inspection_date: payload.inspectionDate || null,
+      expiry_date: payload.dateExpires || null,
+      odometer_expires_km: payload.odometerExpires ? Number(payload.odometerExpires) : null,
+
+      r_steer_brake: payload.rSteerBrake || null,
+      r_drive_brake: payload.rDriveBrake || null,
+      r_tag_brake:   payload.rTagBrake || null,
+      l_steer_brake: payload.lSteerBrake || null,
+      l_drive_brake: payload.lDriveBrake || null,
+      l_tag_brake:   payload.lTagBrake || null,
+
+      tire_size: payload.tireSize || null,
+      repairs_notes: payload.repairs || null,
+      inspector_name: payload.inspectorName || null,
+
+      odometer_source: payload.odometerSource || null,
+      samsara_odometer_km: payload.samsaraOdometerKm ?? null,
+
+      signature_png_dataurl: payload.signature || null,
+      checklist_json: payload.checklist || {}
+    };
+
+    return { payload, columns };
+  }
+
+  async function saveInspection(payload, columns) {
+    const id = existingInspectionId();
+    const body = JSON.stringify({ payload, ...columns, id: id || undefined });
+
+    if (id) {
+      // Try PUT first
+      const res = await fetch(`${CONFIG.saveBase}/${encodeURIComponent(id)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ payload })
+        body
       });
       if (res.ok) {
-        // Accept any common id shapes
         const j = await res.json().catch(() => ({}));
-        const id = j.id || j.inspection_id || j.data?.id || existingId;
-        return id;
+        return j.id || j.inspection_id || j.data?.id || id;
       }
-      // Fallback for APIs that don’t support PUT: try POST with id in body (server should upsert)
-      if (res.status === 404 || res.status === 405 || res.status === 501) {
+      // Fallback: POST upsert
+      if ([404,405,501].includes(res.status)) {
         const postRes = await fetch(CONFIG.saveBase, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ id: existingId, payload })
+          body
         });
-        if (!postRes.ok) {
-          const txt = await postRes.text().catch(() => "");
-          throw new Error(`Save failed (${postRes.status}) ${txt}`);
-        }
+        if (!postRes.ok) throw new Error(`Save failed (${postRes.status}) ${await postRes.text().catch(()=> "")}`);
         const pj = await postRes.json().catch(() => ({}));
-        const pid = pj.id || pj.inspection_id || pj.data?.id || existingId;
-        return pid;
+        return pj.id || pj.inspection_id || pj.data?.id || id;
       }
-      const txt = await res.text().catch(() => "");
-      throw new Error(`Update failed (${res.status}) ${txt}`);
+      throw new Error(`Update failed (${res.status}) ${await res.text().catch(()=> "")}`);
     }
 
-    // No existing id → POST (create)
+    // Create
     const createRes = await fetch(CONFIG.saveBase, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ payload })
+      body
     });
-    if (!createRes.ok) {
-      const txt = await createRes.text().catch(() => "");
-      throw new Error(`Save failed (${createRes.status}) ${txt}`);
-    }
+    if (!createRes.ok) throw new Error(`Save failed (${createRes.status}) ${await createRes.text().catch(()=> "")}`);
     const cj = await createRes.json().catch(() => ({}));
-    const id = cj.id || cj.inspection_id || cj.data?.id || cj.upsertedId || cj.result?.id;
-    if (!id) throw new Error("Save succeeded but no inspection id was returned.");
-    return id;
+    const newId = cj.id || cj.inspection_id || cj.data?.id || cj.upsertedId || cj.result?.id;
+    if (!newId) throw new Error("Save succeeded but no inspection id was returned.");
+    return newId;
   }
 
-  async function requestServerPdf({ filename, path, data }) {
+  async function requestServerPdf({ filename, path }) {
     const res = await fetch(CONFIG.printEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ filename, path, data })
+      body: JSON.stringify({ filename, path })
     });
     if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`PDF generation failed (${res.status}) ${txt}`);
+      throw new Error(`PDF generation failed (${res.status}) ${await res.text().catch(()=> "")}`);
     }
     return await res.blob();
   }
@@ -203,7 +252,6 @@
     if (!form || form.dataset.submitFlowInstalled === "1") return;
     form.dataset.submitFlowInstalled = "1";
 
-    // Attach in CAPTURE phase; prevent any other submit handlers
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -212,66 +260,18 @@
       try {
         Progress.show("Saving...");
 
-        // Build canonical payload (mirrors your previous inline code)
-        const unitSelect = getUnitSelect();
-        const unitOtherInput = getUnitOtherInput();
-        const selectedVehicleId =
-          (unitSelect && unitSelect.value && unitSelect.value !== "other")
-            ? String(unitSelect.value)
-            : null;
+        const { payload, columns } = makePayloadAndColumns();
+        const id = await saveInspection(payload, columns);
+        rememberInspectionId(id);
 
-        let signatureSource = "drawn";
-        try { const ss = sessionStorage.getItem("__signatureSource"); if (ss) signatureSource = ss; } catch(_){}
-
-        const unitNumber =
-          (unitSelect && unitSelect.value && unitSelect.value !== "other")
-            ? (unitSelect.options[unitSelect.selectedIndex]?.textContent || "")
-            : (unitOtherInput ? unitOtherInput.value || "" : "");
-
-        const payload = {
-          samsaraVehicleId: selectedVehicleId,
-          signatureSource,
-          carrierName: valById("carrier"),
-          locationAddress: valById("address"),
-          unitNumber,
-          licensePlate: valById("license-plate"),
-          odometer: cleanNumberString(valById("odometer")),
-          inspectionDate: valById("inspection-date"),
-          dateExpires: valById("expiry-date"),
-          odometerExpires: cleanNumberString(valById("expiry-odometer")),
-
-          rSteerBrake: valById("r-steer"),
-          rDriveBrake: valById("r-drive"),
-          rTagBrake:   valById("r-tag"),
-          lSteerBrake: valById("l-steer"),
-          lDriveBrake: valById("l-drive"),
-          lTagBrake:   valById("l-tag"),
-
-          tireSize: valById("tire-size"),
-          repairs: valById("repairs-notes"),
-          inspectorName: valById("inspector-name"),
-
-          odometerSource: (window._odometerSource ?? valById("odometer-source") ?? ""),
-          samsaraOdometerKm: (window._samsaraOdometerKm ?? (function(){ const v = valById("samsara-odometer-km"); return v ? Number(v) : null; })()),
-
-          signature: getSignatureDataURL(),
-          checklist: buildChecklist()
-        };
-
-        // Save (create or update)
-        const inspectionId = await saveInspection(payload);
-        rememberInspectionId(inspectionId);
-
-        // Server-side PDF via /api/print (your puppeteer function)
         Progress.update("Generating PDF...");
         const filename = CONFIG.filenameFrom(payload);
-        const path = CONFIG.reportPath(inspectionId); // e.g., /output.html?id=...
-        const pdfBlob = await requestServerPdf({ filename, path, data: payload });
+        const path = CONFIG.reportPath(id); // /output.html?id=...
+        const pdfBlob = await requestServerPdf({ filename, path });
 
-        // Open viewer with blob URL
         Progress.update("Opening PDF...");
         const objectUrl = URL.createObjectURL(pdfBlob);
-        const viewerUrl = `/pdf_viewer.html?src=${encodeURIComponent(objectUrl)}&filename=${encodeURIComponent(filename)}&id=${encodeURIComponent(inspectionId)}`;
+        const viewerUrl = `/pdf_viewer.html?src=${encodeURIComponent(objectUrl)}&filename=${encodeURIComponent(filename)}&id=${encodeURIComponent(id)}`;
         window.open(viewerUrl, "_blank", "noopener");
         setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch {} }, 10 * 60 * 1000);
 
