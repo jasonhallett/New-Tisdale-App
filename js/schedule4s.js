@@ -1,5 +1,5 @@
 // js/schedule4s.js
-// Show Date Inspected with Date & Time. Prefer server-formatted created_at_display.
+// Grid: Date Inspected (created_at, with time), Unit #, Odometer (left), Inspection Location, Technician Name, View
 
 async function fetchList() {
   const r = await fetch('/api/schedule4s/list', { credentials: 'include' });
@@ -8,13 +8,9 @@ async function fetchList() {
   return Array.isArray(j.items) ? j.items : [];
 }
 
-function fmtDateTime(isoOrDisplay) {
-  // If server sent preformatted string (e.g., '09/17/2025 03:14 PM'), use it directly.
-  if (typeof isoOrDisplay === 'string' && /\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}\s+(AM|PM)/i.test(isoOrDisplay)) {
-    return isoOrDisplay;
-  }
+function fmtDateTime(iso) {
   try {
-    const d = new Date(isoOrDisplay);
+    const d = new Date(iso);
     if (isNaN(+d)) return '—';
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
@@ -47,7 +43,7 @@ function render(items) {
   const tbody = document.querySelector('#grid tbody');
   tbody.innerHTML = items.map((row) => {
     const id    = row.id;
-    const date  = fmtDateTime(row.created_at_display || row.created_at);
+    const date  = fmtDateTime(row.created_at);  // <-- show date & time from created_at
     const unit  = htmlesc(row.unit || row.unit_number || row.vehicle || '—');
     const odo   = fmtOdo(row.odometer);
     const tech  = htmlesc(row.technician || row.technician_name || '—');
@@ -83,7 +79,7 @@ function attachFilter(all) {
   const doFilter = () => {
     const t = (q.value || '').toLowerCase();
     const filtered = !t ? all : all.filter(r => {
-      const s = `${r.id||''} ${r.unit||r.unit_number||''} ${r.odometer||''} ${r.technician||r.technician_name||''} ${r.created_at_display||r.created_at||''} ${r.location||''}`.toLowerCase();
+      const s = `${r.id||''} ${r.unit||r.unit_number||''} ${r.odometer||''} ${r.technician||r.technician_name||''} ${r.created_at||''} ${r.location||''}`.toLowerCase();
       return s.includes(t);
     });
     render(filtered);

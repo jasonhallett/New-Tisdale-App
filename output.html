@@ -16,29 +16,46 @@
 
     .section-header { font-size: 0.75rem; font-weight: 600; color: #1f2937; margin-bottom: 0.25rem; }
     .form-group label { font-weight: 500; color: #374151; font-size: 0.625rem; }
-    .output-text { width: 100%; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.625rem; background-color: #f9fafb; color: #1f2937; flex: 1; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-    .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-    .row { display: flex; gap: 8px; align-items: center; }
-    .label-col { width: 180px; flex: 0 0 180px; }
-    .value-col { flex: 1; }
+    .output-text { width: 100%; padding: 0.2rem 0.4rem; border-radius: 6px; border: 1px solid #d1d5db; font-size: 0.625rem; background-color: #f9fafb; color: #1f2937; flex: 1; }
 
-    .check-grid { display:grid; grid-template-columns: 1fr 72px 72px 72px; gap:6px; align-items:center; }
-    .check-grid .head { font-size: 0.7rem; font-weight:600; color:#111827; padding: 2px 0; }
-    .check-grid .cell { font-size: 0.65rem; color:#111827; background:#f9fafb; border-radius:4px; padding:4px 6px; text-align:center; }
+    .checklist-item { display: flex; align-items: center; background-color: #f9fafb; padding: 0.025rem; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 0.025rem; }
+    .checklist-item-text { font-size: 0.625rem; color: #374151; }
+    .checklist-status { font-weight: 600; font-size: 0.625rem; padding: 0.1rem 0.6rem; border-radius: 4px; margin-right: 0.25rem; }
+    .status-pass { color: #166534; background-color: #dcfce7; }
+    .status-repair { color: #991b1b; background-color: #fee2e2; }
+    .status-na { color: #4b5563; background-color: #e5e7eb; }
 
-    .title { font-size: 0.9rem; font-weight: 700; color: #111827; margin-bottom: 4px; }
-    .subtle { color: #6b7280; }
+    .text-xxs { font-size: 0.5rem; }
+    .signature-img { width: 400px; height: 100px; border: 1px solid #e5e7eb; object-fit: contain; }
 
-    .print-actions { display:flex; justify-content:flex-end; gap:8px; padding:8px 12px; max-width: var(--page-w); margin: 0 auto; }
-    .btn { display:inline-flex; align-items:center; gap:6px; border:1px solid rgba(0,0,0,0.1); padding:8px 10px; border-radius:8px; background:#fff; font-size:0.8rem; }
-    .btn:hover { background:#f3f4f6; }
+    @page { size: 8.5in 11in; margin: 0; }
+    @media print {
+      html, body { width:8.5in; height:11in; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      #page { width:8.5in !important; min-height:11in !important; margin:0 !important; }
+      .no-print { display:none !important; }
+    }
+  </style>
+
+  <style id="single-page-fix">
+    /* Hide stray page counters like "/1" on screen and in print */
+    body::before, body::after, html::before, html::after,
+    #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
+    .page-number, .pageNumber, [data-page-number] { display: none !important; }
 
     @media print {
-      .print-actions { display:none; }
-      html, body { background:#fff; }
-      #page { box-shadow:none; }
+      .page, #page { page-break-after: auto !important; break-after: auto !important; }
+      .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
+    }
+  </style>
+
+  <style id="print-scale-95">
+    @media print {
+      .no-print { display: none !important; }
+      /* center the 95% scaled page on Letter */
+      #page {
+        transform: translate(0.2125in, 0.275in) scale(0.95) !important;
+        transform-origin: top left !important;
+      }
     }
   </style>
 
@@ -49,7 +66,7 @@
       var params = new URLSearchParams(location.search);
       var id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
       if (!id) return;
-      // always fetch fresh when id is present; previously returned if schedule4LoadedFromId=1
+      if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return;
       var xhr = new XMLHttpRequest();
       xhr.open('GET', '/api/schedule4s/get?id=' + encodeURIComponent(id), false); // sync on purpose
       xhr.setRequestHeader('Accept','application/json');
@@ -58,8 +75,8 @@
         var resp = {};
         try { resp = JSON.parse(xhr.responseText) || {}; } catch(e){ resp = {}; }
         var row = resp.item || resp || {};
-
         var p = row.payload_json || row.payload || {};
+
         function pick() {
           for (var i = 0; i < arguments.length; i++) {
             var k = arguments[i];
@@ -70,8 +87,7 @@
 
         var data = {};
         data.carrierName     = pick('carrierName','carrier');
-        /* include your DB column 'location' so address shows correctly */
-        data.locationAddress = pick('location','locationAddress','address','inspectionLocation');
+        data.locationAddress = pick('locationAddress','address','inspectionLocation');
         data.unitNumber      = pick('unitNumber','unit','vehicle_number') || row.vehicle_name || '';
         data.licensePlate    = pick('licensePlate','licencePlate','plate');
         data.odometer        = pick('odometer','odometerKm','odometer_km');
@@ -94,244 +110,356 @@
 </head>
 <body>
   <!-- Buttons -->
-  <div class="print-actions">
-    <button class="btn" id="backBtn" title="Back">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-      Back
+  <div class="no-print" style="position:fixed;top:10px;right:10px;z-index:999;display:flex;gap:8px;">
+    <button onclick="window.print()"
+            style="background:#111827;color:#fff;border:none;
+                   padding:8px 12px;border-radius:6px;cursor:pointer;">
+      Print
     </button>
-    <button class="btn" id="printBtn" title="Print / Save PDF">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-      Print / Save PDF
+    <button onclick="downloadServerPDF()"
+            style="background:#2563eb;color:#fff;border:none;
+                   padding:8px 12px;border-radius:6px;cursor:pointer;">
+      Download (PDF)
     </button>
   </div>
 
-  <!-- One-page canvas -->
+  <!-- Page -->
   <div id="page">
-    <div class="content">
+    <div class="content" id="pdf-root">
+      <h1 class="text-xs font-bold text-center text-gray-800 mb-3">Schedule 4 Motor Coach Under-Vehicle Inspection Report</h1>
 
-      <div class="title">Completed Motor Coach Under-Vehicle Inspection Report</div>
-      <div class="subtle" id="subtitle"></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-1">
+        <div class="form-group"><label>Carrier</label><div class="output-text"></div></div>
+        <div class="form-group"><label>Address of the location where the inspection is conducted</label><div class="output-text"></div></div>
+      </div>
 
-      <div class="grid-2" style="margin-top: 6px;">
-        <div class="form-group row">
-          <label class="label-col">Carrier Name</label>
-          <div class="value-col"><div class="output-text" id="carrierName"></div></div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-1 mb-1">
+        <div class="form-group flex items-center"><label>Unit #</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Licence Plate</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Odometer (km)</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Date Inspected</label><div class="output-text"></div></div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-1 mb-1">
+        <p class="text-xxs text-gray-500 italic col-span-2">
+          An under-vehicle inspection is valid until the 31st day after it is conducted or until the motor coach has been driven 12,000 kilometres, whichever occurs last.
+        </p>
+        <div class="form-group flex items-center"><label>Odometer Expires</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Date Expires</label><div class="output-text"></div></div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Left column -->
+        <div>
+          <h2 class="section-header my-1">1. Air Brake System</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Audible air leak</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Brake pushrod stroke is at or beyond the adjustment limit</span></div>
+            <div class="pl-4 mt-1">
+              <h3 class="font-bold my-1 text-gray-800 text-xxs">Brake Pushrod Stroke Measurements</h3>
+              <div class="flex flex-wrap gap-2">
+                <div class="flex items-center"><label class="mr-1 text-xxs">R Steer</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">R Drive</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">R Tag</label><div class="output-text" style="width:45px;"></div></div>
+              </div>
+              <div class="flex flex-wrap gap-2 mt-1">
+                <div class="flex items-center"><label class="mr-1 text-xxs">L Steer</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">L Drive</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">L Tag</label><div class="output-text" style="width:45px;"></div></div>
+              </div>
+            </div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Clearance between disc brake pads and rotor exceeds manufacturer's specified limit</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Wedge brake shoe movement exceeds manufacturer's specified limit</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Excessive discharge of fluids from air reservoir</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air compressor, mounts or attachments damaged or defective</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Compressor drive belt loose or damaged</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air line or fitting damaged or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air tank defective, damaged or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air tank drain or moisture ejector device inoperative</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Brake chamber, brake linkage or other brake component is defective, damaged or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Spring brake is broken or malfunctions</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Inoperative service, parking or emergency brake</span></div>
+          </div>
+
+          <h2 class="section-header my-1">2. Exhaust System</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Exhaust leak</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Exhaust system component insecure, damaged or perforated</span></div>
+          </div>
+
+          <h2 class="section-header my-1">3. Frame and/or Underbody</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Any frame member or fastener is damaged, cracked or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Any component mount is damaged or insecure</span></div>
+          </div>
         </div>
-        <div class="form-group row">
-          <label class="label-col">Location Address</label>
-          <div class="value-col"><div class="output-text" id="locationAddress"></div></div>
+
+        <!-- Right column -->
+        <div>
+          <h2 class="section-header my-1">4. Fuel System</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Fuel leak</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Insecure fuel tanks, fuel tank mounts or guards</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Fuel line or fitting damaged or insecure</span></div>
+          </div>
+
+          <h2 class="section-header my-1">5. Steering</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Steering linkage is damaged or insecure</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Power steering fluid is leaking, contaminated or low</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Power steering component damaged or insecure</span></div>
+          </div>
+
+          <h2 class="section-header my-1">6. Suspension System</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Air leak or malfunction of air suspension system or component</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Damage or deterioration of any suspension component</span></div>
+          </div>
+
+          <h2 class="section-header my-1">7. Tires</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Tire inflation less than required</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Tire treads worn to wear limits</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Damage to tread or sidewall of tire</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Retread or rebuilt tire is used on front axle</span></div>
+          </div>
+
+          <h2 class="section-header my-1">8. Wheels and Fasteners</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Loose, missing, damaged or ineffective wheel fastener</span></div>
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Damaged wheel or wheel component</span></div>
+          </div>
+
+          <h2 class="section-header my-1">For buses travelling to USA, per FMCSA Regulations, Part 396.3</h2>
+          <div class="grid grid-cols-1 gap-0.5">
+            <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally</span></div>
+            <div class="form-group flex items-center"><label>Tire size:</label><div class="output-text"></div></div>
+          </div>
         </div>
       </div>
 
-      <div class="grid-3">
-        <div class="form-group row">
-          <label class="label-col">Unit #</label>
-          <div class="value-col"><div class="output-text" id="unitNumber"></div></div>
-        </div>
-        <div class="form-group row">
-          <label class="label-col">License Plate</label>
-          <div class="value-col"><div class="output-text" id="licensePlate"></div></div>
-        </div>
-        <div class="form-group row">
-          <label class="label-col">Odometer</label>
-          <div class="value-col"><div class="output-text" id="odometer"></div></div>
-        </div>
+      <div class="mt-2">
+        <h2 class="section-header my-1">Repairs</h2>
+        <div class="output-text"></div>
       </div>
 
-      <div class="grid-3">
-        <div class="form-group row">
-          <label class="label-col">Date Inspected</label>
-          <div class="value-col"><div class="output-text" id="inspectionDate"></div></div>
+      <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
+        <div class="form-group">
+          <h2 class="section-header my-1">Name of the person who conducted the inspection (Printed)</h2>
+          <div class="output-text"></div>
+          <div class="text-xxs text-gray-700 leading-tight mt-1">
+            I declare that the vehicle shown above has been inspected in accordance with this Regulation and that at the end of the inspection, there are no defects listed in Schedule 4. O. Reg. 199/07, s. 12 (1); O. Reg. 242/14, s. 6 (1-3); O. Reg. 256/15, s. 5 (1).
+          </div>
         </div>
-        <div class="form-group row">
-          <label class="label-col">Odometer Expires</label>
-          <div class="value-col"><div class="output-text" id="odometerExpires"></div></div>
-        </div>
-        <div class="form-group row">
-          <label class="label-col">Date Expires</label>
-          <div class="value-col"><div class="output-text" id="dateExpires"></div></div>
-        </div>
-      </div>
-
-      <!-- (the rest of your existing output layout and checklist rendering remains unchanged) -->
-
-      <div class="section-header" style="margin-top:10px">Technician</div>
-      <div class="grid-2">
-        <div class="form-group row">
-          <label class="label-col">Inspector Name</label>
-          <div class="value-col"><div class="output-text" id="inspectorName"></div></div>
-        </div>
-        <div class="form-group row">
-          <label class="label-col">Signature</label>
-          <div class="value-col"><img id="signature" alt="Signature" style="max-height:80px; max-width:100%"/></div>
+        <div class="form-group">
+          <h2 class="section-header my-1">Signature of the person who conducted the inspection</h2>
+          <div class="output-text p-1" style="height:100px;">
+            <img id="signatureImg" alt="Signature" class="mx-auto block signature-img">
+          </div>
         </div>
       </div>
-
-      <!-- Checklist (unchanged markup) -->
-      <div class="section-header" style="margin-top:10px">Checklist</div>
-      <div class="check-grid" id="checkGrid">
-        <div class="head">Item</div>
-        <div class="head">✓</div>
-        <div class="head">R</div>
-        <div class="head">N/A</div>
-        <!-- cells populated by JS -->
-      </div>
-
     </div>
   </div>
 
   <script>
-    function toUSDateString(date) {
-      try {
-        if (!date) return '';
-        var d = new Date(date);
-        if (isNaN(+d)) { // already mm/dd/yyyy?
-          var m = String(date).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-          if (m) return [m[1].padStart(2,'0'), m[2].padStart(2,'0'), m[3]].join('/');
-          return '';
+    (function () {
+      // --- Date helpers (mm/dd/yyyy display) ---
+      function toUSDateString(input) {
+        if (!input) return '';
+        if (typeof input === 'string') {
+          var m = input.match(/^(\d{4})-(\d{2})-(\d{2})/); // yyyy-mm-dd
+          if (m) return m[2] + '/' + m[3] + '/' + m[1];
+          var mmdd = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // mm/dd/yyyy
+          if (mmdd) return mmdd[1].padStart(2,'0') + '/' + mmdd[2].padStart(2,'0') + '/' + mmdd[3];
         }
-        var mm = String(d.getMonth()+1).padStart(2,'0');
-        var dd = String(d.getDate()).padStart(2,'0');
-        var yy = d.getFullYear();
-        return mm+'/'+dd+'/'+yy;
-      } catch(e){ return ''; }
-    }
-    function fromUSDate(s) {
-      var m = String(s||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (!m) return null;
-      return new Date(+m[3], +m[1]-1, +m[2]);
-    }
-    function addDays(d, days) {
-      var x = new Date(d.getTime());
-      x.setDate(x.getDate()+days);
-      return x;
-    }
-    function fmtOdo(v) {
-      if (v == null || v === '') return '';
-      var n = Number(String(v).replace(/[^0-9.]/g,'')); if (!isFinite(n)) return '';
-      return Math.round(n).toLocaleString('en-CA');
-    }
-
-    // Build checklist UI
-    function buildChecklist(check) {
-      var g = document.getElementById('checkGrid');
-      function row(label, key) {
-        var v = (check && check[key]) || {};
-        var ok = v.ok ? '✓' : '';
-        var rep = v.rep ? 'R' : '';
-        var na = v.na ? 'N/A' : '';
-        var div1 = document.createElement('div'); div1.textContent = label; div1.className = 'cell';
-        var div2 = document.createElement('div'); div2.textContent = ok;   div2.className = 'cell';
-        var div3 = document.createElement('div'); div3.textContent = rep;  div3.className = 'cell';
-        var div4 = document.createElement('div'); div4.textContent = na;   div4.className = 'cell';
-        g.appendChild(div1); g.appendChild(div2); g.appendChild(div3); g.appendChild(div4);
+        var d = new Date(input);
+        if (!isNaN(d)) return String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0') + '/' + d.getFullYear();
+        return '';
       }
-      // (rows added as before…)
-      var items = [
-        ['Pushrod travel within limit','pushrodWithin'],
-        ['Brake components secure','brakeSecure'],
-        ['Brake hose/tubing free of kinks','hoseKinks'],
-        ['Slack adjusters working','slackAdjusters'],
-        ['Steering linkage secure','steeringLinkage'],
-        ['Suspension components normal','suspension'],
-        ['Air leaks','airLeaks'],
-        ['Tires condition','tires'],
-        ['Wheels secure','wheels'],
-        ['Lights and reflectors','lights'],
-        ['Emergency exits working','emergencyExits'],
-        ['Door/Marking lights working','doorMarkingLights'],
-      ];
-      for (var i=0;i<items.length;i++) row(items[i][0], items[i][1]);
-    }
-
-    // Populate from cached/session values and URL params
-    function getData() {
-      var data = {};
-      try { var ss = sessionStorage.getItem('schedule4Data'); if (ss) data = JSON.parse(ss) || {}; } catch(e){}
-      var params = new URLSearchParams(location.search);
-      var keys = [
-        'carrierName','locationAddress','unitNumber','licensePlate','odometer','inspectionDate',
-        'odometerExpires','dateExpires','rSteerBrake','rDriveBrake','rTagBrake','lSteerBrake','lDriveBrake','lTagBrake',
-        'tireSize','repairs','inspectorName','signature'
-      ];
-      for (var i=0;i<keys.length;i++){ var k = keys[i]; if (!(k in data) && params.has(k)) data[k] = params.get(k); }
-      data.checklist = data.checklist || {};
-
-      // Normalize dates to mm/dd/yyyy for display
-      var inspUS = toUSDateString(data.inspectionDate);
-      data.inspectionDate = inspUS;
-
-      // Odometer thousands
-      data.odometer = fmtOdo(data.odometer);
-
-      // Expiry dates handling
-      var odoExp = toUSDateString(data.odometerExpires);
-      data.odometerExpires = odoExp;
-
-      var expUS = toUSDateString(data.dateExpires);
-      if (!expUS) {
-        // Fallback: compute +31 days from Inspection Date if Date Expires missing
-        var d = fromUSDate(inspUS);
-        if (d) expUS = toUSDateString(addDays(d, 31));
+      function fromUSDate(us) {
+        var mmdd = String(us||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (mmdd) return new Date(+mmdd[3], +mmdd[1]-1, +mmdd[2]);
+        var iso = String(us||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) return new Date(+iso[1], +iso[2]-1, +iso[3]);
+        var d = new Date(us);
+        return isNaN(d) ? null : d;
       }
-      data.dateExpires = expUS;
-
-      return data;
-    }
-    var data = getData();
-
-    // --- Fill simple fields by label ---
-    function fillByLabel(labelText, value) {
-      if (value == null || value === '') return;
-      var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
-      var label = labels.find(function(l){ return l.textContent.trim() === labelText; });
-      if (!label) return;
-      var targetId = label.getAttribute('for');
-      if (!targetId) return;
-      var el = document.getElementById(targetId);
-      if (!el) return;
-      if (el.tagName === 'IMG') {
-        el.src = value;
-      } else {
-        el.textContent = value;
+      function addDays(date, days) {
+        var d = new Date(date.getTime());
+        d.setDate(d.getDate() + days);
+        return d;
       }
-    }
 
-    document.addEventListener('DOMContentLoaded', function() {
-      // Fill header subtitle
-      var sub = [];
-      if (data.unitNumber) sub.push('Unit ' + data.unitNumber);
-      if (data.licensePlate) sub.push('Plate ' + data.licensePlate);
-      if (data.inspectionDate) sub.push('Inspected ' + data.inspectionDate);
-      document.getElementById('subtitle').textContent = sub.join(' • ');
+      // --- Load data ---
+      function getData() {
+        var data = {};
+        try { var ss = sessionStorage.getItem('schedule4Data'); if (ss) data = JSON.parse(ss) || {}; } catch(e){}
+        var params = new URLSearchParams(location.search);
+        var keys = [
+          'carrierName','locationAddress','unitNumber','licensePlate','odometer','inspectionDate',
+          'odometerExpires','dateExpires','rSteerBrake','rDriveBrake','rTagBrake','lSteerBrake','lDriveBrake','lTagBrake',
+          'tireSize','repairs','inspectorName','signature'
+        ];
+        for (var i=0;i<keys.length;i++){ var k = keys[i]; if (!(k in data) && params.has(k)) data[k] = params.get(k); }
+        data.checklist = data.checklist || {};
 
-      fillByLabel('Carrier Name', data.carrierName);
-      fillByLabel('Location Address', data.locationAddress);
+        // Normalize dates to mm/dd/yyyy for display
+        var inspUS = toUSDateString(data.inspectionDate);
+        data.inspectionDate = inspUS;
+
+        var expUS = toUSDateString(data.dateExpires);
+        if (!expUS && inspUS) {
+          // Fallback: compute +31 days from Inspection Date if Date Expires missing
+          var d = fromUSDate(inspUS);
+          if (d) expUS = toUSDateString(addDays(d, 31));
+        }
+        data.dateExpires = expUS;
+
+        return data;
+      }
+      var data = getData();
+
+      // --- Fill simple fields by label ---
+      function fillByLabel(labelText, value) {
+        if (value == null || value === '') return;
+        var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
+        var label = labels.find(function(l){ return l.textContent.trim().toLowerCase() === labelText.toLowerCase(); });
+        if (label) {
+          var box = (label.closest('.form-group,.flex') || document).querySelector('.output-text');
+          if (box) box.textContent = value;
+        }
+      }
+      fillByLabel('Carrier', data.carrierName);
+      fillByLabel('Address of the location where the inspection is conducted', data.locationAddress);
       fillByLabel('Unit #', data.unitNumber);
-      fillByLabel('License Plate', data.licensePlate);
-      fillByLabel('Odometer', data.odometer);
+      fillByLabel('Licence Plate', data.licensePlate);
+      fillByLabel('Odometer (km)', data.odometer);
       fillByLabel('Date Inspected', data.inspectionDate);
       fillByLabel('Odometer Expires', data.odometerExpires);
       fillByLabel('Date Expires', data.dateExpires);
-      fillByLabel('Inspector Name', data.inspectorName);
-      fillByLabel('Signature', data.signature);
+      fillByLabel('Tire size:', data.tireSize);
 
-      buildChecklist(data.checklist);
-    });
+      // --- Tiny brake stroke fields ---
+      function fillTiny(lbl, val) {
+        if (!val) return;
+        var tiny = Array.prototype.slice.call(document.querySelectorAll('.pl-4 .flex.items-center'));
+        var match = tiny.find(function(g){ 
+          var txt = (g.querySelector('label') || {}).textContent || '';
+          return txt.trim().toLowerCase() === lbl.toLowerCase();
+        });
+        var box = match && match.querySelector('.output-text');
+        if (box) box.textContent = val;
+      }
+      fillTiny('r steer', data.rSteerBrake);
+      fillTiny('r drive', data.rDriveBrake);
+      fillTiny('r tag', data.rTagBrake);
+      fillTiny('l steer', data.lSteerBrake);
+      fillTiny('l drive', data.lDriveBrake);
+      fillTiny('l tag', data.lTagBrake);
 
-    // Print
-    document.getElementById('printBtn').addEventListener('click', function() {
-      window.print();
-    });
+      // --- Repairs & Inspector name ---
+      var repHdr = Array.prototype.slice.call(document.querySelectorAll('.section-header'))
+        .find(function(h){ return h.textContent.trim().toLowerCase()==='repairs'; });
+      if (repHdr) {
+        var box1 = repHdr.parentElement.querySelector('.output-text');
+        if (box1 && data.repairs) box1.textContent = data.repairs;
+      }
 
-    // Back
-    document.getElementById('backBtn').addEventListener('click', function() {
-      history.back();
-    });
+      var inspHdr = Array.prototype.slice.call(document.querySelectorAll('.section-header'))
+        .find(function(h){ return h.textContent.toLowerCase().indexOf('name of the person') !== -1; });
+      if (inspHdr) {
+        var box2 = inspHdr.parentElement.querySelector('.output-text');
+        if (box2 && data.inspectorName) box2.textContent = data.inspectorName;
+      }
+
+      if (data.signature) {
+        var img = document.getElementById('signatureImg');
+        if (img) img.src = data.signature;
+      }
+
+      // --- Checklist matching with normalization (fixes "&&" vs "and" etc.) ---
+      function normalizeLabel(s){
+        return String(s||'')
+          .toLowerCase()
+          .replace(/&amp;|&&|&/g, 'and')
+          .replace(/\band\/or\b/g,'and or')
+          .replace(/[^a-z0-9]+/g,' ')
+          .replace(/\s+/g,' ')
+          .trim();
+      }
+      var dataChecklistNorm = {};
+      try {
+        Object.keys(data.checklist || {}).forEach(function(k){
+          dataChecklistNorm[normalizeLabel(k)] = data.checklist[k];
+        });
+      } catch(e){}
+
+      function setStatus(el, status) {
+        if (!status) return;
+        var badge = el.querySelector('.checklist-status'); if (!badge) return;
+        badge.className = 'checklist-status';
+        var s = String(status||'').toLowerCase();
+        if (['pass','ok','✓','yes','y'].indexOf(s) !== -1) { badge.textContent='✓'; badge.classList.add('status-pass'); }
+        else if (['repair','repaired','r','fail','f'].indexOf(s) !== -1) { badge.textContent='R'; badge.classList.add('status-repair'); }
+        else if (['na','n/a','not applicable'].indexOf(s) !== -1) { badge.textContent='N/A'; badge.classList.add('status-na'); }
+      }
+
+      Array.prototype.slice.call(document.querySelectorAll('.checklist-item')).forEach(function(item){
+        var labelTxt = (item.querySelector('.checklist-item-text') || {}).textContent || '';
+        var norm = normalizeLabel(labelTxt);
+        var st = dataChecklistNorm[norm];
+
+        // very light fuzzy fallback: try to match longest included key
+        if (!st) {
+          var bestKey = ''; 
+          for (var k in dataChecklistNorm) {
+            if (norm.indexOf(k) !== -1 && k.length > bestKey.length) bestKey = k;
+          }
+          if (bestKey) st = dataChecklistNorm[bestKey];
+        }
+        setStatus(item, st);
+      });
+
+      // Expose helpers for filename builder
+      window.__schedule4_getData = function(){ return data; };
+      window.__schedule4_toUS = toUSDateString;
+    })();
+
+    // === Server PDF with exact filename "Schedule4-UNIT#-DATEINSPECTED.pdf" ===
+    async function downloadServerPDF() {
+      try {
+        const data = (window.__schedule4_getData && window.__schedule4_getData()) || JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
+        const toUS = (window.__schedule4_toUS || function(x){ return x; });
+
+        const unitRaw = (data.unitNumber || 'Unit').toString().trim();
+        // Sanitize only illegal filename characters; preserve spaces and # as requested
+        const unitSan = unitRaw.replace(/[\/\\<>:"|?*]+/g,'').trim();
+
+        const dateUS = toUS(data.inspectionDate) || toUS(new Date());
+        const dateForFile = String(dateUS || '').replace(/\//g,'-'); // mm-dd-yyyy
+
+        const filename = `Schedule4-${unitSan}-${dateForFile}.pdf`;
+
+        const res = await fetch('/api/pdf/print', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: '/output.html', data, filename })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Server PDF failed: ' + err.message);
+      }
+    }
   </script>
 
-  <!-- Fallback save to DB if first attempt was missed (no UI change) -->
   <script>
+  // Fallback save to DB if first attempt was missed (no UI change)
   document.addEventListener('DOMContentLoaded', () => {
     try { if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return; } catch(e) {}
     try {
@@ -341,9 +469,10 @@
       fetch('/api/inspections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).catch(()=>{});
-    } catch(e){}
+        body: JSON.stringify({ payload }),
+        keepalive: true
+      }).catch(() => {});
+    } catch (e) {}
   });
   </script>
 
