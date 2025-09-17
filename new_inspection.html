@@ -31,9 +31,8 @@
     }
     .form-group input[readonly]{ background-color:#e5e7eb; cursor:not-allowed; }
 
-    /* Checklist pills — match output colors */
     .checkbox-container { display:grid; grid-template-columns:repeat(1,minmax(0,1fr)); gap:1.25rem; }
-    @media (min-width:640px){ .checkbox-container{ grid-template-columns:repeat(1,minmax(0,1fr)); } } /* keep list full-width per column */
+    @media (min-width:640px){ .checkbox-container{ grid-template-columns:repeat(1,minmax(0,1fr)); } }
     .checkbox-item{ display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
     .option-boxes{ display:flex; gap:0.25rem; }
     .option-box{
@@ -50,13 +49,12 @@
 
     #signatureCanvas {
       border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair;
-      width:400px; height:100px; /* display size */
+      width:400px; height:100px;
     }
     .footer-note{ font-size:0.875rem; color:#6b7280; margin-top:1rem; }
   </style>
 
   <style id="single-page-fix">
-    /* Hide stray page counters like "/1" on screen && in print */
     body::before, body::after, html::before, html::after,
     #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
     .page-number, .pageNumber, [data-page-number] { display: none !important; }
@@ -155,7 +153,6 @@
               </div>
             </div>
 
-            <!-- Brake Pushrod Stroke Measurements (left column ONLY) -->
             <h3 class="font-bold mt-4 mb-2 text-gray-800">Brake Pushrod Stroke Measurements</h3>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div class="form-group">
@@ -545,6 +542,34 @@
     </div>
   </div>
 
+  <!-- Samsara Odometer Modal -->
+  <div id="samsara-odo-modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="relative mx-auto mt-24 w-[92%] max-w-md">
+      <div class="bg-white rounded-xl shadow-xl p-5">
+        <h3 class="text-lg font-semibold mb-1">Confirm Odometer (Samsara)</h3>
+        <p class="text-sm text-gray-600 mb-3">
+          We pulled this mileage from Samsara. Confirm or edit the value below.
+        </p>
+        <label for="samsara-odo-input" class="block text-sm font-medium">Odometer (km)</label>
+        <input
+          type="text"
+          id="samsara-odo-input"
+          class="mt-1 w-full border border-gray-300 rounded-md p-2"
+          inputmode="numeric"
+        />
+        <div class="mt-4 flex justify-end gap-2">
+          <button type="button" id="odoModalCancel" class="px-3 py-2 rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300">
+            Cancel
+          </button>
+          <button type="button" id="odoModalConfirm" class="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700">
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const form = document.getElementById('inspectionForm');
@@ -632,6 +657,50 @@
       const licensePlateInput = document.getElementById('license-plate');
       const vehicleIndex = new Map();
 
+      // Modal elements & helpers
+      const odoModal = document.getElementById('samsara-odo-modal');
+      const odoModalInput = document.getElementById('samsara-odo-input');
+      const odoModalCancel = document.getElementById('odoModalCancel');
+      const odoModalConfirm = document.getElementById('odoModalConfirm');
+
+      function openOdoModal(kmFromSamsara){
+        // Prefill with Samsara value, formatted
+        odoModalInput.value = Number(kmFromSamsara).toLocaleString('en-US');
+        odoModal.classList.remove('hidden');
+        // focus and select value
+        setTimeout(() => { odoModalInput.focus(); odoModalInput.select && odoModalInput.select(); }, 0);
+      }
+      function closeOdoModal(){ odoModal.classList.add('hidden'); }
+
+      odoModalInput.addEventListener('input', () => formatOdometer(odoModalInput));
+      odoModalInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); odoModalConfirm.click(); }
+        if (e.key === 'Escape') { e.preventDefault(); odoModalCancel.click(); }
+      });
+      odoModal.addEventListener('click', (e) => {
+        // click backdrop to cancel
+        if (e.target === odoModal) odoModalCancel.click();
+      });
+
+      odoModalCancel.addEventListener('click', () => {
+        // keep current field values; leave source as 'samsara'
+        closeOdoModal();
+      });
+
+      odoModalConfirm.addEventListener('click', () => {
+        const raw = (odoModalInput.value || '').replace(/,/g,'').replace(/\D+/g,'');
+        const val = parseInt(raw, 10);
+        const base = _samsaraOdometerKm != null ? _samsaraOdometerKm : NaN;
+
+        if (!isNaN(val)) {
+          odometerInput.value = val.toLocaleString('en-US');
+          calculateExpiryOdometer();
+          _odometerSource = (base === val) ? 'samsara' : 'user_entered';
+        }
+        closeOdoModal();
+        odometerInput.focus();
+      });
+
       async function loadVehicles(){
         try{
           const res = await fetch('/api/samsara/vehicles');
@@ -661,35 +730,16 @@
           if (!res.ok) throw new Error(JSON.stringify(payload));
           if (payload && payload.odometerMeters != null){
             const km = Math.round(payload.odometerMeters/1000);
+
+            // Prefill page immediately
             odometerInput.value = km.toLocaleString('en-US');
             expiryOdometerInput.value = (km+12000).toLocaleString('en-US');
 
-            // Track Samsara source + confirm with technician
+            // Track Samsara source + ask technician to confirm/edit via modal
             _samsaraOdometerKm = km;
             _odometerSource = 'samsara';
-            try {
-              const confirmed = window.confirm(`Samsara reports ${km.toLocaleString('en-CA')} km for the current unit.\nIs this accurate on the vehicle's dash?`);
-              if (!confirmed) {
-                let corrected = window.prompt('Enter the current odometer (km):', km.toLocaleString('en-CA'));
-                if (corrected != null) {
-                  corrected = String(corrected).replace(/[^0-9]/g, '');
-                  const val = parseInt(corrected, 10);
-                  if (!isNaN(val)) {
-                    odometerInput.value = val.toLocaleString('en-US');
-                    expiryOdometerInput.value = (val + 12000).toLocaleString('en-US');
-                    _odometerSource = 'user_entered';
-                  } else {
-                    _odometerSource = 'user_entered';
-                    odometerInput.focus();
-                    if (odometerInput.select) odometerInput.select();
-                  }
-                } else {
-                  _odometerSource = 'user_entered';
-                  odometerInput.focus();
-                  if (odometerInput.select) odometerInput.select();
-                }
-              }
-            } catch (_) {}
+
+            openOdoModal(km);
           }
         }catch(e){
           console.error('odometer fetch failed', e);
@@ -716,13 +766,11 @@
         }
       }
       function setDiscMode(on){
-        // strokes
         strokeIds.forEach(id=>{
           const input = document.getElementById(id);
           if (!input) return;
           input.value = on ? 'Disc' : '';
         });
-        // NA for two items
         NAsToSet.forEach(label => setGroupNA(label, on));
       }
       discToggle.addEventListener('change', ()=> setDiscMode(discToggle.checked));
@@ -743,7 +791,7 @@
         const unitValid = (unitSelect.value && unitSelect.value!=='other') || (!!unitOtherInput.value && !unitOtherInput.classList.contains('hidden'));
         if (!unitValid) errors.push('Unit # is required.');
 
-        // Checklist selections (each item must have a selection)
+        // Checklist selections
         document.querySelectorAll('.checkbox-container').forEach(section=>{
           const items = section.querySelectorAll('.checkbox-item');
           items.forEach(item=>{
@@ -826,8 +874,7 @@
           checklist
         };
 
-        
-        // Save to DB first, blocking navigation until success
+        // Save to DB first
         try {
           const resp = await fetch('/api/inspections', {
             method: 'POST',
@@ -880,9 +927,7 @@
           const ctx = canvas.getContext('2d');
           const img = new Image();
           img.onload = function(){
-            // clear
             ctx.clearRect(0,0,canvas.width,canvas.height);
-            // fit
             const sx = canvas.width / img.width;
             const sy = canvas.height / img.height;
             const s = Math.min(sx, sy) * 0.95;
@@ -897,7 +942,6 @@
       document.addEventListener('DOMContentLoaded', async () => {
         const prof = await loadProfile();
         if (prof){
-          // Prefill defaults if empty
           try {
             const carrier = document.getElementById('carrier');
             const address = document.getElementById('address');
@@ -910,14 +954,10 @@
           btn.addEventListener('click', async () => {
             const prof2 = await loadProfile();
             if (!prof2){ return; }
-            // Check declaration
             const decl = document.getElementById('declaration-checkbox'); if (decl) decl.checked = true;
-            // Fill name
             const nameEl = document.getElementById('inspector-name'); if (nameEl && prof2.fullName) nameEl.value = prof2.fullName;
-            // Fill defaults (even if already filled, prefer profile)
             const carrier = document.getElementById('carrier'); if (carrier && prof2.defaultCarrier) carrier.value = prof2.defaultCarrier;
             const address = document.getElementById('address'); if (address && prof2.defaultInspectionStationAddress) address.value = prof2.defaultInspectionStationAddress;
-            // Signature
             if (prof2.signatureDataUrl) drawSignatureFromDataUrl(prof2.signatureDataUrl);
           });
         }
@@ -933,7 +973,6 @@
     return pad(d.getMonth()+1) + '/' + pad(d.getDate()) + '/' + d.getFullYear();
   }
   function addDaysUS(s, days){
-    // s in mm/dd/yyyy
     let d;
     const m = String(s||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m){ d = new Date(parseInt(m[3],10), parseInt(m[1],10)-1, parseInt(m[2],10)); }
@@ -957,7 +996,6 @@
           const el = document.getElementById(forId);
           if (el) return el;
         }
-        // fallback: next input in same container
         const el = lab.parentElement && lab.parentElement.querySelector('input,textarea,select');
         if (el) return el;
       }
@@ -965,12 +1003,10 @@
     return null;
   }
   document.addEventListener('DOMContentLoaded', function(){
-    // Prefill dates
     const insp = findInputByLabelText('date inspected') || document.getElementById('inspection-date');
     const exp  = findInputByLabelText('date expires') || document.getElementById('expiry-date');
     if (insp && !insp.value){ insp.value = todayUS(); }
     if (exp){ exp.value = addDaysUS(insp ? insp.value : todayUS(), 31); }
-    // Odometer formatting + expiry
     const odo = findInputByLabelText('odometer (km)') || document.getElementById('odometer');
     const odoExp = findInputByLabelText('odometer expires') || document.getElementById('expiry-odometer') || findInputByLabelText('odometer expiration');
     function recalcOdoExp(){
@@ -982,14 +1018,11 @@
     if (odo){
       odo.addEventListener('input', function(){ fmtKMInput(odo); });
       odo.addEventListener('blur', recalcOdoExp);
-      // Initialize
       fmtKMInput(odo); recalcOdoExp();
     }
-    // Keep expiry date synced if user edits inspection date
     if (insp && exp){
       insp.addEventListener('blur', function(){ exp.value = addDaysUS(insp.value, 31); });
     }
-    // On submit (capture), convert dates to mm/dd/yyyy and strip commas from odometer before app handler runs
     document.addEventListener('submit', function(e){
       if (insp) insp.value = todayUS() && insp.value ? insp.value : todayUS();
       if (exp && insp) exp.value = addDaysUS(insp.value, 31);
@@ -1000,7 +1033,6 @@
 })();
 </script>
 
-
 <!-- S4 minimal date prefill (no UI changes) -->
 <script>
 (function(){
@@ -1010,11 +1042,7 @@
     var day = String(d.getDate()).padStart(2,'0');
     return y + '-' + m + '-' + day;
   }
-  function addDays(d, n){
-    var e = new Date(d.getTime());
-    e.setDate(e.getDate()+n);
-    return e;
-  }
+  function addDays(d, n){ var e = new Date(d.getTime()); e.setDate(e.getDate()+n); return e; }
   function findInputByLabel(labelText){
     labelText = String(labelText).toLowerCase().trim();
     var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
@@ -1022,13 +1050,11 @@
       var l = labels[i];
       if (!l.textContent) continue;
       if (l.textContent.toLowerCase().indexOf(labelText) !== -1){
-        // Try for="id"
         var forId = l.getAttribute('for');
         if (forId){
           var el = document.getElementById(forId);
           if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return el;
         }
-        // Try next input sibling in same container
         var c = l.closest('.form-group, .row, .grid, div, section') || l.parentElement;
         if (c){
           var input = c.querySelector('input, textarea, select');
@@ -1052,7 +1078,6 @@
       var e = addDays(base, 31);
       if (exp.type === 'date') exp.value = toISODateLocal(e);
       else exp.value = (e.getMonth()+1).toString().padStart(2,'0') + '/' + e.getDate().toString().padStart(2,'0') + '/' + e.getFullYear();
-      // keep synced if tech edits
       if (insp){
         insp.addEventListener('change', function(){
           var d = insp.value ? new Date(insp.value) : new Date();
@@ -1068,7 +1093,6 @@
 })();
 </script>
 
-
 <!-- S4 minimal date prefill (no UI changes) -->
 <script>
 (function(){
@@ -1078,11 +1102,7 @@
     var day = String(d.getDate()).padStart(2,'0');
     return y + '-' + m + '-' + day;
   }
-  function addDays(d, n){
-    var e = new Date(d.getTime());
-    e.setDate(e.getDate()+n);
-    return e;
-  }
+  function addDays(d, n){ var e = new Date(d.getTime()); e.setDate(e.getDate()+n); return e; }
   function findInputByLabel(labelText){
     labelText = String(labelText).toLowerCase().trim();
     var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
