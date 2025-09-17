@@ -1,6 +1,5 @@
 // /api/schedule4s/list.js
-// List Schedule 4s from the real table/columns in your DB.
-// Uses schedule4_inspections and returns fields the grid expects.
+// List Schedule 4s and return fields the grid expects, newest first by created/inspected date.
 
 export const config = { runtime: 'nodejs' };
 
@@ -11,17 +10,22 @@ export default async function handler(req, res) {
     const rows = await sql`
       SELECT
         id,
-        -- Prefer performed_at if present; otherwise created_at
-        COALESCE(performed_at, created_at)                AS created_at,
-        -- Try vehicle_name first; fall back to payload_json->>'unitNumber'
+        -- Date Inspected in the UI: prefer performed_at if present; otherwise created_at
+        COALESCE(performed_at, created_at) AS created_at,
+        -- Unit #
         COALESCE(vehicle_name, NULLIF(payload_json->>'unitNumber', '')) AS unit,
-        -- Prefer technician_name; fall back to payload_json->>'inspectorName'
+        -- Technician Name
         COALESCE(technician_name, NULLIF(payload_json->>'inspectorName','')) AS technician,
-        -- Simple derived status for display purposes
-        CASE
-          WHEN expiry_date IS NOT NULL AND expiry_date::date < NOW()::date THEN 'Expired'
-          ELSE 'Completed'
-        END AS status
+        -- Odometer (support multiple possible payload keys)
+        NULLIF(
+          COALESCE(
+            payload_json->>'odometerKm',
+            payload_json->>'odometer',
+            payload_json->>'currentOdometer',
+            payload_json->>'mileage'
+          ),
+          ''
+        ) AS odometer
       FROM schedule4_inspections
       ORDER BY 2 DESC NULLS LAST
       LIMIT 500

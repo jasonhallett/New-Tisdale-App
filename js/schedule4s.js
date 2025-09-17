@@ -1,5 +1,5 @@
 // js/schedule4s.js
-// Lists Schedule 4s, filters, and opens Output with multiple id aliases.
+// Lists Schedule 4s with columns: Date Inspected, Unit #, Odometer, Technician Name, View
 
 async function fetchList() {
   const r = await fetch('/api/schedule4s/list', { credentials: 'include' });
@@ -19,8 +19,15 @@ function fmtDate(iso) {
   } catch { return '—'; }
 }
 
+function fmtOdo(v) {
+  if (v === null || v === undefined) return '—';
+  const n = Number(String(v).replace(/[^0-9.]/g, ''));
+  if (!isFinite(n)) return '—';
+  return Math.round(n).toLocaleString('en-CA');
+}
+
 function htmlesc(s) {
-  return String(s ?? '').replace(/[&<>\"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 function buildOpenUrl(id) {
@@ -35,22 +42,21 @@ function buildOpenUrl(id) {
 
 function render(items) {
   const tbody = document.querySelector('#grid tbody');
-  tbody.innerHTML = items.map((row, i) => {
+  tbody.innerHTML = items.map((row) => {
     const id   = row.id;
-    const date = fmtDate(row.created_at);
+    const date = fmtDate(row.created_at); // treated as Date Inspected (performed_at fallback on API)
     const unit = htmlesc(row.unit || row.unit_number || row.vehicle || '—');
+    const odo  = fmtOdo(row.odometer);
     const tech = htmlesc(row.technician || row.technician_name || '—');
-    const status = htmlesc(row.status || '—');
     const href = id ? buildOpenUrl(id) : '#';
     return `<tr data-id="${htmlesc(id || '')}">
-      <td>${i + 1}</td>
       <td>${date}</td>
       <td>${unit}</td>
+      <td>${odo}</td>
       <td>${tech}</td>
-      <td>${status}</td>
       <td>
         <div class="row">
-          <a class="btn-ghost open-btn" href="${href}" target="_top" title="Open Output" style="height:32px;padding:0 10px">Open</a>
+          <a class="btn open-btn" href="${href}" target="_top" title="Open Output" style="height:32px;padding:0 10px">View</a>
         </div>
       </td>
     </tr>`;
@@ -76,7 +82,7 @@ function attachFilter(all) {
   const doFilter = () => {
     const t = (q.value || '').toLowerCase();
     const filtered = !t ? all : all.filter(r => {
-      const s = `${r.id||''} ${r.unit||r.unit_number||''} ${r.technician||r.technician_name||''} ${r.status||''} ${r.created_at||''}`.toLowerCase();
+      const s = `${r.id||''} ${r.unit||r.unit_number||''} ${r.odometer||''} ${r.technician||r.technician_name||''} ${r.created_at||''}`.toLowerCase();
       return s.includes(t);
     });
     render(filtered);
@@ -103,6 +109,6 @@ document.getElementById('newBtn').addEventListener('click', () => {
     attachFilter(items);
   } catch (e) {
     console.error(e);
-    document.querySelector('#grid tbody').innerHTML = `<tr><td colspan="6">Unable to load Schedule 4s.</td></tr>`;
+    document.querySelector('#grid tbody').innerHTML = `<tr><td colspan="5">Unable to load Schedule 4s.</td></tr>`;
   }
 })();
