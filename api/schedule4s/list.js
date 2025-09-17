@@ -10,13 +10,9 @@ export default async function handler(req, res) {
     const rows = await sql`
       SELECT
         id,
-        -- Date Inspected in the UI: prefer performed_at if present; otherwise created_at
         COALESCE(performed_at, created_at) AS created_at,
-        -- Unit #
         COALESCE(vehicle_name, NULLIF(payload_json->>'unitNumber', '')) AS unit,
-        -- Technician Name
         COALESCE(technician_name, NULLIF(payload_json->>'inspectorName','')) AS technician,
-        -- Odometer (support multiple possible payload keys)
         NULLIF(
           COALESCE(
             payload_json->>'odometerKm',
@@ -25,7 +21,16 @@ export default async function handler(req, res) {
             payload_json->>'mileage'
           ),
           ''
-        ) AS odometer
+        ) AS odometer,
+        NULLIF(
+          COALESCE(
+            payload_json->>'inspectionLocation',
+            payload_json->>'location',
+            payload_json->>'address',
+            payload_json->>'inspectionAddress'
+          ),
+          ''
+        ) AS location
       FROM schedule4_inspections
       ORDER BY 2 DESC NULLS LAST
       LIMIT 500

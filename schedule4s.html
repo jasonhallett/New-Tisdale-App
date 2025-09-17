@@ -5,28 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Schedule 4s</title>
   <link rel="stylesheet" href="./css/tisdale-theme.css" />
+  <link rel="stylesheet" href="./css/schedule4s-grid.css" />
 </head>
 <body>
   <section class="container" style="padding:16px 20px">
     <div class="card">
       <div class="toolbar">
-        <div class="search" style="width:360px">
+        <div class="search" style="width:320px">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <input id="q" aria-label="Search" placeholder="Filter by Unit, Technician, Odometer, or ID…" />
+          <input id="q" aria-label="Search" placeholder="Filter by Unit, Technician, Odometer, Location, or ID…" />
         </div>
         <div style="flex:1"></div>
         <button class="btn" id="newBtn">New Schedule 4</button>
       </div>
-      <table class="table" id="grid">
+      <table class="table compact" id="grid">
         <thead>
           <tr>
-            <th>Date Inspected</th>
-            <th>Unit #</th>
-            <th>Odometer at Inspection</th>
-            <th>Technician Name</th>
-            <th style="width:120px">View</th>
+            <th class="col-date">Date Inspected</th>
+            <th class="col-unit">Unit #</th>
+            <th class="col-odo">Odometer</th>
+            <th class="col-tech">Technician Name</th>
+            <th class="col-loc">Inspection Location</th>
+            <th class="col-view">View</th>
           </tr>
         </thead>
         <tbody></tbody>
