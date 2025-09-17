@@ -1000,5 +1000,138 @@
 })();
 </script>
 
+
+<!-- S4 minimal date prefill (no UI changes) -->
+<script>
+(function(){
+  function toISODateLocal(d){
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,'0');
+    var day = String(d.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + day;
+  }
+  function addDays(d, n){
+    var e = new Date(d.getTime());
+    e.setDate(e.getDate()+n);
+    return e;
+  }
+  function findInputByLabel(labelText){
+    labelText = String(labelText).toLowerCase().trim();
+    var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
+    for (var i=0;i<labels.length;i++){
+      var l = labels[i];
+      if (!l.textContent) continue;
+      if (l.textContent.toLowerCase().indexOf(labelText) !== -1){
+        // Try for="id"
+        var forId = l.getAttribute('for');
+        if (forId){
+          var el = document.getElementById(forId);
+          if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return el;
+        }
+        // Try next input sibling in same container
+        var c = l.closest('.form-group, .row, .grid, div, section') || l.parentElement;
+        if (c){
+          var input = c.querySelector('input, textarea, select');
+          if (input) return input;
+        }
+      }
+    }
+    return null;
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    var insp = findInputByLabel('date inspected') || document.getElementById('inspection-date') || document.querySelector('input[name="inspection-date"],input[name="date_inspected"]');
+    var exp  = findInputByLabel('date expires') || document.getElementById('expiry-date') || document.querySelector('input[name="expiry-date"],input[name="date_expires"]');
+    if (insp && !insp.value){
+      var now = new Date();
+      if (insp.type === 'date') insp.value = toISODateLocal(now);
+      else insp.value = (now.getMonth()+1).toString().padStart(2,'0') + '/' + now.getDate().toString().padStart(2,'0') + '/' + now.getFullYear();
+    }
+    if (exp){
+      var base = insp && insp.value ? new Date(insp.value) : new Date();
+      if (!(base instanceof Date) || isNaN(base)) base = new Date();
+      var e = addDays(base, 31);
+      if (exp.type === 'date') exp.value = toISODateLocal(e);
+      else exp.value = (e.getMonth()+1).toString().padStart(2,'0') + '/' + e.getDate().toString().padStart(2,'0') + '/' + e.getFullYear();
+      // keep synced if tech edits
+      if (insp){
+        insp.addEventListener('change', function(){
+          var d = insp.value ? new Date(insp.value) : new Date();
+          if (exp.type === 'date') exp.value = toISODateLocal(addDays(d,31));
+          else {
+            var ee = addDays(d,31);
+            exp.value = (ee.getMonth()+1).toString().padStart(2,'0') + '/' + ee.getDate().toString().padStart(2,'0') + '/' + ee.getFullYear();
+          }
+        });
+      }
+    }
+  });
+})();
+</script>
+
+
+<!-- S4 minimal date prefill (no UI changes) -->
+<script>
+(function(){
+  function toISODateLocal(d){
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,'0');
+    var day = String(d.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + day;
+  }
+  function addDays(d, n){
+    var e = new Date(d.getTime());
+    e.setDate(e.getDate()+n);
+    return e;
+  }
+  function findInputByLabel(labelText){
+    labelText = String(labelText).toLowerCase().trim();
+    var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
+    for (var i=0;i<labels.length;i++){
+      var l = labels[i];
+      if (!l.textContent) continue;
+      if (l.textContent.toLowerCase().indexOf(labelText) !== -1){
+        var forId = l.getAttribute('for');
+        if (forId){
+          var el = document.getElementById(forId);
+          if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return el;
+        }
+        var c = l.closest('.form-group, .row, .grid, div, section') || l.parentElement;
+        if (c){
+          var input = c.querySelector('input, textarea, select');
+          if (input) return input;
+        }
+      }
+    }
+    return null;
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    var insp = findInputByLabel('date inspected') || document.getElementById('inspection-date') || document.querySelector('input[name="inspection-date"],input[name="date_inspected"]');
+    var exp  = findInputByLabel('date expires') || document.getElementById('expiry-date') || document.querySelector('input[name="expiry-date"],input[name="date_expires"]');
+    if (insp && !insp.value){
+      var now = new Date();
+      if (insp.type === 'date') insp.value = toISODateLocal(now);
+      else insp.value = (now.getMonth()+1).toString().padStart(2,'0') + '/' + now.getDate().toString().padStart(2,'0') + '/' + now.getFullYear();
+    }
+    if (exp){
+      var base = insp && insp.value ? new Date(insp.value) : new Date();
+      if (!(base instanceof Date) || isNaN(base)) base = new Date();
+      var e = addDays(base, 31);
+      if (exp.type === 'date') exp.value = toISODateLocal(e);
+      else exp.value = (e.getMonth()+1).toString().padStart(2,'0') + '/' + e.getDate().toString().padStart(2,'0') + '/' + e.getFullYear();
+      if (insp){
+        insp.addEventListener('change', function(){
+          var d = insp.value ? new Date(insp.value) : new Date();
+          if (exp.type === 'date') exp.value = toISODateLocal(addDays(d,31));
+          else {
+            var ee = addDays(d,31);
+            exp.value = (ee.getMonth()+1).toString().padStart(2,'0') + '/' + ee.getDate().toString().padStart(2,'0') + '/' + ee.getFullYear();
+          }
+        });
+      }
+    }
+  });
+})();
+</script>
+
 </body>
 </html>

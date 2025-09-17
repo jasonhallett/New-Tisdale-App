@@ -376,5 +376,87 @@ body::before, body::after, html::before, html::after,
   });
   </script>
 
+
+<!-- S4 minimal mm/dd/yyyy + filename patch (no UI changes) -->
+<script>
+(function(){
+  function toUSDateString(input){
+    if(!input) return '';
+    if (typeof input === 'string'){
+      var m = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return m[2] + '/' + m[3] + '/' + m[1];
+      var mmdd = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (mmdd) return mmdd[1].padStart(2,'0') + '/' + mmdd[2].padStart(2,'0') + '/' + mmdd[3];
+    }
+    try { var d=new Date(input); if(!isNaN(d)) return String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0') + '/' + d.getFullYear(); } catch(e){}
+    return input;
+  }
+  function findValueBoxByLabel(labelText){
+    labelText = String(labelText).toLowerCase().trim();
+    var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
+    for (var i=0;i<labels.length;i++){
+      var l = labels[i];
+      if (!l.textContent) continue;
+      if (l.textContent.toLowerCase().indexOf(labelText) !== -1){
+        var container = l.closest('.form-group, .row, .grid, div, section') || l.parentElement;
+        if (container){
+          var cand = container.querySelectorAll('.output-text, .value, .text, div, span');
+          for (var j=0;j<cand.length;j++){
+            var el = cand[j];
+            if (el === l) continue;
+            if (el.querySelector('label')) continue;
+            if (el.textContent != null && el.textContent.trim() !== '') return el;
+          }
+        }
+      }
+    }
+    return null;
+  }
+  function sanitizeForFilename(s){
+    return String(s||'').replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,'').trim();
+  }
+  function usToDash(s){
+    return String(s||'').replace(/\//g, '-');
+  }
+  function computeFilename(){
+    var unitBox = findValueBoxByLabel('unit #') || document.querySelector('[data-field="unitNumber"]');
+    var dateBox = findValueBoxByLabel('date inspected') || document.querySelector('[data-field="inspectionDate"]');
+    var unit = unitBox ? unitBox.textContent.trim() : '';
+    var dateUS = toUSDateString(dateBox ? dateBox.textContent.trim() : '');
+    if (!dateUS){
+      try { dateUS = toUSDateString(new Date()); } catch(e){}
+    }
+    var fname = 'Schedule4-' + sanitizeForFilename(unit||'Unit') + '-' + usToDash(dateUS || 'MM-DD-YYYY') + '.pdf';
+    return fname;
+  }
+  function enforceDownloadFilename(){
+    var name = computeFilename();
+    var anchors = Array.prototype.slice.call(document.querySelectorAll('a,button'));
+    anchors.forEach(function(a){
+      var txt = (a.textContent||'').toLowerCase();
+      if (txt.indexOf('download') !== -1 || txt.indexOf('pdf') !== -1){
+        try { a.setAttribute('download', name); } catch(e){}
+        if (!a.__s4_wrapped){
+          a.addEventListener('click', function(){
+            try { window.__S4_filename = function(){ return name; }; } catch(e){}
+          }, true);
+          a.__s4_wrapped = true;
+        }
+      }
+    });
+  }
+  window.__S4_toUS = toUSDateString;
+  window.__S4_filename = computeFilename;
+
+  document.addEventListener('DOMContentLoaded', function(){
+    var di = findValueBoxByLabel('date inspected') || document.querySelector('[data-field="inspectionDate"]');
+    var de = findValueBoxByLabel('date expires') || document.querySelector('[data-field="dateExpires"]');
+    if (di) di.textContent = toUSDateString(di.textContent.trim());
+    if (de) de.textContent = toUSDateString(de.textContent.trim());
+    enforceDownloadFilename();
+  });
+})();
+</script>
+
 </body>
 </html>
