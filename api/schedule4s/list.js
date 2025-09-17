@@ -1,6 +1,6 @@
 // /api/schedule4s/list.js
 // Returns: id, created_at (Date Inspected), unit, odometer, technician, location (address).
-// Newest first.
+// Sorted newest first.
 
 export const config = { runtime: 'nodejs' };
 
@@ -16,7 +16,7 @@ export default async function handler(req, res) {
         COALESCE(vehicle_name, NULLIF(payload_json->>'unitNumber', '')) AS unit,
         /* Technician Name */
         COALESCE(technician_name, NULLIF(payload_json->>'inspectorName','')) AS technician,
-        /* Odometer */
+        /* Odometer (unchanged logic) */
         NULLIF(
           COALESCE(
             payload_json->>'odometerKm',
@@ -26,19 +26,8 @@ export default async function handler(req, res) {
           ),
           ''
         ) AS odometer,
-        /* Inspection Location / Address: try normalized columns, then JSON fallbacks */
-        COALESCE(
-          NULLIF(TRIM(inspection_address), ''),
-          NULLIF(TRIM(inspection_location), ''),
-          NULLIF(TRIM(location_address), ''),
-          NULLIF(TRIM(location), ''),
-          NULLIF(TRIM(address), ''),
-          NULLIF(TRIM(payload_json->>'inspectionLocationAddress'), ''),
-          NULLIF(TRIM(payload_json->>'inspectionLocation'), ''),
-          NULLIF(TRIM(payload_json->>'locationAddress'), ''),
-          NULLIF(TRIM(payload_json->>'location'), ''),
-          NULLIF(TRIM(payload_json->>'address'), '')
-        ) AS location
+        /* Inspection Location / Address: direct column only */
+        location AS location
       FROM schedule4_inspections
       ORDER BY 2 DESC NULLS LAST
       LIMIT 500
