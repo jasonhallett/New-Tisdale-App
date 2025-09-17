@@ -1,4 +1,4 @@
-// /api/inspections.js — Save Schedule 4 submissions to Neon/Postgres
+// /api/inspections.js — Save Schedule 4 submissions to Neon/Postgres (with DB fallback for STO / trade codes)
 export const config = { runtime: 'nodejs' };
 
 import crypto from 'crypto';
@@ -15,6 +15,24 @@ export default async function handler(req, res) {
   const auth = getAuthIdentity(req);
   if (!auth?.userId || !auth?.technicianId) {
     return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // ---- Load technician details from DB to use as fallback (source of truth) ----
+  let techRow = null;
+  try {
+    const t = await sql`
+      SELECT t.sto_registration_number,
+             t.trade_codes,
+             a.full_name
+        FROM technicians t
+        JOIN app_users a ON a.id = t.app_user_id
+       WHERE t.id = ${auth.technicianId}
+       LIMIT 1
+    `;
+    techRow = t[0] || null;
+  } catch (e) {
+    // Non-fatal; we’ll just skip DB fallback if this fails
+    console.error('Lookup technician failed:', e);
   }
 
   let rawBody = '';
@@ -51,10 +69,26 @@ export default async function handler(req, res) {
     }
   } catch (_) {}
 
-  // --- Technican / vehicle / misc fields ---
-  const technicianName = pick(payload, ['technicianName', 'inspectorName', 'inspector', 'name']) || 'Unknown';
-  const sto = pick(payload, ['technicianSTO', 'stoRegistrationNumber', 'sto', 'stoNumber']) || null;
-  const tradeCodes = arrish(pick(payload, ['technicianTradeCodes', 'tradeCodes']));
+  // --- Technician / vehicle / misc fields ---
+
+  // Prefer payload values when present; otherwise fallback to DB values
+  const technicianNamePayload =
+    pick(payload, ['technicianName', 'inspectorName', 'inspector', 'name']);
+  const stoPayload =
+    pick(payload, ['technicianSTO', 'stoRegistrationNumber', 'sto', 'stoNumber']);
+  const tradeCodesPayload =
+    arrish(pick(payload, ['technicianTradeCodes', 'tradeCodes']));
+
+  const technicianName =
+    technicianNamePayload || techRow?.full_name || 'Unknown';
+  const sto =
+    (stoPayload ?? null) !== null && `${stoPayload}`.trim() !== ''
+      ? `${stoPayload}`.trim()
+      : (techRow?.sto_registration_number ?? null);
+  const tradeCodes =
+    (Array.isArray(tradeCodesPayload) && tradeCodesPayload.length > 0)
+      ? tradeCodesPayload
+      : (Array.isArray(techRow?.trade_codes) ? techRow.trade_codes : []);
 
   let vehicleId = strish(pick(payload, ['vehicleId','selectedVehicleId','samsaraVehicleId','vehicle_id','unitId','selectedUnitId']));
   if (!vehicleId && typeof payload?.selectedVehicle === 'object') {
@@ -76,7 +110,7 @@ export default async function handler(req, res) {
   } else if (samsaraOdometerKm != null) {
     odometerSourceCanonical = 'samsara';
   }
-  // Map canonical → DB enum (gps|manual|obd|unknown)
+  // Map canonical → DB enum (gps|manual|unknown)
   const odometerSource = (
     odometerSourceCanonical === 'samsara' ? 'gps' :
     odometerSourceCanonical === 'user_entered' ? 'manual' :
@@ -145,7 +179,7 @@ export default async function handler(req, res) {
         ${dedupeHash}
       )
       ON CONFLICT (dedupe_hash) DO NOTHING
-      RETURNING id, created_at, technician_id, app_user_id, odometer_source;
+      RETURNING id, created_at, technician_id, app_user_id, technician_sto_registration_num, technician_trade_codes, odometer_source;
     `;
 
     const row = rows?.[0] || null;
@@ -155,6 +189,8 @@ export default async function handler(req, res) {
       createdAt: row?.created_at,
       technicianId: row?.technician_id,
       appUserId: row?.app_user_id,
+      sto: row?.technician_sto_registration_num ?? sto ?? null,
+      tradeCodes: row?.technician_trade_codes ?? tradeCodes ?? [],
       odometerSource
     });
   } catch (e) {

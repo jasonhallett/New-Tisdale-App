@@ -1,305 +1,68 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TBL Internal App</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tisdale — Internal App</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/tisdale-theme.css" />
   <script defer src="auth-guard.js"></script>
   <style>
-    :root {
-      --sidebar-w: 264px;
-      --sidebar-min: 200px;
-      --sidebar-max: 360px;
-      --border: #000;
-      --bg: #fff;
-      --fg: #000;
-      --muted: #666;
-      --hover: #f5f5f5;
-      --active: #000;
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; padding: 0; background: var(--bg); color: var(--fg);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-    .app { display: grid; grid-template-columns: var(--sidebar-w) 1fr; height: 100vh; overflow: hidden; }
-
-    /* Sidebar */
-    aside.sidebar {
-      border-right: 1px solid var(--border);
-      background: var(--bg);
-      display: flex; flex-direction: column;
-      min-width: var(--sidebar-min);
-      max-width: var(--sidebar-max);
-      transition: width 160ms ease, transform 160ms ease;
-      position: relative;
-    }
-    .logo-wrap { padding: 12px; border-bottom: 1px solid var(--border); }
-    .logo-wrap img { display:block; width: 100%; max-width: 210px; margin: 0 auto; height:auto; }
-    .controls { display:flex; gap:8px; align-items:center; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-    .btn { appearance:none; border:1px solid var(--border); background: var(--bg); color: var(--fg); padding: 6px 10px; cursor:pointer; }
-    .btn:active { transform: translateY(1px); }
-    .search { flex:1; display:flex; align-items:center; gap:6px; border:1px solid var(--border); padding: 6px 8px; }
-    .search input { flex:1; border:0; outline:0; background:transparent; color:var(--fg); font-size:14px; }
-    .menu { overflow:auto; }
-    .menu ul { list-style:none; padding:0; margin:0; }
-    .menu li { border-bottom: 1px solid var(--border); }
-    .item {
-      display:flex; align-items:center; gap:10px; width:100%; text-align:left;
-      background:transparent; color:var(--fg); border:0; padding: 12px; cursor:pointer; position:relative;
-    }
-    .item:hover { background: var(--hover); }
-    .item[aria-current="page"] { background: #fff; }
-    .item[aria-current="page"]::before {
-      content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background: var(--active);
-    }
-    .icon { width:18px; height:18px; display:inline-block; }
-    .label { flex:1; }
-    .shortcut { font-size: 12px; color: var(--muted); }
-
-    /* Resize handle */
-    .handle {
-      position:absolute; right:-2px; top:0; bottom:0; width:4px; cursor: col-resize;
-      background: transparent;
-    }
-    .handle:hover { background: #eaeaea; }
-
-    /* Collapsed state */
-    .collapsed aside.sidebar { width: 64px !important; }
-    .collapsed .label, .collapsed .controls, .collapsed .search, .collapsed .logo-wrap { display:none; }
-    .collapsed .item { justify-content: center; }
-    .collapsed .item .shortcut { display:none; }
-
-    /* Main panel */
-    main {
-      display:grid; grid-template-rows: auto 1fr;
-      height:100vh; overflow:hidden;
-    }
-    .topbar {
-      border-bottom:1px solid var(--border); padding: 8px 12px; display:flex; gap:10px; align-items:center; justify-content:space-between;
-    }
-    .topbar .left { display:flex; align-items:center; gap:8px; }
-    .topbar .title { font-weight:600; }
-    .user { color: var(--muted); font-size:14px; }
-    iframe#contentFrame { width:100%; height:100%; border:0; background: var(--bg); }
-
-    /* Tooltip (for collapsed mode) */
-    .tooltip {
-      position: absolute; left: 72px; padding:6px 8px; border:1px solid var(--border); background:#fff; color:#000;
-      white-space:nowrap; pointer-events:none; opacity:0; transform: translateY(-50%); transition: opacity 120ms ease;
-      top:50%;
-    }
-    .item:hover .tooltip { opacity:1; }
-
-    @media (max-width: 880px) {
-      .app { grid-template-columns: 1fr; }
-      aside.sidebar {
-        position:absolute; z-index:10; width: min(var(--sidebar-w), 85vw);
-        transform: translateX(-100%);
-      }
-      .sidebar.open { transform: translateX(0); box-shadow: 0 0 0 9999px rgba(0,0,0,.15) inset; }
-      main { grid-template-rows: auto 1fr; }
-    }
+    iframe#contentFrame { width:100%; height: calc(100vh - 60px); border:0; }
   </style>
 </head>
 <body>
   <div class="app">
-    <aside class="sidebar" id="sidebar" aria-label="Primary">
-      <div class="logo-wrap">
-        <img src="assets/tisdale-logo.png" alt="Tisdale Bus Lines" />
+    <aside class="sidebar">
+      <div class="brand">
+        <picture>
+          <source srcset="./assets/tisdale-logo-dark.svg" media="(prefers-color-scheme: dark)">
+          <img src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines" height="32">
+        </picture>
       </div>
-      <div class="controls">
-        <button class="btn" id="collapseBtn" title="Collapse sidebar">≡</button>
-        <div class="search" title="Filter menu">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.9.9l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
-          <input id="menuFilter" placeholder="Filter…" aria-label="Filter menu" />
-        </div>
-      </div>
-      <nav class="menu" id="menu"></nav>
-      <div class="handle" id="handle" aria-hidden="true"></div>
+      <nav class="nav" id="nav">
+        <a class="active" href="#schedule4s" data-href="schedule4s.html">
+          <span aria-hidden="true">🧾</span>
+          <span>Schedule 4s</span>
+        </a>
+      </nav>
     </aside>
 
-    <main>
+    <main class="main">
       <div class="topbar">
-        <div class="left">
-          <button class="btn" id="mobileMenuBtn" aria-label="Open menu" title="Menu">Menu</button>
-          <span class="title" id="pageTitle">Loading…</span>
+        <div class="row">
+          <div class="page-title" id="pageTitle">Schedule 4s</div>
         </div>
-        <div class="user" id="userBar">…</div>
+        <div class="top-actions">
+          <button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button>
+        </div>
       </div>
+
       <iframe id="contentFrame" title="Content"></iframe>
     </main>
   </div>
 
-  <script type="module">
-    // --- Configuration / defaults ---
-    const DEFAULT_MENU = [
-      { id: "new", label: "New Inspection", href: "new_inspection.html", target: "frame", shortcut: "g i" },
-      { id: "output", label: "Output / Print", href: "output.html", target: "frame", shortcut: "g o" },
-      { id: "logout", label: "Logout", href: "logout.html", target: "self", shortcut: "g l" }
-    ];
+  <script>
+    const frame = document.getElementById('contentFrame');
+    const pageTitle = document.getElementById('pageTitle');
 
-    // --- Utilities ---
-    const $ = (sel, el=document) => el.querySelector(sel);
-    const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+    frame.src = 'schedule4s.html';
 
-    function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch{} }
-    function load(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } }
+    document.getElementById('nav').addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-href]');
+      if (!a) return;
+      e.preventDefault();
+      document.querySelectorAll('.nav a').forEach(x => x.classList.remove('active'));
+      a.classList.add('active');
+      frame.src = a.dataset.href;
+      pageTitle.textContent = a.textContent.trim();
+    });
 
-    // --- Fetchers ---
-    async function fetchMenu() {
-      try {
-        const r = await fetch('/api/menu', { credentials: 'include' });
-        if (!r.ok) throw 0;
-        const j = await r.json();
-        if (!Array.isArray(j) || j.length === 0) throw 0;
-        return j;
-      } catch { return DEFAULT_MENU; }
-    }
-    async function fetchUser() {
-      try {
-        const r = await fetch('/api/technicians/me', { credentials: 'include' });
-        if (!r.ok) throw 0;
-        const j = await r.json();
-        return j && (j.full_name || j.name || j.email || "Technician");
-      } catch { return "Technician"; }
-    }
-
-    // --- Icons (monochrome SVG) ---
-    const ICONS = {
-      new: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm7 1v4h4"/><path d="M8 13h8M8 9h5M8 17h8"/></svg>',
-      output: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 13h12v8H6z"/><path d="M9 13V9h6v4"/></svg>',
-      logout: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 17l5-5-5-5"/><path d="M20 12H9"/><path d="M13 21H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h7"/></svg>'
-    };
-
-    // --- Renderers ---
-    function renderMenu(items) {
-      const nav = $('#menu');
-      nav.innerHTML = '<ul></ul>';
-      const ul = $('ul', nav);
-      const activeId = load('activeId', items[0]?.id);
-      for (const item of items) {
-        const li = document.createElement('li');
-        const btn = document.createElement('button');
-        btn.className = 'item';
-        btn.setAttribute('data-id', item.id);
-        btn.setAttribute('data-href', item.href);
-        btn.setAttribute('data-target', item.target || 'frame');
-        btn.innerHTML = \`\${ICONS[item.id] || ''}<span class="label">\${item.label}</span><span class="shortcut">\${item.shortcut || ''}</span><span class="tooltip">\${item.label}</span>\`;
-        btn.addEventListener('click', () => navigateTo(item, btn));
-        li.appendChild(btn);
-        ul.appendChild(li);
-        if (item.id === activeId) setActive(btn);
-      }
-      if (!$$('.item[aria-current="page"]').length) setActive($('.item'));
-    }
-
-    function setActive(btn) {
-      $$('.item[aria-current="page"]').forEach(b => b.removeAttribute('aria-current'));
-      if (btn) btn.setAttribute('aria-current', 'page');
-      const title = $('.label', btn)?.textContent || '';
-      $('#pageTitle').textContent = title || 'Untitled';
-      save('activeId', btn?.dataset.id);
-    }
-
-    function navigateTo(item, btn) {
-      const target = (item.target || 'frame');
-      if (target === 'frame') {
-        $('#contentFrame').src = item.href;
-        setActive(btn);
-        // In mobile view, close the drawer after selection
-        $('#sidebar').classList.remove('open');
-      } else {
-        window.location.href = item.href;
-      }
-    }
-
-    // --- Filtering ---
-    function applyFilter(q) {
-      const term = (q || '').toLowerCase();
-      $$('.item').forEach(btn => {
-        const label = $('.label', btn)?.textContent.toLowerCase() || '';
-        btn.parentElement.style.display = label.includes(term) ? '' : 'none';
-      });
-    }
-
-    // --- Sidebar behaviors ---
-    function initSidebar() {
-      const collapsed = load('sidebarCollapsed', false);
-      document.body.classList.toggle('collapsed', collapsed);
-      $('#collapseBtn').addEventListener('click', () => {
-        const isCollapsed = document.body.classList.toggle('collapsed');
-        save('sidebarCollapsed', isCollapsed);
-      });
-
-      // Resizer
-      const handle = $('#handle');
-      const sidebar = $('#sidebar');
-      let startX = 0, startW = 0, dragging = false;
-      handle.addEventListener('mousedown', (e) => {
-        dragging = true; startX = e.clientX; startW = sidebar.getBoundingClientRect().width;
-        document.body.style.userSelect = 'none';
-      });
-      window.addEventListener('mousemove', (e) => {
-        if (!dragging) return;
-        const dx = e.clientX - startX;
-        let w = Math.max(200, Math.min(360, startW + dx));
-        sidebar.style.width = w + 'px';
-        document.documentElement.style.setProperty('--sidebar-w', w + 'px');
-      });
-      window.addEventListener('mouseup', () => {
-        if (!dragging) return;
-        dragging = false;
-        document.body.style.userSelect = '';
-        const w = sidebar.getBoundingClientRect().width;
-        document.documentElement.style.setProperty('--sidebar-w', w + 'px');
-        save('sidebarWidth', w);
-      });
-
-      // Restore width
-      const savedW = load('sidebarWidth', null);
-      if (savedW) {
-        document.documentElement.style.setProperty('--sidebar-w', savedW + 'px');
-        sidebar.style.width = savedW + 'px';
-      }
-
-      // Mobile drawer toggle
-      $('#mobileMenuBtn').addEventListener('click', () => {
-        sidebar.classList.toggle('open');
-      });
-    }
-
-    // --- Keyboard shortcuts ---
-    function initShortcuts(items) {
-      window.addEventListener('keydown', (e) => {
-        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
-        const combo = \`\${e.key.length === 1 ? 'g' : ''} \${e.key.toLowerCase()}\`;
-        for (const item of items) {
-          if (!item.shortcut) continue;
-          if (item.shortcut.toLowerCase() === combo.trim()) {
-            const btn = document.querySelector(\`.item[data-id="\${item.id}"]\`);
-            if (btn) { e.preventDefault(); btn.click(); }
-          }
-        }
-        // Quick open filter: press '/'
-        if (e.key === '/') { e.preventDefault(); $('#menuFilter').focus(); }
-      });
-    }
-
-    // --- Boot ---
-    (async () => {
-      const [items, userLabel] = await Promise.all([fetchMenu(), fetchUser()]);
-      $('#userBar').textContent = userLabel;
-      initSidebar();
-      renderMenu(items);
-      initShortcuts(items);
-
-      // Default initial route = last active or first
-      const activeId = load('activeId', items[0]?.id);
-      const firstBtn = document.querySelector(\`.item[data-id="\${activeId}"]\`) || $('.item');
-      if (firstBtn) firstBtn.click();
-
-      // Filter
-      $('#menuFilter').addEventListener('input', (e) => applyFilter(e.target.value));
-    })();
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {}
+      window.location.href = '/';
+    });
   </script>
 </body>
 </html>
