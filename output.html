@@ -32,6 +32,7 @@
     @media print {
       html, body { width:8.5in; height:11in; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       #page { width:8.5in !important; min-height:11in !important; margin:0 !important; }
+      .no-print { display:none !important; }
     }
   </style>
 
@@ -65,7 +66,12 @@
       var params = new URLSearchParams(location.search);
       var id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
       if (!id) return;
-      if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return;  // (kept as-is per your request)
+
+      // 🔧 Minimal fix:
+      // Previously: returned if "schedule4LoadedFromId" was '1', which caused reopens to reuse the very first record.
+      // Now: only skip fetch if we're opening the *same* id *and* we already have cached data.
+      var lastId = sessionStorage.getItem('schedule4_current_id');
+      if (lastId === id && sessionStorage.getItem('schedule4Data')) return;
 
       var xhr = new XMLHttpRequest();
       xhr.open('GET', '/api/schedule4s/get?id=' + encodeURIComponent(id), false); // sync on purpose
@@ -98,20 +104,19 @@
         data.repairs         = pick('repairs','repairsNotes','repairs_text');
         data.inspectorName   = pick('inspectorName') || row.technician_name || '';
 
-      
         data.rSteerBrake = pick('rSteerBrake');
         data.rDriveBrake = pick('rDriveBrake');
         data.rTagBrake   = pick('rTagBrake');
         data.lSteerBrake = pick('lSteerBrake');
         data.lDriveBrake = pick('lDriveBrake');
         data.lTagBrake   = pick('lTagBrake');
-       
-
+        
         data.signature       = pick('signature');
         data.checklist       = p.checklist || {};
 
         try { sessionStorage.setItem('schedule4Data', JSON.stringify(data)); } catch(e){}
-        try { sessionStorage.setItem('schedule4LoadedFromId','1'); } catch(e){}
+        try { sessionStorage.setItem('schedule4LoadedFromId','1'); } catch(e){} // keep your existing semantics
+        try { sessionStorage.setItem('schedule4_current_id', id); } catch(e){}
       }
     } catch (e) {}
   })();
@@ -387,7 +392,7 @@
         if (img) img.src = data.signature;
       }
 
-      // --- Checklist matching with normalization ---
+      // --- Checklist matching with normalization (fixes "&&" vs "and" etc.) ---
       function normalizeLabel(s){
         return String(s||'')
           .toLowerCase()
@@ -419,6 +424,7 @@
         var norm = normalizeLabel(labelTxt);
         var st = dataChecklistNorm[norm];
 
+        // very light fuzzy fallback: try to match longest included key
         if (!st) {
           var bestKey = ''; 
           for (var k in dataChecklistNorm) {
@@ -441,6 +447,7 @@
         const toUS = (window.__schedule4_toUS || function(x){ return x; });
 
         const unitRaw = (data.unitNumber || 'Unit').toString().trim();
+        // Sanitize only illegal filename characters; preserve spaces and # as requested
         const unitSan = unitRaw.replace(/[\/\\<>:"|?*]+/g,'').trim();
 
         const dateUS = toUS(data.inspectionDate) || toUS(new Date());
