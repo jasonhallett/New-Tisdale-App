@@ -170,6 +170,7 @@
         closeModal();
       });
 
+      // 🛠 FIX: Always store a Data URL string (plus base64 copy) so DB saves text, not Buffer/bytea.
       saveBtn.addEventListener('click', async () => {
         // Require at least some ink
         const hasInk = ctx.getImageData(0, 0, canvas.width, canvas.height).data.some(n => n !== 0);
@@ -182,12 +183,42 @@
         saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
 
         try {
-          const dataUrl = canvas.toDataURL('image/png');
+          // Ensure we send DATA URL + base64 string (server can pick either).
+          let dataUrl = canvas.toDataURL('image/png');
+          if (!/^data:image\/png;base64,/.test(dataUrl)) {
+            // extremely rare: reconstruct as data URL if some agent returned non-base64
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            dataUrl = await new Response(blob).text(); // most browsers return data URL from toDataURL anyway
+            if (!/^data:image\/png;base64,/.test(dataUrl)) {
+              // As a final fallback, manually build it
+              const arrBuf = await blob.arrayBuffer();
+              const bytes = new Uint8Array(arrBuf);
+              let bin = '';
+              for (let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+              const b64 = btoa(bin);
+              dataUrl = `data:image/png;base64,${b64}`;
+            }
+          }
+          const base64 = dataUrl.split(',')[1] || '';
+
           const resp = await fetch('/api/technicians/signature', {
             method: 'PUT',
             credentials: 'include',
-            headers: { 'Content-Type':'application/json' },
-            body: JSON.stringify({ signatureDataUrl: dataUrl })
+            headers: {
+              'Content-Type':'application/json',
+              'Accept': 'application/json',
+              // Pass a clear hint to the server to store as TEXT (not bytea)
+              'X-Signature-Format': 'data-url',
+              'X-Signature-Encoding': 'base64'
+            },
+            body: JSON.stringify({
+              // Primary: store the data URL string verbatim (what new_inspection.html already expects)
+              signatureDataUrl: dataUrl,
+              // Secondary: also provide raw base64 (if backend prefers to prepend the prefix itself)
+              signatureBase64: base64,
+              mime: 'image/png',
+              format: 'data-url'
+            })
           });
           if (!resp.ok) {
             const txt = await resp.text().catch(()=> '');
@@ -220,7 +251,7 @@
         if (me.signatureDataUrl) return;
 
         // Show it now and mark as shown for this session/tab
-        openModal();
+        modal.classList.add('show');
         try { sessionStorage.setItem('__sig_prompt_shown', '1'); } catch {}
       }
 
