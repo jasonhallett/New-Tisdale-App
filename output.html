@@ -215,7 +215,9 @@
     function normalizeKey(s) {
       return String(s || '')
         .toLowerCase()
-        .replace(/&/g, ' and ')
+        .replace(/&/g, ' and ')     // handle "&&"
+        .replace(/[-–—]/g, ' ')     // push-out -> push out
+        .replace(/['’]/g, '')       // manufacturer’s -> manufacturers
         .replace(/[^a-z0-9 ]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -249,6 +251,20 @@
       if (box) box.textContent = val;
     }
 
+    function containsAllTokens(haystack, tokens) {
+      return tokens.every(t => haystack.includes(t));
+    }
+
+    // Forgiving token maps for the two stubborn labels
+    const CHECKLIST_TOKEN_MAP = {
+      [ "clearance between disc brake pads and rotor exceeds manufacturer's specified limit" ]: [
+        'clearance','disc','brake','pad','rotor','manufacturer','specified','limit'
+      ],
+      [ "all push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally" ]: [
+        'push','out','window','emergency','door','marking','light','inspect','operating','normally'
+      ]
+    };
+
     function applyData(data) {
       fillByLabel('Carrier', data.carrierName);
       fillByLabel('Address of the location where the inspection is conducted', data.locationAddress);
@@ -275,14 +291,29 @@
 
       if (data.signature) { const img = document.getElementById('signatureImg'); if (img) img.src = data.signature; }
 
-      const inMap = {};
+      // Build normalized incoming checklist map
       const rawCL = data.checklist || {};
-      Object.keys(rawCL).forEach(k => { inMap[normalizeKey(k)] = rawCL[k]; });
+      const normIn = {};
+      Object.keys(rawCL).forEach(k => { normIn[normalizeKey(k)] = rawCL[k]; });
 
+      // Apply statuses with robust matching for the two tricky items
       document.querySelectorAll('.checklist-item').forEach(item => {
         const label = item.querySelector('.checklist-item-text')?.textContent.trim() || '';
-        const norm = normalizeKey(label);
-        const v = inMap[norm] ?? rawCL[label];
+        const normLabel = normalizeKey(label);
+
+        // 1) direct normalized match (or exact raw match)
+        let v = normIn[normLabel] ?? rawCL[label];
+
+        // 2) if missing, try token-based search for the two known labels
+        if (v == null) {
+          const keyLower = label.toLowerCase();
+          const tokens = CHECKLIST_TOKEN_MAP[keyLower];
+          if (tokens) {
+            const matchKey = Object.keys(normIn).find(nk => containsAllTokens(nk, tokens));
+            if (matchKey) v = normIn[matchKey];
+          }
+        }
+
         if (v != null) setStatus(item, v);
       });
     }
