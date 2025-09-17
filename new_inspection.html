@@ -47,13 +47,9 @@
     .grid-3 { display:grid; grid-template-columns:repeat(1,minmax(0,1fr)); gap:1rem; }
     @media (min-width:640px){ .grid-3{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
 
-    /* UPDATED: responsive display, fixed 5:1 aspect, looks good on phones */
-    #signatureCanvas{
-      width: 100%;
-      max-width: 600px;
-      height: auto;
-      aspect-ratio: 5 / 1;
-      border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair; background:#fff;
+    #signatureCanvas {
+      border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair;
+      width:400px; height:100px;
     }
     .footer-note{ font-size:0.875rem; color:#6b7280; margin-top:1rem; }
   </style>
@@ -523,8 +519,7 @@
           </div>
           <div class="form-group">
             <label class="block text-sm">Signature of the person who conducted the inspection</label>
-            <!-- UPDATED width/height are overridden by JS, but set to target for clarity -->
-            <canvas id="signatureCanvas" width="1500" height="300" class="mx-auto block"></canvas>
+            <canvas id="signatureCanvas" width="400" height="100" class="mx-auto block"></canvas>
             <button type="button" id="clearSignatureBtn" class="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition">Clear Signature</button>
           </div>
         </div>
@@ -632,71 +627,29 @@
         }
       });
 
-      /* UPDATED: Signature pad (responsive on screen; always saves 1500x300) */
-      (function(){
-        const CANVAS_W = 1500;  // global saved size
-        const CANVAS_H = 300;
-
-        const canvas = document.getElementById('signatureCanvas');
-        const ctx = canvas.getContext('2d');
-
-        // Ensure fixed internal resolution for crisp saved image
-        canvas.width  = CANVAS_W;
-        canvas.height = CANVAS_H;
-
-        let isDrawing = false;
-        let lastX = 0, lastY = 0;
-
-        function getCoords(evt){
-          const rect = canvas.getBoundingClientRect();
-          const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-          const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-          const scaleX = CANVAS_W / rect.width;
-          const scaleY = CANVAS_H / rect.height;
-          return {
-            x: (clientX - rect.left) * scaleX,
-            y: (clientY - rect.top)  * scaleY
-          };
-        }
-
-        function startDraw(e){
-          e.preventDefault();
-          isDrawing = true;
-          const p = getCoords(e);
-          lastX = p.x; lastY = p.y;
-        }
-        function draw(e){
-          if(!isDrawing) return;
-          e.preventDefault();
-          const p = getCoords(e);
-          ctx.beginPath();
-          ctx.moveTo(lastX, lastY);
-          ctx.lineTo(p.x, p.y);
-          ctx.strokeStyle = '#000';
-          ctx.lineWidth = 2;
-          ctx.lineCap = 'round';
-          ctx.stroke();
-          lastX = p.x; lastY = p.y;
-        }
-        function endDraw(){ isDrawing = false; }
-
-        // Mouse
-        canvas.addEventListener('mousedown', startDraw);
-        canvas.addEventListener('mousemove', draw);
-        canvas.addEventListener('mouseup', endDraw);
-        canvas.addEventListener('mouseleave', endDraw);
-        // Touch
-        canvas.addEventListener('touchstart', startDraw, { passive:false });
-        canvas.addEventListener('touchmove', draw, { passive:false });
-        canvas.addEventListener('touchend', endDraw);
-
-        // Clear button
-        document.getElementById('clearSignatureBtn')?.addEventListener('click', () => {
-          ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-        });
-
-        // Note: To save, keep using canvas.toDataURL('image/png') – it will be 1500x300.
-      })();
+      // Signature pad
+      const canvas = document.getElementById('signatureCanvas');
+      const ctx = canvas.getContext('2d');
+      let isDrawing=false, lastX=0, lastY=0;
+      function resizeCanvas(){ canvas.width=400; canvas.height=100; }
+      window.addEventListener('resize', resizeCanvas); resizeCanvas();
+      function draw(e){
+        if(!isDrawing) return;
+        const r=canvas.getBoundingClientRect();
+        const x = e.touches ? e.touches[0].clientX - r.left : e.offsetX;
+        const y = e.touches ? e.touches[0].clientY - r.top  : e.offsetY;
+        ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(x,y);
+        ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.stroke();
+        lastX=x; lastY=y;
+      }
+      canvas.addEventListener('mousedown', e=>{ isDrawing=true; [lastX,lastY]=[e.offsetX,e.offsetY]; });
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('mouseup', ()=>isDrawing=false);
+      canvas.addEventListener('mouseout', ()=>isDrawing=false);
+      canvas.addEventListener('touchstart', e=>{ e.preventDefault(); isDrawing=true; const r=canvas.getBoundingClientRect(); const t=e.touches[0]; [lastX,lastY]=[t.clientX-r.left,t.clientY-r.top]; });
+      canvas.addEventListener('touchmove', e=>{ e.preventDefault(); draw(e); });
+      canvas.addEventListener('touchend', ()=>isDrawing=false);
+      document.getElementById('clearSignatureBtn').addEventListener('click', ()=>ctx.clearRect(0,0,canvas.width,canvas.height));
 
       // ---------- Samsara ----------
       const unitSelect = document.getElementById('unit-number');
@@ -858,8 +811,6 @@
         if (!document.getElementById('declaration-checkbox').checked) errors.push('You must agree to the declaration.');
 
         // Signature present?
-        const canvas = document.getElementById('signatureCanvas');
-        const ctx = canvas.getContext('2d');
         const hasInk = ctx.getImageData(0, 0, canvas.width, canvas.height).data.some(ch => ch !== 0);
         if (!hasInk) errors.push('A signature is required.');
 
@@ -893,7 +844,7 @@
           }
         });
 
-        const signatureDataURL = document.getElementById('signatureCanvas').toDataURL('image/png');
+        const signatureDataURL = canvas.toDataURL('image/png');
 
         const payload = {
           samsaraVehicleId: selectedVehicleId,
@@ -1088,7 +1039,7 @@
   function toISODateLocal(d){
     var y = d.getFullYear();
     var m = String(d.getMonth()+1).padStart(2,'0');
-    var day = String(d.getDate()).toString().padStart(2,'0');
+    var day = String(d.getDate()).padStart(2,'0');
     return y + '-' + m + '-' + day;
   }
   function addDays(d, n){ var e = new Date(d.getTime()); e.setDate(e.getDate()+n); return e; }
@@ -1148,7 +1099,7 @@
   function toISODateLocal(d){
     var y = d.getFullYear();
     var m = String(d.getMonth()+1).padStart(2,'0');
-    var day = String(d.getDate()).toString().padStart(2,'0');
+    var day = String(d.getDate()).padStart(2,'0');
     return y + '-' + m + '-' + day;
   }
   function addDays(d, n){ var e = new Date(d.getTime()); e.setDate(e.getDate()+n); return e; }
