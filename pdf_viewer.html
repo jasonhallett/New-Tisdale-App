@@ -1,185 +1,158 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Inspection PDF Viewer</title>
+  <meta charset="utf-8" />
+  <title>PDF Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    html, body { height:100%; }
-    body { margin:0; background:#0b0b0c; }
-    .toolbar { position:sticky; top:0; z-index:50; }
+    html, body { height: 100%; }
+    body { margin: 0; background: #0b1020; color: #fff; }
+    .toolbar { position: sticky; top: 0; z-index: 10; background: #0b1020; border-bottom: 1px solid #1e293b; }
+    .btn {
+      background: #111827; color: #fff; border: 1px solid #1f2937; padding: 8px 12px; border-radius: 8px;
+      font-weight: 500; font-size: 14px; cursor: pointer; transition: transform .04s ease;
+    }
+    .btn:hover { background: #1f2937; }
+    .btn:active { transform: translateY(1px); }
+    .btn[disabled] { opacity:.5; cursor:not-allowed; }
+    iframe, embed { width: 100%; height: calc(100dvh - 56px); background: #1f2937; border: 0; }
+    .badge { font-size: 12px; opacity: .8; }
   </style>
 </head>
-<body class="text-white">
-  <!-- Toolbar -->
-  <header class="toolbar w-full bg-black/60 backdrop-blur supports-[backdrop-filter]:bg-black/40 border-b border-white/10">
-    <div class="max-w-screen-xl mx-auto px-4 py-2 flex items-center gap-2">
-      <a href="/" class="text-sm text-white/70 hover:text-white">← Back</a>
-      <div class="ml-auto flex items-center gap-2">
-        <button id="btnPrint" class="px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm">Download PDF</button>
-        <!-- New: Fleetio button -->
-        <button id="btnFleetio" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">Create Fleetio Work Order</button>
-        <button id="btnClose" class="px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm">Close</button>
-      </div>
-    </div>
-  </header>
-
-  <!-- Viewer -->
-  <main class="h-[calc(100%-56px)]">
-    <iframe id="pdfFrame" class="w-full h-full bg-neutral-900" title="PDF Preview"></iframe>
-  </main>
-
-  <!-- Simple toast -->
-  <div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 hidden">
-    <div class="rounded-xl bg-white text-black shadow-lg px-4 py-2 text-sm" id="toastText"></div>
-  </div>
-
-  <!-- Modal: choose vehicle if Unit # not found -->
-  <div id="fleetioModal" class="fixed inset-0 hidden items-center justify-center">
-    <div class="absolute inset-0 bg-black/60"></div>
-    <div class="relative w-full max-w-lg bg-neutral-900 border border-white/10 rounded-2xl shadow-xl p-6">
-      <h2 class="text-lg font-semibold mb-2">Select Unit in Fleetio</h2>
-      <p class="text-white/70 text-sm mb-4" id="fleetioModalText">
-        We couldn't find this Unit # in Fleetio. Choose the correct one below.
-      </p>
-      <label class="block text-sm text-white/80 mb-1" for="fleetioUnitSelect">Available Units</label>
-      <select id="fleetioUnitSelect" class="w-full bg-neutral-800 border border-white/10 rounded-xl px-3 py-2 text-sm mb-5"></select>
-      <div class="flex items-center justify-end gap-2">
-        <button id="fleetioCancel" class="px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm">Cancel</button>
-        <button id="fleetioContinue" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">Continue</button>
-      </div>
+<body>
+  <div class="toolbar w-full">
+    <div class="max-w-screen-2xl mx-auto px-3 py-2 flex items-center gap-2">
+      <button id="btnPrint" class="btn">Print</button>
+      <button id="btnDownload" class="btn">Save to Files</button>
+      <button id="btnImport" class="btn" disabled title="Coming soon">Import to Fleetio Work Order</button>
+      <div class="flex-1"></div>
+      <span id="fileMeta" class="badge"></span>
+      <button id="btnClose" class="btn">Close</button>
     </div>
   </div>
+
+  <!-- We use <iframe>. If your environment renders better with <embed>, swap the tag below. -->
+  <iframe id="pdfFrame" src="" title="PDF"></iframe>
 
   <script>
     (function () {
-      // ---------- helpers ----------
-      const $ = (sel) => document.querySelector(sel);
-      const params = new URLSearchParams(location.search);
-      const inspectionId = params.get('id') || '';
-      const src = params.get('src') || ''; // blob/object URL from the caller (for preview)
-      const filename = params.get('filename') || '';
-      const reportUrl = `/output.html?id=${encodeURIComponent(inspectionId)}`;
+      const qs = new URLSearchParams(location.search);
+      const srcParam = qs.get("src");             // expected: blob:... | data:application/pdf... | https://...
+      const filename = qs.get("filename") || "document.pdf";
+      const inspectionId = qs.get("id") || "";    // optional, for display/metadata only
 
-      // Try to pull the same data the print endpoint uses
-      function getSchedule4Data() {
-        try { return JSON.parse(sessionStorage.getItem('schedule4Data') || '{}'); } catch { return {}; }
+      const frame = document.getElementById("pdfFrame");
+      const meta = document.getElementById("fileMeta");
+      const btnPrint = document.getElementById("btnPrint");
+      const btnDownload = document.getElementById("btnDownload");
+      const btnClose = document.getElementById("btnClose");
+      const btnImport = document.getElementById("btnImport");
+
+      // Utilities
+      const isDataPdf = (u) => typeof u === 'string' && u.startsWith("data:application/pdf");
+      const isBlob = (u) => typeof u === 'string' && u.startsWith("blob:");
+      const isHttp = (u) => typeof u === 'string' && /^https?:\/\//i.test(u);
+      const text = (v) => (v == null ? "" : String(v));
+
+      if (!srcParam) {
+        document.body.innerHTML =
+          '<div class="p-6 text-center text-red-300">Missing <code>?src=</code> for PDF viewer.</div>';
+        return;
       }
 
-      // Derive Unit # from filename: Schedule-4_Inspection_<UNIT>_<YYYY-MM-DD>.pdf
-      function parseUnitFromFilename(name) {
+      let viewerObjectUrl = null;   // blob URL owned by this viewer tab (so Save/Print keep working)
+      let originalSrc = srcParam;   // as provided by opener
+
+      async function adoptSrc(u) {
         try {
-          const base = (name || '').replace(/\.[^.]+$/, '');
-          const m = base.match(/Schedule-4_Inspection_(.+)_\d{4}-\d{2}-\d{2}$/);
-          if (m) return m[1].replace(/_/g, ' ');
-        } catch {}
-        return '';
+          // For robustness, convert blob: or data: to this tab's own blob URL.
+          if (isDataPdf(u) || isBlob(u) || isHttp(u)) {
+            const resp = await fetch(u, { credentials: "include" });
+            if (!resp.ok) throw new Error(`Fetch failed (${resp.status})`);
+            const blob = await resp.blob();
+            // Revoke old viewer URL if any
+            if (viewerObjectUrl) { try { URL.revokeObjectURL(viewerObjectUrl); } catch {} }
+            viewerObjectUrl = URL.createObjectURL(blob);
+            frame.src = viewerObjectUrl;
+          } else {
+            // Unknown scheme – best effort: just set it
+            frame.src = u;
+          }
+        } catch (err) {
+          // Fallback to original src if fetch fails (e.g., blocked by CSP)
+          frame.src = u;
+        }
       }
 
-      function showToast(msg) {
-        const el = $('#toast'); const t = $('#toastText');
-        t.textContent = msg; el.classList.remove('hidden');
-        setTimeout(() => el.classList.add('hidden'), 3500);
-      }
+      // Initialize
+      adoptSrc(originalSrc);
+      meta.textContent = (inspectionId ? `ID: ${inspectionId} · ` : "") + filename;
 
-      // ---------- wire up UI ----------
-      const frame = $('#pdfFrame');
-      const btnPrint = $('#btnPrint');
-      const btnFleetio = $('#btnFleetio');
-      const btnClose = $('#btnClose');
-
-      // load pdf into iframe
-      if (src) frame.src = src;
-
-      btnPrint.addEventListener('click', async () => {
-        // Just open the server printer so it downloads
-        const body = {
-          url: reportUrl,
-          filename: filename || 'schedule4.pdf',
-          data: getSchedule4Data()
-        };
+      // --- SAVE the currently open PDF (no regeneration) ---
+      btnDownload.addEventListener("click", async () => {
         try {
-          const res = await fetch('/api/pdf/print', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-          });
-          if (!res.ok) throw new Error('Printer failed');
-          // stream download
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = body.filename; a.click();
-          URL.revokeObjectURL(url);
-        } catch (e) {
-          alert('Failed to generate PDF: ' + e.message);
+          const current = viewerObjectUrl || originalSrc;
+
+          if (isBlob(current) || isDataPdf(current)) {
+            const a = document.createElement("a");
+            a.href = current;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          } else if (isHttp(current)) {
+            const resp = await fetch(current, { credentials: "include" });
+            if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+          } else {
+            // Unknown scheme; try direct download
+            const a = document.createElement("a");
+            a.href = current;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          }
+        } catch (err) {
+          alert("Could not save this PDF: " + (err && err.message ? err.message : err));
         }
       });
 
-      // modal elements
-      const modal = $('#fleetioModal');
-      const modalText = $('#fleetioModalText');
-      const selectEl = $('#fleetioUnitSelect');
-      const modalCancel = $('#fleetioCancel');
-      const modalContinue = $('#fleetioContinue');
-
-      function openModal(choices, message) {
-        selectEl.innerHTML = '';
-        (choices || []).forEach(c => {
-          const opt = document.createElement('option');
-          opt.value = c.id;
-          opt.textContent = c.label || c.name || `Unit ${c.id}`;
-          selectEl.appendChild(opt);
-        });
-        modalText.textContent = message || 'Select a unit:';
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-      }
-      function closeModal() { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-
-      modalCancel.addEventListener('click', closeModal);
-      modalContinue.addEventListener('click', async () => {
-        const vehicleId = selectEl.value;
-        closeModal();
-        await actuallyCreateWorkOrder({ vehicleId });
+      // --- PRINT the currently open PDF (no regeneration) ---
+      btnPrint.addEventListener("click", () => {
+        try {
+          if (frame && frame.contentWindow) {
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+          } else {
+            const w = window.open(viewerObjectUrl || originalSrc, "_blank", "noopener");
+            if (w) w.addEventListener("load", () => w.print());
+          }
+        } catch (err) {
+          alert("Could not trigger print: " + (err && err.message ? err.message : err));
+        }
       });
 
-      async function actuallyCreateWorkOrder(extra = {}) {
-        const unitNumber = parseUnitFromFilename(filename) || getSchedule4Data()?.unitNumber || '';
-        const body = {
-          inspectionId,
-          filename: filename || 'schedule4.pdf',
-          reportUrl,
-          data: getSchedule4Data(),
-          unitNumber,
-          serviceTaskName: 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)',
-          ...extra
-        };
-        const res = await fetch('/api/fleetio/create-work-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        const json = await res.json().catch(() => ({}));
+      // --- IMPORT placeholder (Fleetio) ---
+      btnImport.addEventListener("click", () => {
+        alert("Fleetio Work Order import is coming soon. We will use this open PDF as the source payload.");
+      });
 
-        if (res.status === 404 && json?.code === 'vehicle_not_found') {
-          openModal(json.choices || [], json.message || 'Select a unit in Fleetio');
-          return;
-        }
+      // --- CLOSE ---
+      btnClose.addEventListener("click", () => {
+        try { window.close(); } catch(_) {}
+      });
 
-        if (!res.ok) {
-          alert('Fleetio error: ' + (json?.error || res.statusText));
-          return;
-        }
-
-        const link = json?.work_order?.web_url || json?.work_order_url || '';
-        showToast('Work Order created in Fleetio' + (link ? ' – opening…' : ''));
-        if (link) window.open(link, '_blank', 'noopener,noreferrer');
-      }
-
-      btnFleetio.addEventListener('click', () => actuallyCreateWorkOrder());
-      btnClose.addEventListener('click', () => window.close());
+      // Keep the viewer-owned blob URL alive; clean it up on unload
+      window.addEventListener("beforeunload", () => {
+        if (viewerObjectUrl) { try { URL.revokeObjectURL(viewerObjectUrl); } catch {} }
+      });
     })();
   </script>
 </body>
