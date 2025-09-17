@@ -6,7 +6,7 @@ export const config = { runtime: 'nodejs' };
 
 const BASE_V2 = 'https://secure.fleetio.com/api/v2';
 const BASE_V1 = 'https://secure.fleetio.com/api/v1';
-const FLEETIO_UPLOAD_ENDPOINT = 'https://lmuavc3zg4.execute-api.us-east-1.amazonaws.com/prod/uploads'; // per docs
+const FLEETIO_UPLOAD_ENDPOINT = 'https://lmuavc3zg4.execute-api.us-east-1.amazonaws.com/prod/uploads'; // official upload endpoint
 
 function requiredEnv(name) {
   const val = process.env[name];
@@ -15,7 +15,7 @@ function requiredEnv(name) {
 }
 
 const API_TOKEN = requiredEnv('FLEETIO_API_TOKEN');        // keep in Vercel
-const ACCOUNT_TOKEN = requiredEnv('FLEETIO_ACCOUNT_TOKEN'); // your 80ce8e499c (in Vercel)
+const ACCOUNT_TOKEN = requiredEnv('FLEETIO_ACCOUNT_TOKEN'); // e.g. 80ce8e499c
 
 // ---------- helpers ----------
 const defaultHeaders = {
@@ -65,6 +65,27 @@ function deriveOrigin(req) {
   return `${proto}://${host}`;
 }
 
+// Force absolute URL and ensure it has ?id=<inspectionId>
+function ensureReportUrl(req, reportUrl, inspectionId) {
+  const origin = deriveOrigin(req);
+  let absolute = reportUrl || '';
+  if (!/^https?:\/\//i.test(absolute)) {
+    absolute = `${origin}${absolute.startsWith('/') ? '' : '/'}${absolute}`;
+  }
+  try {
+    const u = new URL(absolute);
+    if (!u.searchParams.has('id') && inspectionId) {
+      u.searchParams.set('id', String(inspectionId));
+    }
+    return u.toString();
+  } catch {
+    // as a last resort, build from scratch
+    const base = `${origin}/output.html`;
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}id=${encodeURIComponent(String(inspectionId || ''))}`;
+  }
+}
+
 // ---------- Fleetio HTTP ----------
 async function fleetioV2(path, init = {}, step = 'fleetioV2') {
   const res = await fetch(`${BASE_V2}${path}`, {
@@ -97,14 +118,15 @@ async function fleetioV1(path, init = {}, step = 'fleetioV1') {
 }
 
 // ---------- PDF via your existing printer ----------
-async function renderPdfBuffer(req, { reportUrl, filename, data }) {
+async function renderPdfBuffer(req, { reportUrl, filename, data, inspectionId }) {
+  const urlForRender = ensureReportUrl(req, reportUrl, inspectionId);
   const origin = deriveOrigin(req);
-  const url = `${origin}/api/pdf/print`;
-  const res = await fetch(url, {
+  const printUrl = `${origin}/api/pdf/print`;
+  const res = await fetch(printUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      url: reportUrl,
+      url: urlForRender,                          // absolute, with ?id=
       filename: filename || 'schedule4.pdf',
       data: data || {}
     })
@@ -122,8 +144,7 @@ async function renderPdfBuffer(req, { reportUrl, filename, data }) {
 // ---------- Upload to Fleetio-managed storage (policy/signature/path) ----------
 async function uploadPdfToFleetio(pdfBuffer, filename) {
   // Step 1: get policy from v1
-  // Docs: Attaching Documents & Images (policy + signature + path; fixed upload endpoint). 
-  // We only need the returned `url` for step 3. :contentReference[oaicite:1]{index=1}
+  // Per docs: POST /api/v1/uploads/policies → { policy, signature, path } then upload binary to the fixed endpoint. :contentReference[oaicite:2]{index=2}
   const policyResp = await fleetioV1('/uploads/policies', {
     method: 'POST',
     body: JSON.stringify({
@@ -139,11 +160,11 @@ async function uploadPdfToFleetio(pdfBuffer, filename) {
     throw err;
   }
 
-  // Step 2: upload binary to Fleetio’s storage provider using the fixed endpoint
+  // Step 2: binary upload to Fleetio’s storage provider
   const url = new URL(FLEETIO_UPLOAD_ENDPOINT);
   url.searchParams.set('policy', policy);
   url.searchParams.set('signature', signature);
-  url.searchParams.set('path', path);            // e.g., /api/ABC123/
+  url.searchParams.set('path', path);
   if (filename) url.searchParams.set('filename', filename);
 
   const up = await fetch(url.toString(), {
@@ -159,7 +180,7 @@ async function uploadPdfToFleetio(pdfBuffer, filename) {
   }
 
   const j = await up.json().catch(() => null);
-  const fileUrl = j?.url; // docs: we carry forward the `url` only
+  const fileUrl = j?.url; // carry forward as file_url
   if (!fileUrl) {
     const err = new Error('[upload_pdf] Upload response missing url');
     err.step = 'upload_pdf'; err.status = 500; err.details = JSON.stringify(j).slice(0, 500);
@@ -173,7 +194,7 @@ async function listAllVehicles() {
   const all = [];
   const PER_PAGE = 100;
 
-  // Try cursor pagination first
+  // Cursor pagination first
   let cursor = null;
   for (let i = 0; i < 50; i++) {
     const params = new URLSearchParams({ per_page: String(PER_PAGE) });
@@ -188,7 +209,7 @@ async function listAllVehicles() {
     cursor = next;
   }
 
-  // Fallback to page/per_page (older tenants/array responses)
+  // Fallback to page/per_page (older tenants)
   if (all.length === 0) {
     let page = 1;
     for (let p = 0; p < 25; p++) {
@@ -225,7 +246,7 @@ function bestVehicleMatch(vehicles, unitNumber) {
   return null;
 }
 
-// Work Order Statuses (v1)
+// Work Order Statuses (v1) :contentReference[oaicite:3]{index=3}
 async function getOpenStatusId() {
   const PER_PAGE = 100;
   const params = new URLSearchParams({ per_page: String(PER_PAGE) });
@@ -329,13 +350,13 @@ export default async function handler(req, res) {
       work_order_status_id,
       issued_at,
       started_at,
-      ending_meter_same_as_start: odometer != null ? true : undefined,
+      ending_meter_same_as_start: odometer != null ? true : undefined, // :contentReference[oaicite:4]{index=4}
       ...(odometer != null
         ? {
             starting_meter_entry_attributes: {
               value: odometer,
-              date: toIsoDate(inspectionDate || new Date())
-              // meter_type: 'primary'
+              date: toIsoDate(inspectionDate || new Date()),
+              meter_type: 'primary' // explicitly target odometer (primary). :contentReference[oaicite:5]{index=5}
             }
           }
         : {})
@@ -354,10 +375,10 @@ export default async function handler(req, res) {
       throw err;
     }
 
-    // 5) Render PDF (your existing printer)
-    const pdfBuffer = await renderPdfBuffer(req, { reportUrl, filename, data });
+    // 5) Render PDF (your existing printer) — ensure absolute URL w/ ?id=
+    const pdfBuffer = await renderPdfBuffer(req, { reportUrl, filename, data, inspectionId });
 
-    // 6) Upload to Fleetio storage & get public URL (policy/signature/path flow)
+    // 6) Upload to Fleetio storage & get public URL (policy/signature/path flow) :contentReference[oaicite:6]{index=6}
     const file_url = await uploadPdfToFleetio(pdfBuffer, filename);
 
     // 7) Attach document to Work Order (v2 PATCH with documents_attributes)
@@ -367,15 +388,13 @@ export default async function handler(req, res) {
         documents_attributes: [
           {
             name: filename,
-            file_url,
-            file_mime_type: 'application/pdf',
-            file_name: filename
+            file_url
           }
         ]
       })
     }, 'attach_document');
 
-    // 8) Ensure Service Task exists (v1), then add as Work Order line item (v2)
+    // 8) Ensure Service Task exists (v1), then add as Work Order line item (v2).
     const taskName = serviceTaskName || 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
     const serviceTaskId = await findOrCreateServiceTaskId(taskName);
 
@@ -389,8 +408,8 @@ export default async function handler(req, res) {
       })
     }, 'create_line_item');
 
-    const work_order_url =
-      createdWO?.web_url || `https://secure.fleetio.com/work_orders/${workOrderId}`;
+    // Fleetio UI URL (with account token + id) as you requested
+    const work_order_url = `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${workOrderId}/edit`;
 
     return res.status(200).json({
       ok: true,
