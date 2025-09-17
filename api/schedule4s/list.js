@@ -1,6 +1,6 @@
 // /api/schedule4s/list.js
 // Returns: id, created_at (Date Inspected), unit, odometer, technician, location (address).
-// Sorted newest first.
+// Sorted newest first by created_at.
 
 export const config = { runtime: 'nodejs' };
 
@@ -11,7 +11,7 @@ export default async function handler(req, res) {
     const rows = await sql`
       SELECT
         id,
-        COALESCE(performed_at, created_at) AS created_at,
+        created_at,                              -- use created_at exactly as requested
         /* Unit # */
         COALESCE(vehicle_name, NULLIF(payload_json->>'unitNumber', '')) AS unit,
         /* Technician Name */
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
         /* Inspection Location / Address: direct column only */
         location AS location
       FROM schedule4_inspections
-      ORDER BY 2 DESC NULLS LAST
+      ORDER BY created_at DESC NULLS LAST
       LIMIT 500
     `;
 

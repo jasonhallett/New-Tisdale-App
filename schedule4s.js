@@ -1,5 +1,5 @@
 // js/schedule4s.js
-// Lists Schedule 4s with columns: Date Inspected, Unit #, Odometer, Technician Name, Inspection Location, View
+// Grid: Date Inspected (created_at, with time), Unit #, Odometer (left), Inspection Location, Technician Name, View
 
 async function fetchList() {
   const r = await fetch('/api/schedule4s/list', { credentials: 'include' });
@@ -8,14 +8,18 @@ async function fetchList() {
   return Array.isArray(j.items) ? j.items : [];
 }
 
-function fmtDate(iso) {
+function fmtDateTime(iso) {
   try {
     const d = new Date(iso);
     if (isNaN(+d)) return '—';
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     const yyyy = d.getFullYear();
-    return `${mm}/${dd}/${yyyy}`;
+    let hh = d.getHours();
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12; if (hh === 0) hh = 12;
+    return `${mm}/${dd}/${yyyy} ${hh}:${mins} ${ampm}`;
   } catch { return '—'; }
 }
 
@@ -39,7 +43,7 @@ function render(items) {
   const tbody = document.querySelector('#grid tbody');
   tbody.innerHTML = items.map((row) => {
     const id    = row.id;
-    const date  = fmtDate(row.created_at);
+    const date  = fmtDateTime(row.created_at);  // <-- show date & time from created_at
     const unit  = htmlesc(row.unit || row.unit_number || row.vehicle || '—');
     const odo   = fmtOdo(row.odometer);
     const tech  = htmlesc(row.technician || row.technician_name || '—');
@@ -49,15 +53,10 @@ function render(items) {
       <td class="col-date">${date}</td>
       <td class="col-unit">${unit}</td>
       <td class="col-odo">${odo}</td>
-      <td class="col-tech cell-ellipsis" title="${tech}">${tech}</td>
       <td class="col-loc cell-ellipsis" title="${loc}">${loc}</td>
+      <td class="col-tech cell-ellipsis" title="${tech}">${tech}</td>
       <td class="col-view">
-        <a class="btn-ghost-sm open-btn" href="${href}" target="_top" title="Open Output">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <path d="M9 18l6-6-6-6"></path>
-          </svg>
-          View
-        </a>
+        <a class="btn-link-sm open-btn" href="${href}" target="_top" title="Open Output">View</a>
       </td>
     </tr>`;
   }).join('');

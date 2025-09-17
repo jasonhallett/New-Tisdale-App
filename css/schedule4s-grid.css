@@ -1,17 +1,17 @@
 /* css/schedule4s-grid.css */
-/* Ultra-compact table + tiny link-style View control. */
+/* Compact table + tiny link-style View control. */
 .table.compact th, .table.compact td { padding: 4px 6px; vertical-align: middle; }
 .col-date, .col-unit, .col-odo, .col-tech, .col-loc, .col-view { white-space: nowrap; }
-.col-date { width: 112px; }
-.col-unit { width: 130px; }   /* wider per request */
-.col-odo  { width: 140px; text-align: left; } /* align left now */
-.col-tech { max-width: 110px; } /* compact */
+.col-date { width: 180px; }            /* widened for mm/dd/yyyy hh:mm AM/PM */
+.col-unit { width: 130px; }
+.col-odo  { width: 140px; text-align: left; } /* left-aligned per request */
+.col-tech { max-width: 110px; }
 .col-loc  { max-width: 360px; }
-.col-view { width: 56px; text-align: center; } /* keep under header */
+.col-view { width: 56px; text-align: center; }
 
 .cell-ellipsis { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
-/* Tiny link button (no border box, not "big") */
+/* Tiny link button */
 .btn-link-sm {
   display: inline-block;
   font-size: 12px;
