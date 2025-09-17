@@ -92,38 +92,38 @@
       // load pdf into iframe
       if (src) frame.src = src;
 
-      // --- SAVE the currently open PDF (no regeneration) ---
-      btnDownload.addEventListener("click", async () => {
+      // === CHANGED: Download the already-open PDF instead of regenerating ===
+      btnPrint.addEventListener('click', async () => {
         try {
-          const current = viewerObjectUrl || originalSrc;
+          const currentSrc = src || frame?.src || '';
+          const dlName = filename || 'schedule4.pdf';
 
-          if (isBlob(current) || isDataPdf(current)) {
-            const a = document.createElement("a");
-            a.href = current;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-          } else if (isHttp(current)) {
-            const resp = await fetch(current, { credentials: "include" });
-            if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
-            const blob = await resp.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url; a.download = filename;
-            document.body.appendChild(a); a.click(); a.remove();
-            URL.revokeObjectURL(url);
-          } else {
-            // Unknown scheme; try direct download
-            const a = document.createElement("a");
-            a.href = current;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
+          if (!currentSrc) {
+            alert('No PDF is loaded to download.');
+            return;
           }
-        } catch (err) {
-          alert("Could not save this PDF: " + (err && err.message ? err.message : err));
+
+          if (currentSrc.startsWith('blob:') || currentSrc.startsWith('data:application/pdf')) {
+            const a = document.createElement('a');
+            a.href = currentSrc;
+            a.download = dlName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            return;
+          }
+
+          // http/https fallback: fetch and re-blob for download
+          const resp = await fetch(currentSrc, { credentials: 'include' });
+          if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = dlName;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          alert('Failed to save PDF: ' + (e && e.message ? e.message : e));
         }
       });
 
