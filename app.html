@@ -10,6 +10,46 @@
   <script defer src="auth-guard.js"></script>
   <style>
     iframe#contentFrame { width:100%; height: calc(100vh - 60px); border:0; }
+
+    /* Modal styling (matches the style used in new_inspection.html) */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.5);
+      display: none; align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-card {
+      width: min(92vw, 520px);
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -2px rgba(0,0,0,.05);
+      padding: 16px;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    .modal-card h3 { margin: 0 0 4px; font-size: 1.125rem; font-weight: 600; color: #111827; }
+    .modal-card p  { margin: 0 0 12px; color: #4b5563; font-size: .9375rem; }
+    .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top: 12px; }
+    .btn {
+      appearance: none; border: 1px solid transparent; border-radius: 8px; padding: 8px 12px;
+      font-weight: 600; cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease;
+    }
+    .btn-ghost { background: #fff; color:#111827; border-color: #e5e7eb; }
+    .btn-ghost:hover { background:#f3f4f6; }
+    .btn-primary { background:#4f46e5; color:#fff; }
+    .btn-primary:hover { background:#4338ca; }
+
+    /* Signature canvas — same look as new_inspection.html (400×100) */
+    #sigSetupCanvas {
+      width: 400px; height: 100px;
+      border: 1px solid #d1d5db; border-radius: 6px;
+      background:#fff; display:block; margin: 8px auto;
+      touch-action:none; cursor: crosshair;
+    }
+    @media (max-width: 480px) {
+      #sigSetupCanvas { width: 100%; max-width: 420px; height: 100px; }
+    }
+    .sig-hint { text-align:center; font-size:.85rem; color:#6b7280; margin-top:4px; }
+    .err { color:#991b1b; font-weight:600; }
   </style>
 </head>
 <body>
@@ -43,6 +83,23 @@
     </main>
   </div>
 
+  <!-- Signature-on-login Modal -->
+  <div id="signatureSetupModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sigTitle">
+    <div class="modal-card">
+      <h3 id="sigTitle">Save your signature?</h3>
+      <p>We didn’t find a saved signature for your technician profile. Save one now for easy one-click declaration and signature during inspections.</p>
+
+      <canvas id="sigSetupCanvas" width="400" height="100"></canvas>
+      <div class="sig-hint">Sign above. You can use your finger/stylus on mobile.</div>
+      <div id="sigError" class="sig-hint err" style="display:none;"></div>
+
+      <div class="modal-actions">
+        <button id="sigCancelBtn" type="button" class="btn btn-ghost">Cancel</button>
+        <button id="sigSaveBtn" type="button" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const frame = document.getElementById('contentFrame');
     const pageTitle = document.getElementById('pageTitle');
@@ -61,8 +118,115 @@
 
     document.getElementById('logoutBtn').addEventListener('click', async () => {
       try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {}
+      // Clear the "prompt shown" flag so we can show again next login
+      try { sessionStorage.removeItem('__sig_prompt_shown'); } catch {}
       window.location.href = '/';
     });
+  </script>
+
+  <script>
+    // --- Show signature modal ONLY once per login (not on refresh) and ONLY for technicians without a signature
+    (function(){
+      const modal = document.getElementById('signatureSetupModal');
+      const canvas = document.getElementById('sigSetupCanvas');
+      const ctx = canvas.getContext('2d');
+      const saveBtn = document.getElementById('sigSaveBtn');
+      const cancelBtn = document.getElementById('sigCancelBtn');
+      const errBox = document.getElementById('sigError');
+
+      function openModal(){ modal.classList.add('show'); }
+      function closeModal(){ modal.classList.remove('show'); }
+
+      // Basic signature pad (same behavior as in new_inspection.html @ 400×100)
+      let isDrawing=false, lastX=0, lastY=0;
+      function getPoint(e){
+        const rect = canvas.getBoundingClientRect();
+        const cx = e.touches ? e.touches[0].clientX : e.clientX;
+        const cy = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = cx - rect.left, y = cy - rect.top;
+        // Map to canvas internal coords if CSS scaled
+        const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+        return { x: x*scaleX, y: y*scaleY };
+      }
+      function start(e){ e.preventDefault(); isDrawing=true; const p=getPoint(e); lastX=p.x; lastY=p.y; }
+      function draw(e){
+        if(!isDrawing) return;
+        e.preventDefault();
+        const p=getPoint(e);
+        ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y);
+        ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.stroke();
+        lastX=p.x; lastY=p.y;
+      }
+      function end(){ isDrawing=false; }
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('mouseup', end);
+      canvas.addEventListener('mouseleave', end);
+      canvas.addEventListener('touchstart', start, { passive:false });
+      canvas.addEventListener('touchmove', draw, { passive:false });
+      canvas.addEventListener('touchend', end);
+
+      cancelBtn.addEventListener('click', () => {
+        closeModal();
+      });
+
+      saveBtn.addEventListener('click', async () => {
+        // Require at least some ink
+        const hasInk = ctx.getImageData(0, 0, canvas.width, canvas.height).data.some(n => n !== 0);
+        if (!hasInk) {
+          errBox.textContent = 'Please add your signature before saving.';
+          errBox.style.display = 'block';
+          return;
+        }
+        errBox.style.display = 'none';
+        saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+
+        try {
+          const dataUrl = canvas.toDataURL('image/png');
+          const resp = await fetch('/api/technicians/signature', {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type':'application/json' },
+            body: JSON.stringify({ signatureDataUrl: dataUrl })
+          });
+          if (!resp.ok) {
+            const txt = await resp.text().catch(()=> '');
+            throw new Error(`Save failed (${resp.status}) ${txt}`);
+          }
+          closeModal();
+        } catch (err) {
+          errBox.textContent = 'Could not save signature. ' + (err?.message || '');
+          errBox.style.display = 'block';
+        } finally {
+          saveBtn.disabled = false; saveBtn.textContent = 'Save';
+        }
+      });
+
+      async function maybePromptForSignature(){
+        // Gate so it only shows on first load after login (not on refresh).
+        try { if (sessionStorage.getItem('__sig_prompt_shown') === '1') return; } catch {}
+
+        let me = null;
+        try {
+          const res = await fetch('/api/technicians/me', { credentials: 'include' });
+          if (!res.ok) return; // not logged in or not technician record
+          me = await res.json();
+        } catch { return; }
+
+        // Only technicians, only if no saved signature
+        if (!me) return;
+        const isTechnician = String(me.role || '').toLowerCase() === 'technician' || !!me.technicianId;
+        if (!isTechnician) return;
+        if (me.signatureDataUrl) return;
+
+        // Show it now and mark as shown for this session/tab
+        openModal();
+        try { sessionStorage.setItem('__sig_prompt_shown', '1'); } catch {}
+      }
+
+      // Kick off after app shell is ready
+      document.addEventListener('DOMContentLoaded', maybePromptForSignature);
+    })();
   </script>
 </body>
 </html>
