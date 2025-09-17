@@ -120,7 +120,7 @@ async function renderPdfBuffer(req, { reportUrl, filename, data }) {
 
 // ---------- Upload to Fleetio-managed storage, return public file_url ----------
 async function uploadPdfToFleetio(pdfBuffer, filename) {
-  // Step 1: obtain policy (v1)
+  // Step 1: obtain policy (v1) – see "Attaching Documents & Images" guide
   const policy = await fleetioV1('/uploads/policies', {
     method: 'POST',
     body: JSON.stringify({
@@ -187,46 +187,41 @@ async function uploadPdfToFleetio(pdfBuffer, filename) {
   throw err;
 }
 
-// ---------- Lookups (fixed to v1) ----------
+// ---------- Lookups (v1 with per_page <= 100) ----------
 /**
  * Vehicles are v1 endpoints.
- * Support BOTH legacy page/per_page and new cursor-based pagination.
+ * Supports cursor pagination (start_cursor/next_cursor) and page/per_page.
+ * per_page must be between 2 and 100 per the docs.
  */
 async function listAllVehicles() {
   const all = [];
-  // Try cursor pagination first (start_cursor / next_cursor)
+  const PER_PAGE = 100;
+
+  // Try cursor pagination first
   let cursor = null;
   for (let i = 0; i < 50; i++) {
-    const params = new URLSearchParams();
-    params.set('per_page', '200');
+    const params = new URLSearchParams({ per_page: String(PER_PAGE) });
     if (cursor) params.set('start_cursor', cursor);
     const out = await fleetioV1(`/vehicles?${params.toString()}`, {}, 'list_vehicles');
 
-    // Response may be an array, or an object with {records, next_cursor}
-    let records, next;
-    if (Array.isArray(out)) {
-      records = out;
-      next = null; // arrays usually mean classic page model; break after one unless too big
-    } else {
-      records = out.records || out.data || [];
-      next = out.next_cursor || out.next || null;
-    }
+    let records = Array.isArray(out) ? out : (out?.records || out?.data || []);
+    const next = out?.next_cursor || null;
 
     if (records?.length) all.push(...records);
     if (!next) break;
     cursor = next;
   }
 
-  // Fallback to page/per_page if we got nothing (older tenants)
+  // Fallback to page/per_page if array-only response
   if (all.length === 0) {
     let page = 1;
     for (let p = 0; p < 25; p++) {
-      const qs = new URLSearchParams({ page: String(page), per_page: '200' });
+      const qs = new URLSearchParams({ page: String(page), per_page: String(PER_PAGE) });
       const out = await fleetioV1(`/vehicles?${qs.toString()}`, {}, 'list_vehicles');
       const items = Array.isArray(out) ? out : (out?.data || out?.records || []);
       if (!items?.length) break;
       all.push(...items);
-      if (items.length < 200) break;
+      if (items.length < PER_PAGE) break;
       page++;
     }
   }
@@ -255,11 +250,11 @@ function bestVehicleMatch(vehicles, unitNumber) {
 }
 
 /**
- * Work Order Statuses are v1 endpoints.
- * We’ll fetch and pick the status named "Open" (or the default).
+ * Work Order Statuses: v1 endpoint works reliably.
  */
 async function getOpenStatusId() {
-  const params = new URLSearchParams({ per_page: '200' });
+  const PER_PAGE = 100;
+  const params = new URLSearchParams({ per_page: String(PER_PAGE) });
   const out = await fleetioV1(`/work_order_statuses?${params.toString()}`, {}, 'get_open_status');
 
   const items = Array.isArray(out) ? out : (out?.records || out?.data || []);
@@ -276,10 +271,12 @@ async function getOpenStatusId() {
  * Service Tasks are v1 endpoints.
  */
 async function findOrCreateServiceTaskId(name) {
+  const PER_PAGE = 100;
   let cursor = null;
   let found = null;
+
   for (let i = 0; i < 50 && !found; i++) {
-    const params = new URLSearchParams({ per_page: '200' });
+    const params = new URLSearchParams({ per_page: String(PER_PAGE) });
     if (cursor) params.set('start_cursor', cursor);
     const out = await fleetioV1(`/service_tasks?${params.toString()}`, {}, 'list_service_tasks');
     const items = Array.isArray(out) ? out : (out?.records || out?.data || []);
