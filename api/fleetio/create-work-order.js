@@ -6,6 +6,7 @@ export const config = { runtime: 'nodejs' };
 
 const BASE_V2 = 'https://secure.fleetio.com/api/v2';
 const BASE_V1 = 'https://secure.fleetio.com/api/v1';
+const FLEETIO_UPLOAD_ENDPOINT = 'https://lmuavc3zg4.execute-api.us-east-1.amazonaws.com/prod/uploads'; // per docs
 
 function requiredEnv(name) {
   const val = process.env[name];
@@ -118,10 +119,12 @@ async function renderPdfBuffer(req, { reportUrl, filename, data }) {
   return Buffer.from(ab);
 }
 
-// ---------- Upload to Fleetio-managed storage, return public file_url ----------
+// ---------- Upload to Fleetio-managed storage (policy/signature/path) ----------
 async function uploadPdfToFleetio(pdfBuffer, filename) {
-  // Step 1: obtain policy (v1) – see "Attaching Documents & Images" guide
-  const policy = await fleetioV1('/uploads/policies', {
+  // Step 1: get policy from v1
+  // Docs: Attaching Documents & Images (policy + signature + path; fixed upload endpoint). 
+  // We only need the returned `url` for step 3. :contentReference[oaicite:1]{index=1}
+  const policyResp = await fleetioV1('/uploads/policies', {
     method: 'POST',
     body: JSON.stringify({
       filename: filename || 'schedule4.pdf',
@@ -129,70 +132,43 @@ async function uploadPdfToFleetio(pdfBuffer, filename) {
     })
   }, 'get_upload_policy');
 
-  // Common policy shape: upload_url + fields (S3 POST)
-  if (policy?.upload_url && policy?.fields) {
-    const form = new FormData();
-    Object.entries(policy.fields).forEach(([k, v]) => form.append(k, v));
-    form.append('file', new Blob([pdfBuffer], { type: 'application/pdf' }), filename || 'schedule4.pdf');
-
-    const up = await fetch(policy.upload_url, { method: 'POST', body: form });
-    if (!up.ok) {
-      const t = await up.text().catch(() => '');
-      const err = new Error(`[upload_pdf] S3 upload failed: ${up.status} ${t}`);
-      err.step = 'upload_pdf'; err.status = up.status; err.details = t;
-      throw err;
-    }
-
-    const key = policy.fields.key || policy.fields.Key;
-    const fileUrl = policy.public_url || (policy.asset_host && key ? `${policy.asset_host}/${key}` : null);
-    if (!fileUrl) {
-      const err = new Error('[upload_pdf] Upload policy missing public_url');
-      err.step = 'upload_pdf'; err.status = 500;
-      throw err;
-    }
-    return fileUrl;
+  const { policy, signature, path } = policyResp || {};
+  if (!policy || !signature || !path) {
+    const err = new Error('[upload_pdf] Policy response missing policy/signature/path');
+    err.step = 'upload_pdf'; err.status = 500; err.details = JSON.stringify(policyResp).slice(0, 500);
+    throw err;
   }
 
-  // Older policy shape: endpoint/policy/signature/path
-  if (policy?.endpoint && policy?.policy && policy?.signature && policy?.path) {
-    const url = new URL(policy.endpoint);
-    url.searchParams.set('policy', policy.policy);
-    url.searchParams.set('signature', policy.signature);
-    url.searchParams.set('path', policy.path);
-    if (filename) url.searchParams.set('filename', filename);
+  // Step 2: upload binary to Fleetio’s storage provider using the fixed endpoint
+  const url = new URL(FLEETIO_UPLOAD_ENDPOINT);
+  url.searchParams.set('policy', policy);
+  url.searchParams.set('signature', signature);
+  url.searchParams.set('path', path);            // e.g., /api/ABC123/
+  if (filename) url.searchParams.set('filename', filename);
 
-    const up = await fetch(url.toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/pdf' },
-      body: pdfBuffer
-    });
-    if (!up.ok) {
-      const t = await up.text().catch(() => '');
-      const err = new Error(`[upload_pdf] Binary upload failed: ${up.status} ${t}`);
-      err.step = 'upload_pdf'; err.status = up.status; err.details = t;
-      throw err;
-    }
-    const j = await up.json().catch(() => null);
-    const fileUrl = j?.url || j?.file_url || policy.public_url;
-    if (!fileUrl) {
-      const err = new Error('[upload_pdf] Upload response missing public url');
-      err.step = 'upload_pdf'; err.status = 500;
-      throw err;
-    }
-    return fileUrl;
+  const up = await fetch(url.toString(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/pdf' },
+    body: pdfBuffer
+  });
+  if (!up.ok) {
+    const t = await up.text().catch(() => '');
+    const err = new Error(`[upload_pdf] Binary upload failed: ${up.status} ${t}`);
+    err.step = 'upload_pdf'; err.status = up.status; err.details = t;
+    throw err;
   }
 
-  const err = new Error('[upload_pdf] Unrecognized upload policy shape');
-  err.step = 'upload_pdf'; err.status = 500;
-  throw err;
+  const j = await up.json().catch(() => null);
+  const fileUrl = j?.url; // docs: we carry forward the `url` only
+  if (!fileUrl) {
+    const err = new Error('[upload_pdf] Upload response missing url');
+    err.step = 'upload_pdf'; err.status = 500; err.details = JSON.stringify(j).slice(0, 500);
+    throw err;
+  }
+  return fileUrl;
 }
 
-// ---------- Lookups (v1 with per_page <= 100) ----------
-/**
- * Vehicles are v1 endpoints.
- * Supports cursor pagination (start_cursor/next_cursor) and page/per_page.
- * per_page must be between 2 and 100 per the docs.
- */
+// ---------- Lookups (v1; per_page <= 100) ----------
 async function listAllVehicles() {
   const all = [];
   const PER_PAGE = 100;
@@ -212,7 +188,7 @@ async function listAllVehicles() {
     cursor = next;
   }
 
-  // Fallback to page/per_page if array-only response
+  // Fallback to page/per_page (older tenants/array responses)
   if (all.length === 0) {
     let page = 1;
     for (let p = 0; p < 25; p++) {
@@ -249,9 +225,7 @@ function bestVehicleMatch(vehicles, unitNumber) {
   return null;
 }
 
-/**
- * Work Order Statuses: v1 endpoint works reliably.
- */
+// Work Order Statuses (v1)
 async function getOpenStatusId() {
   const PER_PAGE = 100;
   const params = new URLSearchParams({ per_page: String(PER_PAGE) });
@@ -267,9 +241,7 @@ async function getOpenStatusId() {
   return open.id;
 }
 
-/**
- * Service Tasks are v1 endpoints.
- */
+// Service Tasks (v1)
 async function findOrCreateServiceTaskId(name) {
   const PER_PAGE = 100;
   let cursor = null;
@@ -385,7 +357,7 @@ export default async function handler(req, res) {
     // 5) Render PDF (your existing printer)
     const pdfBuffer = await renderPdfBuffer(req, { reportUrl, filename, data });
 
-    // 6) Upload to Fleetio storage & get public URL (v1)
+    // 6) Upload to Fleetio storage & get public URL (policy/signature/path flow)
     const file_url = await uploadPdfToFleetio(pdfBuffer, filename);
 
     // 7) Attach document to Work Order (v2 PATCH with documents_attributes)
@@ -403,7 +375,7 @@ export default async function handler(req, res) {
       })
     }, 'attach_document');
 
-    // 8) Ensure Service Task exists (v1), then add as Work Order line item (v2).
+    // 8) Ensure Service Task exists (v1), then add as Work Order line item (v2)
     const taskName = serviceTaskName || 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
     const serviceTaskId = await findOrCreateServiceTaskId(taskName);
 
