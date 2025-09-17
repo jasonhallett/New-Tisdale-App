@@ -5,7 +5,7 @@
 (async () => {
   try {
     const r = await fetch('/api/technicians/me', { credentials: 'include' });
-    if (r.ok) window.location.href = 'menu.html';
+    if (r.ok) window.location.href = 'app.html';
   } catch {}
 })();
 </script>
@@ -115,7 +115,7 @@
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || 'Login failed');
       }
-      window.location.href = 'menu.html';
+      window.location.href = 'app.html';
     } catch (e) {
       err.textContent = e.message || 'Login failed';
       btn.disabled = false;
