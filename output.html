@@ -59,6 +59,55 @@ body::before, body::after, html::before, html::after,
     }
   }
 </style>
+
+  <!-- Preload data by ID (runs before population script) -->
+  <script>
+  (function () {
+    try {
+      var params = new URLSearchParams(location.search);
+      var id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
+      if (!id) return;
+      if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return;
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/api/schedule4s/get?id=' + encodeURIComponent(id), false); // sync on purpose to ensure data is ready
+      xhr.setRequestHeader('Accept','application/json');
+      xhr.send(null);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        var resp = {};
+        try { resp = JSON.parse(xhr.responseText) || {}; } catch(e){ resp = {}; }
+        var row = resp.item || resp || {};
+        var p = row.payload_json || row.payload || {};
+
+        function pick() {
+          for (var i = 0; i < arguments.length; i++) {
+            var k = arguments[i];
+            if (p && p[k] != null && p[k] !== '') return p[k];
+          }
+          return '';
+        }
+
+        var data = {};
+        data.carrierName     = pick('carrierName','carrier');
+        data.locationAddress = pick('locationAddress','address','inspectionLocation');
+        data.unitNumber      = pick('unitNumber','unit','vehicle_number') || row.vehicle_name || '';
+        data.licensePlate    = pick('licensePlate','licencePlate','plate');
+        data.odometer        = pick('odometer','odometerKm','odometer_km');
+        data.inspectionDate  = pick('inspectionDate') || row.performed_at || row.created_at || '';
+        data.odometerExpires = pick('odometerExpires');
+        data.dateExpires     = pick('dateExpires') || row.expiry_date || '';
+        data.tireSize        = pick('tireSize');
+        data.repairs         = pick('repairs','repairsNotes','repairs_text');
+        data.inspectorName   = pick('inspectorName') || row.technician_name || '';
+        data.signature       = pick('signature');
+        data.checklist       = p.checklist || {};
+
+        try { sessionStorage.setItem('schedule4Data', JSON.stringify(data)); } catch(e){}
+        try { sessionStorage.setItem('schedule4LoadedFromId','1'); } catch(e){}
+      }
+    } catch (e) {}
+  })();
+  </script>
+
 </head>
 <body>
   <!-- Buttons -->
@@ -311,6 +360,7 @@ body::before, body::after, html::before, html::after,
   <script>
   // Fallback save to DB if first attempt was missed
   document.addEventListener('DOMContentLoaded', () => {
+    try { if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return; } catch(e) {}
     try {
       const raw = sessionStorage.getItem('schedule4Data');
       if (!raw) return;
