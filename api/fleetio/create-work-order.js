@@ -13,14 +13,14 @@ function requiredEnv(name) {
   return val;
 }
 
-const API_TOKEN = requiredEnv('FLEETIO_API_TOKEN');       // keep in Vercel
-const ACCOUNT_TOKEN = requiredEnv('FLEETIO_ACCOUNT_TOKEN'); // your 80ce8e499c (put in Vercel)
+const API_TOKEN = requiredEnv('FLEETIO_API_TOKEN');        // keep in Vercel
+const ACCOUNT_TOKEN = requiredEnv('FLEETIO_ACCOUNT_TOKEN'); // your 80ce8e499c (in Vercel)
 
 // ---------- helpers ----------
 const defaultHeaders = {
-  'Accept': 'application/json',
+  Accept: 'application/json',
   'Content-Type': 'application/json',
-  'Authorization': `Token ${API_TOKEN}`,
+  Authorization: `Token ${API_TOKEN}`,
   'Account-Token': ACCOUNT_TOKEN
 };
 
@@ -59,7 +59,6 @@ function numOrNull(v) {
 }
 
 function deriveOrigin(req) {
-  // Use request headers instead of env so we don't need APP_BASE_URL
   const proto = req.headers['x-forwarded-proto'] || 'https';
   const host = req.headers['x-forwarded-host'] || req.headers['host'];
   return `${proto}://${host}`;
@@ -111,7 +110,7 @@ async function renderPdfBuffer(req, { reportUrl, filename, data }) {
   });
   if (!res.ok) {
     const t = await res.text().catch(() => '');
-    const err = new Error(`[renderPdf] Printer failed: ${res.status} ${t}`);
+    const err = new Error(`[render_pdf] Printer failed: ${res.status} ${t}`);
     err.step = 'render_pdf'; err.status = res.status; err.details = t;
     throw err;
   }
@@ -122,7 +121,6 @@ async function renderPdfBuffer(req, { reportUrl, filename, data }) {
 // ---------- Upload to Fleetio-managed storage, return public file_url ----------
 async function uploadPdfToFleetio(pdfBuffer, filename) {
   // Step 1: obtain policy (v1)
-  // Docs: Attaching Documents & Images guide. :contentReference[oaicite:3]{index=3}
   const policy = await fleetioV1('/uploads/policies', {
     method: 'POST',
     body: JSON.stringify({
@@ -189,20 +187,48 @@ async function uploadPdfToFleetio(pdfBuffer, filename) {
   throw err;
 }
 
-// ---------- Lookups ----------
+// ---------- Lookups (fixed to v1) ----------
+/**
+ * Vehicles are v1 endpoints.
+ * Support BOTH legacy page/per_page and new cursor-based pagination.
+ */
 async function listAllVehicles() {
-  // v2 vehicles
-  let page = 1;
-  const per_page = 200;
   const all = [];
-  for (let i = 0; i < 25; i++) {
-    const qs = new URLSearchParams({ page: String(page), per_page: String(per_page) });
-    const out = await fleetioV2(`/vehicles?${qs.toString()}`, {}, 'list_vehicles');
-    const items = Array.isArray(out?.data) ? out.data : (Array.isArray(out) ? out : []);
-    if (!items.length) break;
-    all.push(...items);
-    if (items.length < per_page) break;
-    page++;
+  // Try cursor pagination first (start_cursor / next_cursor)
+  let cursor = null;
+  for (let i = 0; i < 50; i++) {
+    const params = new URLSearchParams();
+    params.set('per_page', '200');
+    if (cursor) params.set('start_cursor', cursor);
+    const out = await fleetioV1(`/vehicles?${params.toString()}`, {}, 'list_vehicles');
+
+    // Response may be an array, or an object with {records, next_cursor}
+    let records, next;
+    if (Array.isArray(out)) {
+      records = out;
+      next = null; // arrays usually mean classic page model; break after one unless too big
+    } else {
+      records = out.records || out.data || [];
+      next = out.next_cursor || out.next || null;
+    }
+
+    if (records?.length) all.push(...records);
+    if (!next) break;
+    cursor = next;
+  }
+
+  // Fallback to page/per_page if we got nothing (older tenants)
+  if (all.length === 0) {
+    let page = 1;
+    for (let p = 0; p < 25; p++) {
+      const qs = new URLSearchParams({ page: String(page), per_page: '200' });
+      const out = await fleetioV1(`/vehicles?${qs.toString()}`, {}, 'list_vehicles');
+      const items = Array.isArray(out) ? out : (out?.data || out?.records || []);
+      if (!items?.length) break;
+      all.push(...items);
+      if (items.length < 200) break;
+      page++;
+    }
   }
   return all;
 }
@@ -228,11 +254,15 @@ function bestVehicleMatch(vehicles, unitNumber) {
   return null;
 }
 
+/**
+ * Work Order Statuses are v1 endpoints.
+ * We’ll fetch and pick the status named "Open" (or the default).
+ */
 async function getOpenStatusId() {
-  // Work Order Statuses (v2) :contentReference[oaicite:4]{index=4}
-  const qs = new URLSearchParams({ per_page: '200' });
-  const out = await fleetioV2(`/work_order_statuses?${qs.toString()}`, {}, 'get_open_status');
-  const items = Array.isArray(out?.data) ? out.data : (Array.isArray(out) ? out : []);
+  const params = new URLSearchParams({ per_page: '200' });
+  const out = await fleetioV1(`/work_order_statuses?${params.toString()}`, {}, 'get_open_status');
+
+  const items = Array.isArray(out) ? out : (out?.records || out?.data || []);
   const open = items.find(s => normalize(s?.name) === 'open') || items.find(s => s?.is_default);
   if (!open?.id) {
     const err = new Error('[get_open_status] Could not resolve "Open" status');
@@ -242,19 +272,20 @@ async function getOpenStatusId() {
   return open.id;
 }
 
+/**
+ * Service Tasks are v1 endpoints.
+ */
 async function findOrCreateServiceTaskId(name) {
-  // Service Tasks are under v1 today. :contentReference[oaicite:5]{index=5}
-  const per_page = 200;
-  let page = 1;
+  let cursor = null;
   let found = null;
-
-  while (!found && page < 20) {
-    const qs = new URLSearchParams({ per_page: String(per_page), page: String(page) });
-    const out = await fleetioV1(`/service_tasks?${qs.toString()}`, {}, 'list_service_tasks');
-    const items = Array.isArray(out?.data) ? out.data : (Array.isArray(out) ? out : []);
+  for (let i = 0; i < 50 && !found; i++) {
+    const params = new URLSearchParams({ per_page: '200' });
+    if (cursor) params.set('start_cursor', cursor);
+    const out = await fleetioV1(`/service_tasks?${params.toString()}`, {}, 'list_service_tasks');
+    const items = Array.isArray(out) ? out : (out?.records || out?.data || []);
     found = items.find(t => normalize(t?.name) === normalize(name)) || null;
-    if (items.length < per_page) break;
-    page++;
+    cursor = out?.next_cursor || null;
+    if (!cursor) break;
   }
 
   if (found?.id) return found.id;
@@ -298,7 +329,7 @@ export default async function handler(req, res) {
     const inspectionDate = data.inspectionDate || data.dateInspected || data.date_inspected || null;
     const odometer = numOrNull(data.odometer ?? data.odometerStart ?? data.startOdometer);
 
-    // 1) Resolve vehicle
+    // 1) Resolve vehicle (v1)
     let finalVehicleId = vehicleIdFromBody || null;
     let allVehicles = null;
 
@@ -317,7 +348,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2) Resolve "Open" status
+    // 2) Resolve "Open" status (v1)
     const work_order_status_id = await getOpenStatusId();
 
     // 3) Build payload: issued_at/started_at = Date Inspected; meters mirror
@@ -335,13 +366,13 @@ export default async function handler(req, res) {
             starting_meter_entry_attributes: {
               value: odometer,
               date: toIsoDate(inspectionDate || new Date())
-              // meter_type: 'primary' // uncomment if your account requires it
+              // meter_type: 'primary'
             }
           }
         : {})
     };
 
-    // 4) Create Work Order (v2)  :contentReference[oaicite:6]{index=6}
+    // 4) Create Work Order (v2)
     const createdWO = await fleetioV2('/work_orders', {
       method: 'POST',
       body: JSON.stringify(woPayload)
@@ -357,10 +388,10 @@ export default async function handler(req, res) {
     // 5) Render PDF (your existing printer)
     const pdfBuffer = await renderPdfBuffer(req, { reportUrl, filename, data });
 
-    // 6) Upload to Fleetio storage & get public URL
+    // 6) Upload to Fleetio storage & get public URL (v1)
     const file_url = await uploadPdfToFleetio(pdfBuffer, filename);
 
-    // 7) Attach document to Work Order (v2 PATCH with documents_attributes). :contentReference[oaicite:7]{index=7}
+    // 7) Attach document to Work Order (v2 PATCH with documents_attributes)
     await fleetioV2(`/work_orders/${workOrderId}`, {
       method: 'PATCH',
       body: JSON.stringify({
@@ -375,7 +406,7 @@ export default async function handler(req, res) {
       })
     }, 'attach_document');
 
-    // 8) Ensure Service Task exists, then add as Work Order line item (v2). :contentReference[oaicite:8]{index=8}
+    // 8) Ensure Service Task exists (v1), then add as Work Order line item (v2).
     const taskName = serviceTaskName || 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
     const serviceTaskId = await findOrCreateServiceTaskId(taskName);
 
@@ -400,12 +431,11 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    // Structured error so your viewer can show exactly which step failed
     console.error('Fleetio WO Error:', {
       step: err.step || 'unknown',
       status: err.status || 500,
       message: err.message,
-      details: err.details?.slice?.(0, 1000) // truncate
+      details: err.details?.slice?.(0, 1000)
     });
     return res.status(err.status || 500).json({
       error: err.message,
