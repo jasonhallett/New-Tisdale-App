@@ -1,5 +1,5 @@
 // js/schedule4s.js
-// Grid: Date Inspected, Unit #, Odometer (left), Inspection Location, Technician Name, View (small link)
+// Show Date Inspected with Date & Time. Prefer server-formatted created_at_display.
 
 async function fetchList() {
   const r = await fetch('/api/schedule4s/list', { credentials: 'include' });
@@ -8,14 +8,22 @@ async function fetchList() {
   return Array.isArray(j.items) ? j.items : [];
 }
 
-function fmtDate(iso) {
+function fmtDateTime(isoOrDisplay) {
+  // If server sent preformatted string (e.g., '09/17/2025 03:14 PM'), use it directly.
+  if (typeof isoOrDisplay === 'string' && /\d{2}\/\d{2}\/\d{4}\s+\d{1,2}:\d{2}\s+(AM|PM)/i.test(isoOrDisplay)) {
+    return isoOrDisplay;
+  }
   try {
-    const d = new Date(iso);
+    const d = new Date(isoOrDisplay);
     if (isNaN(+d)) return '—';
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     const yyyy = d.getFullYear();
-    return `${mm}/${dd}/${yyyy}`;
+    let hh = d.getHours();
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    hh = hh % 12; if (hh === 0) hh = 12;
+    return `${mm}/${dd}/${yyyy} ${hh}:${mins} ${ampm}`;
   } catch { return '—'; }
 }
 
@@ -39,7 +47,7 @@ function render(items) {
   const tbody = document.querySelector('#grid tbody');
   tbody.innerHTML = items.map((row) => {
     const id    = row.id;
-    const date  = fmtDate(row.created_at);
+    const date  = fmtDateTime(row.created_at_display || row.created_at);
     const unit  = htmlesc(row.unit || row.unit_number || row.vehicle || '—');
     const odo   = fmtOdo(row.odometer);
     const tech  = htmlesc(row.technician || row.technician_name || '—');
@@ -49,8 +57,8 @@ function render(items) {
       <td class="col-date">${date}</td>
       <td class="col-unit">${unit}</td>
       <td class="col-odo">${odo}</td>
-      <td class="col-loc cell-ellipsis" title="${loc}">${loc}</td>   <!-- swapped before tech -->
-      <td class="col-tech cell-ellipsis" title="${tech}">${tech}</td><!-- swapped after loc -->
+      <td class="col-loc cell-ellipsis" title="${loc}">${loc}</td>
+      <td class="col-tech cell-ellipsis" title="${tech}">${tech}</td>
       <td class="col-view">
         <a class="btn-link-sm open-btn" href="${href}" target="_top" title="Open Output">View</a>
       </td>
@@ -75,7 +83,7 @@ function attachFilter(all) {
   const doFilter = () => {
     const t = (q.value || '').toLowerCase();
     const filtered = !t ? all : all.filter(r => {
-      const s = `${r.id||''} ${r.unit||r.unit_number||''} ${r.odometer||''} ${r.technician||r.technician_name||''} ${r.created_at||''} ${r.location||''}`.toLowerCase();
+      const s = `${r.id||''} ${r.unit||r.unit_number||''} ${r.odometer||''} ${r.technician||r.technician_name||''} ${r.created_at_display||r.created_at||''} ${r.location||''}`.toLowerCase();
       return s.includes(t);
     });
     render(filtered);

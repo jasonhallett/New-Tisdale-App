@@ -1,5 +1,5 @@
 // /api/schedule4s/list.js
-// Returns: id, created_at (Date Inspected), unit, odometer, technician, location (address).
+// Returns: id, created_at (raw), created_at_display (MM/DD/YYYY HH:MI AM), unit, odometer, technician, location.
 // Sorted newest first by created_at.
 
 export const config = { runtime: 'nodejs' };
@@ -11,12 +11,11 @@ export default async function handler(req, res) {
     const rows = await sql`
       SELECT
         id,
-        created_at,                              -- use created_at exactly as requested
-        /* Unit # */
+        created_at,
+        -- Preformat in DB to avoid browser parsing quirks; convert to America/Toronto
+        to_char((created_at AT TIME ZONE 'America/Toronto'), 'MM/DD/YYYY HH12:MI AM') AS created_at_display,
         COALESCE(vehicle_name, NULLIF(payload_json->>'unitNumber', '')) AS unit,
-        /* Technician Name */
         COALESCE(technician_name, NULLIF(payload_json->>'inspectorName','')) AS technician,
-        /* Odometer (unchanged logic) */
         NULLIF(
           COALESCE(
             payload_json->>'odometerKm',
@@ -26,7 +25,6 @@ export default async function handler(req, res) {
           ),
           ''
         ) AS odometer,
-        /* Inspection Location / Address: direct column only */
         location AS location
       FROM schedule4_inspections
       ORDER BY created_at DESC NULLS LAST

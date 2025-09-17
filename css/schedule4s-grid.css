@@ -2,9 +2,9 @@
 /* Compact table + tiny link-style View control. */
 .table.compact th, .table.compact td { padding: 4px 6px; vertical-align: middle; }
 .col-date, .col-unit, .col-odo, .col-tech, .col-loc, .col-view { white-space: nowrap; }
-.col-date { width: 180px; }            /* widened for mm/dd/yyyy hh:mm AM/PM */
+.col-date { width: 200px; }            /* widened further for safety */
 .col-unit { width: 130px; }
-.col-odo  { width: 140px; text-align: left; } /* left-aligned per request */
+.col-odo  { width: 140px; text-align: left; }
 .col-tech { max-width: 110px; }
 .col-loc  { max-width: 360px; }
 .col-view { width: 56px; text-align: center; }
