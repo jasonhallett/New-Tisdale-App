@@ -1,5 +1,5 @@
 // js/schedule4s.js
-// Grid: Date Inspected, Unit #, Odometer, Technician Name, Inspection Location, View (small link)
+// Grid: Date Inspected, Unit #, Odometer (left), Inspection Location, Technician Name, View (small link)
 
 async function fetchList() {
   const r = await fetch('/api/schedule4s/list', { credentials: 'include' });
@@ -49,15 +49,14 @@ function render(items) {
       <td class="col-date">${date}</td>
       <td class="col-unit">${unit}</td>
       <td class="col-odo">${odo}</td>
-      <td class="col-tech cell-ellipsis" title="${tech}">${tech}</td>
-      <td class="col-loc cell-ellipsis" title="${loc}">${loc}</td>
+      <td class="col-loc cell-ellipsis" title="${loc}">${loc}</td>   <!-- swapped before tech -->
+      <td class="col-tech cell-ellipsis" title="${tech}">${tech}</td><!-- swapped after loc -->
       <td class="col-view">
         <a class="btn-link-sm open-btn" href="${href}" target="_top" title="Open Output">View</a>
       </td>
     </tr>`;
   }).join('');
 
-  // Delegate small link clicks
   tbody.addEventListener('click', (e) => {
     const a = e.target.closest('a.open-btn');
     if (!a) return;

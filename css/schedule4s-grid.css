@@ -4,8 +4,8 @@
 .col-date, .col-unit, .col-odo, .col-tech, .col-loc, .col-view { white-space: nowrap; }
 .col-date { width: 112px; }
 .col-unit { width: 130px; }   /* wider per request */
-.col-odo  { width: 140px; text-align: right; } /* wider per request */
-.col-tech { max-width: 110px; } /* ~half the previous size */
+.col-odo  { width: 140px; text-align: left; } /* align left now */
+.col-tech { max-width: 110px; } /* compact */
 .col-loc  { max-width: 360px; }
 .col-view { width: 56px; text-align: center; } /* keep under header */
 
