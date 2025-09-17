@@ -28,7 +28,6 @@
     .text-xxs { font-size: 0.5rem; }
     .signature-img { width: 400px; height: 100px; border: 1px solid #e5e7eb; object-fit: contain; }
 
-
     @page { size: 8.5in 11in; margin: 0; }
     @media print {
       html, body { width:8.5in; height:11in; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
@@ -37,28 +36,28 @@
     }
   </style>
 
-<style id="single-page-fix">
-/* Hide stray page counters like "/1" on screen and in print */
-body::before, body::after, html::before, html::after,
-#page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
-.page-number, .pageNumber, [data-page-number] { display: none !important; }
+  <style id="single-page-fix">
+    /* Hide stray page counters like "/1" on screen and in print */
+    body::before, body::after, html::before, html::after,
+    #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
+    .page-number, .pageNumber, [data-page-number] { display: none !important; }
 
-@media print {
-  .page, #page { page-break-after: auto !important; break-after: auto !important; }
-  .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
-}
-</style>
-
-<style id="print-scale-95">
-  @media print {
-    .no-print { display: none !important; }
-    /* center the 95% scaled page on Letter */
-    #page {
-      transform: translate(0.2125in, 0.275in) scale(0.95) !important;
-      transform-origin: top left !important;
+    @media print {
+      .page, #page { page-break-after: auto !important; break-after: auto !important; }
+      .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
     }
-  }
-</style>
+  </style>
+
+  <style id="print-scale-95">
+    @media print {
+      .no-print { display: none !important; }
+      /* center the 95% scaled page on Letter */
+      #page {
+        transform: translate(0.2125in, 0.275in) scale(0.95) !important;
+        transform-origin: top left !important;
+      }
+    }
+  </style>
 
   <!-- Preload data by ID (runs before population script) -->
   <script>
@@ -69,7 +68,7 @@ body::before, body::after, html::before, html::after,
       if (!id) return;
       if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return;
       var xhr = new XMLHttpRequest();
-      xhr.open('GET', '/api/schedule4s/get?id=' + encodeURIComponent(id), false); // sync on purpose to ensure data is ready
+      xhr.open('GET', '/api/schedule4s/get?id=' + encodeURIComponent(id), false); // sync on purpose
       xhr.setRequestHeader('Accept','application/json');
       xhr.send(null);
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -117,13 +116,11 @@ body::before, body::after, html::before, html::after,
                    padding:8px 12px;border-radius:6px;cursor:pointer;">
       Print
     </button>
-    <!-- === Puppeteer Server PDF START === -->
     <button onclick="downloadServerPDF()"
             style="background:#2563eb;color:#fff;border:none;
                    padding:8px 12px;border-radius:6px;cursor:pointer;">
       Download (PDF)
     </button>
-    <!-- === Puppeteer Server PDF END === -->
   </div>
 
   <!-- Page -->
@@ -258,7 +255,6 @@ body::before, body::after, html::before, html::after,
           <h2 class="section-header my-1">Signature of the person who conducted the inspection</h2>
           <div class="output-text p-1" style="height:100px;">
             <img id="signatureImg" alt="Signature" class="mx-auto block signature-img">
-
           </div>
         </div>
       </div>
@@ -267,27 +263,69 @@ body::before, body::after, html::before, html::after,
 
   <script>
     (function () {
+      // --- Date helpers (mm/dd/yyyy display) ---
+      function toUSDateString(input) {
+        if (!input) return '';
+        if (typeof input === 'string') {
+          var m = input.match(/^(\d{4})-(\d{2})-(\d{2})/); // yyyy-mm-dd
+          if (m) return m[2] + '/' + m[3] + '/' + m[1];
+          var mmdd = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // mm/dd/yyyy
+          if (mmdd) return mmdd[1].padStart(2,'0') + '/' + mmdd[2].padStart(2,'0') + '/' + mmdd[3];
+        }
+        var d = new Date(input);
+        if (!isNaN(d)) return String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0') + '/' + d.getFullYear();
+        return '';
+      }
+      function fromUSDate(us) {
+        var mmdd = String(us||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (mmdd) return new Date(+mmdd[3], +mmdd[1]-1, +mmdd[2]);
+        var iso = String(us||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) return new Date(+iso[1], +iso[2]-1, +iso[3]);
+        var d = new Date(us);
+        return isNaN(d) ? null : d;
+      }
+      function addDays(date, days) {
+        var d = new Date(date.getTime());
+        d.setDate(d.getDate() + days);
+        return d;
+      }
+
+      // --- Load data ---
       function getData() {
-        let data = {};
-        try { const ss = sessionStorage.getItem('schedule4Data'); if (ss) data = JSON.parse(ss) || {}; } catch(e){}
-        const params = new URLSearchParams(location.search);
-        const keys = [
+        var data = {};
+        try { var ss = sessionStorage.getItem('schedule4Data'); if (ss) data = JSON.parse(ss) || {}; } catch(e){}
+        var params = new URLSearchParams(location.search);
+        var keys = [
           'carrierName','locationAddress','unitNumber','licensePlate','odometer','inspectionDate',
           'odometerExpires','dateExpires','rSteerBrake','rDriveBrake','rTagBrake','lSteerBrake','lDriveBrake','lTagBrake',
           'tireSize','repairs','inspectorName','signature'
         ];
-        for (const k of keys) if (!(k in data) && params.has(k)) data[k] = params.get(k);
+        for (var i=0;i<keys.length;i++){ var k = keys[i]; if (!(k in data) && params.has(k)) data[k] = params.get(k); }
         data.checklist = data.checklist || {};
+
+        // Normalize dates to mm/dd/yyyy for display
+        var inspUS = toUSDateString(data.inspectionDate);
+        data.inspectionDate = inspUS;
+
+        var expUS = toUSDateString(data.dateExpires);
+        if (!expUS && inspUS) {
+          // Fallback: compute +31 days from Inspection Date if Date Expires missing
+          var d = fromUSDate(inspUS);
+          if (d) expUS = toUSDateString(addDays(d, 31));
+        }
+        data.dateExpires = expUS;
+
         return data;
       }
-      const data = getData();
+      var data = getData();
 
+      // --- Fill simple fields by label ---
       function fillByLabel(labelText, value) {
-        if (!value) return;
-        const labels = [...document.querySelectorAll('label')];
-        const label = labels.find(l => l.textContent.trim().toLowerCase() === labelText.toLowerCase());
+        if (value == null || value === '') return;
+        var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
+        var label = labels.find(function(l){ return l.textContent.trim().toLowerCase() === labelText.toLowerCase(); });
         if (label) {
-          const box = label.closest('.form-group,.flex')?.querySelector('.output-text');
+          var box = (label.closest('.form-group,.flex') || document).querySelector('.output-text');
           if (box) box.textContent = value;
         }
       }
@@ -301,11 +339,15 @@ body::before, body::after, html::before, html::after,
       fillByLabel('Date Expires', data.dateExpires);
       fillByLabel('Tire size:', data.tireSize);
 
+      // --- Tiny brake stroke fields ---
       function fillTiny(lbl, val) {
         if (!val) return;
-        const tiny = [...document.querySelectorAll('.pl-4 .flex.items-center')];
-        const match = tiny.find(g => g.querySelector('label')?.textContent.trim().toLowerCase() === lbl.toLowerCase());
-        const box = match?.querySelector('.output-text');
+        var tiny = Array.prototype.slice.call(document.querySelectorAll('.pl-4 .flex.items-center'));
+        var match = tiny.find(function(g){ 
+          var txt = (g.querySelector('label') || {}).textContent || '';
+          return txt.trim().toLowerCase() === lbl.toLowerCase();
+        });
+        var box = match && match.querySelector('.output-text');
         if (box) box.textContent = val;
       }
       fillTiny('r steer', data.rSteerBrake);
@@ -315,148 +357,124 @@ body::before, body::after, html::before, html::after,
       fillTiny('l drive', data.lDriveBrake);
       fillTiny('l tag', data.lTagBrake);
 
-      const repHdr = [...document.querySelectorAll('.section-header')].find(h=>h.textContent.trim().toLowerCase()==='repairs');
-      if (repHdr) { const box = repHdr.parentElement.querySelector('.output-text'); if (box && data.repairs) box.textContent = data.repairs; }
+      // --- Repairs & Inspector name ---
+      var repHdr = Array.prototype.slice.call(document.querySelectorAll('.section-header'))
+        .find(function(h){ return h.textContent.trim().toLowerCase()==='repairs'; });
+      if (repHdr) {
+        var box1 = repHdr.parentElement.querySelector('.output-text');
+        if (box1 && data.repairs) box1.textContent = data.repairs;
+      }
 
-      const inspHdr = [...document.querySelectorAll('.section-header')].find(h=>h.textContent.toLowerCase().includes('name of the person'));
-      if (inspHdr) { const box = inspHdr.parentElement.querySelector('.output-text'); if (box && data.inspectorName) box.textContent = data.inspectorName; }
+      var inspHdr = Array.prototype.slice.call(document.querySelectorAll('.section-header'))
+        .find(function(h){ return h.textContent.toLowerCase().indexOf('name of the person') !== -1; });
+      if (inspHdr) {
+        var box2 = inspHdr.parentElement.querySelector('.output-text');
+        if (box2 && data.inspectorName) box2.textContent = data.inspectorName;
+      }
 
-      if (data.signature) { const img = document.getElementById('signatureImg'); if (img) img.src = data.signature; }
+      if (data.signature) {
+        var img = document.getElementById('signatureImg');
+        if (img) img.src = data.signature;
+      }
+
+      // --- Checklist matching with normalization (fixes "&&" vs "and" etc.) ---
+      function normalizeLabel(s){
+        return String(s||'')
+          .toLowerCase()
+          .replace(/&amp;|&&|&/g, 'and')
+          .replace(/\band\/or\b/g,'and or')
+          .replace(/[^a-z0-9]+/g,' ')
+          .replace(/\s+/g,' ')
+          .trim();
+      }
+      var dataChecklistNorm = {};
+      try {
+        Object.keys(data.checklist || {}).forEach(function(k){
+          dataChecklistNorm[normalizeLabel(k)] = data.checklist[k];
+        });
+      } catch(e){}
 
       function setStatus(el, status) {
-        const badge = el.querySelector('.checklist-status'); if (!badge) return;
+        if (!status) return;
+        var badge = el.querySelector('.checklist-status'); if (!badge) return;
         badge.className = 'checklist-status';
-        if (['pass','ok','✓','yes','y'].includes((status||'').toLowerCase())) { badge.textContent='✓'; badge.classList.add('status-pass'); }
-        else if (['repair','repaired','r','fail','f'].includes((status||'').toLowerCase())) { badge.textContent='R'; badge.classList.add('status-repair'); }
-        else if (['na','n/a','not applicable'].includes((status||'').toLowerCase())) { badge.textContent='N/A'; badge.classList.add('status-na'); }
+        var s = String(status||'').toLowerCase();
+        if (['pass','ok','✓','yes','y'].indexOf(s) !== -1) { badge.textContent='✓'; badge.classList.add('status-pass'); }
+        else if (['repair','repaired','r','fail','f'].indexOf(s) !== -1) { badge.textContent='R'; badge.classList.add('status-repair'); }
+        else if (['na','n/a','not applicable'].indexOf(s) !== -1) { badge.textContent='N/A'; badge.classList.add('status-na'); }
       }
-      document.querySelectorAll('.checklist-item').forEach(item => {
-        const label = item.querySelector('.checklist-item-text')?.textContent.trim();
-        if (label && data.checklist[label]) setStatus(item, data.checklist[label]);
+
+      Array.prototype.slice.call(document.querySelectorAll('.checklist-item')).forEach(function(item){
+        var labelTxt = (item.querySelector('.checklist-item-text') || {}).textContent || '';
+        var norm = normalizeLabel(labelTxt);
+        var st = dataChecklistNorm[norm];
+
+        // very light fuzzy fallback: try to match longest included key
+        if (!st) {
+          var bestKey = ''; 
+          for (var k in dataChecklistNorm) {
+            if (norm.indexOf(k) !== -1 && k.length > bestKey.length) bestKey = k;
+          }
+          if (bestKey) st = dataChecklistNorm[bestKey];
+        }
+        setStatus(item, st);
       });
+
+      // Expose helpers for filename builder
+      window.__schedule4_getData = function(){ return data; };
+      window.__schedule4_toUS = toUSDateString;
     })();
 
-    // === Puppeteer Server PDF START ===
+    // === Server PDF with exact filename "Schedule4-UNIT#-DATEINSPECTED.pdf" ===
     async function downloadServerPDF() {
       try {
-        const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
+        const data = (window.__schedule4_getData && window.__schedule4_getData()) || JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
+        const toUS = (window.__schedule4_toUS || function(x){ return x; });
+
+        const unitRaw = (data.unitNumber || 'Unit').toString().trim();
+        // Sanitize only illegal filename characters; preserve spaces and # as requested
+        const unitSan = unitRaw.replace(/[\/\\<>:"|?*]+/g,'').trim();
+
+        const dateUS = toUS(data.inspectionDate) || toUS(new Date());
+        const dateForFile = String(dateUS || '').replace(/\//g,'-'); // mm-dd-yyyy
+
+        const filename = `Schedule4-${unitSan}-${dateForFile}.pdf`;
+
         const res = await fetch('/api/pdf/print', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: '/output.html', data, filename: 'Schedule-4-Inspection.pdf' })
+          body: JSON.stringify({ path: '/output.html', data, filename })
         });
         if (!res.ok) throw new Error(await res.text());
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = 'Schedule-4-Inspection.pdf';
+        a.href = url; a.download = filename;
         document.body.appendChild(a); a.click(); a.remove();
         URL.revokeObjectURL(url);
-      } catch (err) { alert('Server PDF failed: ' + err.message); }
+      } catch (err) {
+        alert('Server PDF failed: ' + err.message);
+      }
     }
-    // === Puppeteer Server PDF END ===
   </script>
 
   <script>
-  // Fallback save to DB if first attempt was missed
+  // Fallback save to DB if first attempt was missed (no UI change)
   document.addEventListener('DOMContentLoaded', () => {
     try { if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return; } catch(e) {}
     try {
       const raw = sessionStorage.getItem('schedule4Data');
       if (!raw) return;
       const payload = JSON.parse(raw);
-      const jsonBody = JSON.stringify({ payload });
       fetch('/api/inspections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: jsonBody,
+        body: JSON.stringify({ payload }),
         keepalive: true
       }).catch(() => {});
     } catch (e) {}
   });
   </script>
-
-
-<!-- S4 minimal mm/dd/yyyy + filename patch (no UI changes) -->
-<script>
-(function(){
-  function toUSDateString(input){
-    if(!input) return '';
-    if (typeof input === 'string'){
-      var m = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (m) return m[2] + '/' + m[3] + '/' + m[1];
-      var mmdd = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (mmdd) return mmdd[1].padStart(2,'0') + '/' + mmdd[2].padStart(2,'0') + '/' + mmdd[3];
-    }
-    try { var d=new Date(input); if(!isNaN(d)) return String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0') + '/' + d.getFullYear(); } catch(e){}
-    return input;
-  }
-  function findValueBoxByLabel(labelText){
-    labelText = String(labelText).toLowerCase().trim();
-    var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
-    for (var i=0;i<labels.length;i++){
-      var l = labels[i];
-      if (!l.textContent) continue;
-      if (l.textContent.toLowerCase().indexOf(labelText) !== -1){
-        var container = l.closest('.form-group, .row, .grid, div, section') || l.parentElement;
-        if (container){
-          var cand = container.querySelectorAll('.output-text, .value, .text, div, span');
-          for (var j=0;j<cand.length;j++){
-            var el = cand[j];
-            if (el === l) continue;
-            if (el.querySelector('label')) continue;
-            if (el.textContent != null && el.textContent.trim() !== '') return el;
-          }
-        }
-      }
-    }
-    return null;
-  }
-  function sanitizeForFilename(s){
-    return String(s||'').replace(/[\/:*?"<>|]+/g,'-').replace(/\s+/g,'').trim();
-  }
-  function usToDash(s){
-    return String(s||'').replace(/\//g, '-');
-  }
-  function computeFilename(){
-    var unitBox = findValueBoxByLabel('unit #') || document.querySelector('[data-field="unitNumber"]');
-    var dateBox = findValueBoxByLabel('date inspected') || document.querySelector('[data-field="inspectionDate"]');
-    var unit = unitBox ? unitBox.textContent.trim() : '';
-    var dateUS = toUSDateString(dateBox ? dateBox.textContent.trim() : '');
-    if (!dateUS){
-      try { dateUS = toUSDateString(new Date()); } catch(e){}
-    }
-    var fname = 'Schedule4-' + sanitizeForFilename(unit||'Unit') + '-' + usToDash(dateUS || 'MM-DD-YYYY') + '.pdf';
-    return fname;
-  }
-  function enforceDownloadFilename(){
-    var name = computeFilename();
-    var anchors = Array.prototype.slice.call(document.querySelectorAll('a,button'));
-    anchors.forEach(function(a){
-      var txt = (a.textContent||'').toLowerCase();
-      if (txt.indexOf('download') !== -1 || txt.indexOf('pdf') !== -1){
-        try { a.setAttribute('download', name); } catch(e){}
-        if (!a.__s4_wrapped){
-          a.addEventListener('click', function(){
-            try { window.__S4_filename = function(){ return name; }; } catch(e){}
-          }, true);
-          a.__s4_wrapped = true;
-        }
-      }
-    });
-  }
-  window.__S4_toUS = toUSDateString;
-  window.__S4_filename = computeFilename;
-
-  document.addEventListener('DOMContentLoaded', function(){
-    var di = findValueBoxByLabel('date inspected') || document.querySelector('[data-field="inspectionDate"]');
-    var de = findValueBoxByLabel('date expires') || document.querySelector('[data-field="dateExpires"]');
-    if (di) di.textContent = toUSDateString(di.textContent.trim());
-    if (de) de.textContent = toUSDateString(de.textContent.trim());
-    enforceDownloadFilename();
-  });
-})();
-</script>
 
 </body>
 </html>
