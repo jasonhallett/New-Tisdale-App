@@ -65,6 +65,20 @@
     }
   </style>
 
+<style id="ios-print-fit">
+  /* iPhone/iPad Safari only */
+  @media print {
+    @supports (-webkit-touch-callout: none) {
+      /* Nudge and scale a bit more than desktop so we clear Safari's footer area */
+      #page {
+        transform: translate(0.28in, 0.40in) scale(0.92) !important;
+        transform-origin: top left !important;
+      }
+    }
+  }
+</style>
+
+
   <!-- Preload data by ID (runs before population script) -->
   <script>
   (function () {
