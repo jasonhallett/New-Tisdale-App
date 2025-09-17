@@ -66,7 +66,13 @@
       var params = new URLSearchParams(location.search);
       var id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
       if (!id) return;
-      if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return;
+
+      // 🔧 Minimal fix:
+      // Previously: returned if "schedule4LoadedFromId" was '1', which caused reopens to reuse the very first record.
+      // Now: only skip fetch if we're opening the *same* id *and* we already have cached data.
+      var lastId = sessionStorage.getItem('schedule4_current_id');
+      if (lastId === id && sessionStorage.getItem('schedule4Data')) return;
+
       var xhr = new XMLHttpRequest();
       xhr.open('GET', '/api/schedule4s/get?id=' + encodeURIComponent(id), false); // sync on purpose
       xhr.setRequestHeader('Accept','application/json');
@@ -101,7 +107,8 @@
         data.checklist       = p.checklist || {};
 
         try { sessionStorage.setItem('schedule4Data', JSON.stringify(data)); } catch(e){}
-        try { sessionStorage.setItem('schedule4LoadedFromId','1'); } catch(e){}
+        try { sessionStorage.setItem('schedule4LoadedFromId','1'); } catch(e){} // keep your existing semantics
+        try { sessionStorage.setItem('schedule4_current_id', id); } catch(e){}
       }
     } catch (e) {}
   })();
@@ -116,7 +123,7 @@
                    padding:8px 12px;border-radius:6px;cursor:pointer;">
       Print
     </button>
-    <button onclick="downloadServerPDF()"
+    <button onclick="downloadServerPDF"
             style="background:#2563eb;color:#fff;border:none;
                    padding:8px 12px;border-radius:6px;cursor:pointer;">
       Download (PDF)
