@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inspection PDF Viewer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { height:100%; }
+    body { margin:0; background:#0b0b0c; }
+    .toolbar { position:sticky; top:0; z-index:50; }
+    .btn { @apply inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 transition; }
+  </style>
+</head>
+<body class="text-white">
+  <header class="toolbar w-full bg-black/60 backdrop-blur supports-[backdrop-filter]:bg-black/40 border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-3 py-2 flex items-center gap-2">
+      <div class="text-sm opacity-80 select-none">Schedule‑4 Inspection PDF</div>
+      <div class="ml-auto flex items-center gap-2">
+        <button id="btnPrint" class="btn" title="Print this PDF">
+          <span>Print</span>
+        </button>
+        <a id="btnDownload" class="btn" title="Download PDF" download>
+          <span>Save to Files</span>
+        </a>
+        <button id="btnFleetio" class="btn" title="Import this report to a Fleetio Work Order">
+          <span>Import to Fleetio Work Order</span>
+        </button>
+        <button id="btnClose" class="btn" title="Close this window">
+          <span>Close</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="h-[calc(100%-48px)] w-full">
+    <iframe id="pdfFrame" class="w-full h-full" title="Inspection PDF"></iframe>
+  </main>
+
+  <script>
+    (function init() {
+      const params = new URLSearchParams(location.search);
+      const src = params.get('src');
+      const filename = params.get('filename') || 'Inspection.pdf';
+      const inspectionId = params.get('id') || '';
+
+      const frame = document.getElementById('pdfFrame');
+      const dl  = document.getElementById('btnDownload');
+      const btnPrint = document.getElementById('btnPrint');
+      const btnFleetio = document.getElementById('btnFleetio');
+      const btnClose = document.getElementById('btnClose');
+
+      if (!src) {
+        document.body.innerHTML = '<div class="p-6 text-red-300">No PDF source provided.</div>';
+        return;
+      }
+
+      frame.src = src;
+      dl.href = src;
+      dl.download = filename;
+
+      btnPrint.addEventListener('click', () => {
+        try {
+          const f = document.getElementById('pdfFrame');
+          if (f && f.contentWindow) {
+            f.contentWindow.focus();
+            f.contentWindow.print();
+          } else {
+            // Fallback: open in new tab and rely on native print UI
+            window.open(src, '_blank', 'noopener');
+          }
+        } catch (e) {
+          window.open(src, '_blank', 'noopener');
+        }
+      });
+
+      btnFleetio.addEventListener('click', () => {
+        // Placeholder – will wire to API/flow later.
+        const msg = inspectionId
+          ? 'Import stub: would import inspection #' + inspectionId + ' to Fleetio.'
+          : 'Import stub: inspection id missing; will prompt for selection.';
+        alert(msg + '\n\nWe will wire this to Fleetio Work Orders next.');
+      });
+
+      btnClose.addEventListener('click', () => {
+        window.close();
+      });
+    })();
+  </script>
+</body>
+</html>
