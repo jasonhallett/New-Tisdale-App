@@ -1,5 +1,5 @@
 // js/schedule4s.js
-// Lists Schedule 4s with columns: Date Inspected, Unit #, Odometer, Technician Name, View
+// Grid: Date Inspected, Unit #, Odometer, Technician Name, Inspection Location, View (small link)
 
 async function fetchList() {
   const r = await fetch('/api/schedule4s/list', { credentials: 'include' });
@@ -31,38 +31,33 @@ function htmlesc(s) {
 }
 
 function buildOpenUrl(id) {
-  // Send multiple aliases so Output can use whichever it reads
-  const params = new URLSearchParams({
-    id,
-    inspectionId: id,
-    schedule4Id: id
-  });
+  const params = new URLSearchParams({ id, inspectionId: id, schedule4Id: id });
   return `output.html?${params.toString()}`;
 }
 
 function render(items) {
   const tbody = document.querySelector('#grid tbody');
   tbody.innerHTML = items.map((row) => {
-    const id   = row.id;
-    const date = fmtDate(row.created_at); // treated as Date Inspected (performed_at fallback on API)
-    const unit = htmlesc(row.unit || row.unit_number || row.vehicle || '—');
-    const odo  = fmtOdo(row.odometer);
-    const tech = htmlesc(row.technician || row.technician_name || '—');
-    const href = id ? buildOpenUrl(id) : '#';
+    const id    = row.id;
+    const date  = fmtDate(row.created_at);
+    const unit  = htmlesc(row.unit || row.unit_number || row.vehicle || '—');
+    const odo   = fmtOdo(row.odometer);
+    const tech  = htmlesc(row.technician || row.technician_name || '—');
+    const loc   = htmlesc(row.location || '—');
+    const href  = id ? buildOpenUrl(id) : '#';
     return `<tr data-id="${htmlesc(id || '')}">
-      <td>${date}</td>
-      <td>${unit}</td>
-      <td>${odo}</td>
-      <td>${tech}</td>
-      <td>
-        <div class="row">
-          <a class="btn open-btn" href="${href}" target="_top" title="Open Output" style="height:32px;padding:0 10px">View</a>
-        </div>
+      <td class="col-date">${date}</td>
+      <td class="col-unit">${unit}</td>
+      <td class="col-odo">${odo}</td>
+      <td class="col-tech cell-ellipsis" title="${tech}">${tech}</td>
+      <td class="col-loc cell-ellipsis" title="${loc}">${loc}</td>
+      <td class="col-view">
+        <a class="btn-link-sm open-btn" href="${href}" target="_top" title="Open Output">View</a>
       </td>
     </tr>`;
   }).join('');
 
-  // Persist last-opened id to help any downstream logic (harmless if unused)
+  // Delegate small link clicks
   tbody.addEventListener('click', (e) => {
     const a = e.target.closest('a.open-btn');
     if (!a) return;
@@ -70,7 +65,6 @@ function render(items) {
     const id = tr?.getAttribute('data-id') || '';
     if (id) {
       try { sessionStorage.setItem('schedule4_last_open_id', id); } catch {}
-      // Ensure we always navigate the top window, even if this page isn’t in the app shell
       e.preventDefault();
       window.top.location.href = buildOpenUrl(id);
     }
@@ -82,7 +76,7 @@ function attachFilter(all) {
   const doFilter = () => {
     const t = (q.value || '').toLowerCase();
     const filtered = !t ? all : all.filter(r => {
-      const s = `${r.id||''} ${r.unit||r.unit_number||''} ${r.odometer||''} ${r.technician||r.technician_name||''} ${r.created_at||''}`.toLowerCase();
+      const s = `${r.id||''} ${r.unit||r.unit_number||''} ${r.odometer||''} ${r.technician||r.technician_name||''} ${r.created_at||''} ${r.location||''}`.toLowerCase();
       return s.includes(t);
     });
     render(filtered);
@@ -92,7 +86,6 @@ function attachFilter(all) {
 }
 
 document.getElementById('newBtn').addEventListener('click', () => {
-  // If loaded in the app shell, navigate inside it; otherwise navigate top-level
   try {
     const parentFrame = window.top?.document?.getElementById('contentFrame');
     if (parentFrame) {
@@ -109,6 +102,6 @@ document.getElementById('newBtn').addEventListener('click', () => {
     attachFilter(items);
   } catch (e) {
     console.error(e);
-    document.querySelector('#grid tbody').innerHTML = `<tr><td colspan="5">Unable to load Schedule 4s.</td></tr>`;
+    document.querySelector('#grid tbody').innerHTML = `<tr><td colspan="6">Unable to load Schedule 4s.</td></tr>`;
   }
 })();

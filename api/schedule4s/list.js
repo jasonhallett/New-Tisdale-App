@@ -1,5 +1,6 @@
 // /api/schedule4s/list.js
-// List Schedule 4s and return fields the grid expects, newest first by created/inspected date.
+// Returns: id, created_at (Date Inspected), unit, odometer, technician, location (address).
+// Newest first.
 
 export const config = { runtime: 'nodejs' };
 
@@ -11,8 +12,11 @@ export default async function handler(req, res) {
       SELECT
         id,
         COALESCE(performed_at, created_at) AS created_at,
+        /* Unit # */
         COALESCE(vehicle_name, NULLIF(payload_json->>'unitNumber', '')) AS unit,
+        /* Technician Name */
         COALESCE(technician_name, NULLIF(payload_json->>'inspectorName','')) AS technician,
+        /* Odometer */
         NULLIF(
           COALESCE(
             payload_json->>'odometerKm',
@@ -22,14 +26,18 @@ export default async function handler(req, res) {
           ),
           ''
         ) AS odometer,
-        NULLIF(
-          COALESCE(
-            payload_json->>'inspectionLocation',
-            payload_json->>'location',
-            payload_json->>'address',
-            payload_json->>'inspectionAddress'
-          ),
-          ''
+        /* Inspection Location / Address: try normalized columns, then JSON fallbacks */
+        COALESCE(
+          NULLIF(TRIM(inspection_address), ''),
+          NULLIF(TRIM(inspection_location), ''),
+          NULLIF(TRIM(location_address), ''),
+          NULLIF(TRIM(location), ''),
+          NULLIF(TRIM(address), ''),
+          NULLIF(TRIM(payload_json->>'inspectionLocationAddress'), ''),
+          NULLIF(TRIM(payload_json->>'inspectionLocation'), ''),
+          NULLIF(TRIM(payload_json->>'locationAddress'), ''),
+          NULLIF(TRIM(payload_json->>'location'), ''),
+          NULLIF(TRIM(payload_json->>'address'), '')
         ) AS location
       FROM schedule4_inspections
       ORDER BY 2 DESC NULLS LAST

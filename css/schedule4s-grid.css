@@ -1,40 +1,24 @@
 /* css/schedule4s-grid.css */
-/* Compact table + sleek small view button. Scoped to this page's classes. */
-.table.compact th, .table.compact td { padding: 6px 8px; vertical-align: middle; }
+/* Ultra-compact table + tiny link-style View control. */
+.table.compact th, .table.compact td { padding: 4px 6px; vertical-align: middle; }
 .col-date, .col-unit, .col-odo, .col-tech, .col-loc, .col-view { white-space: nowrap; }
-.col-date { width: 120px; }
-.col-unit { width: 90px; }
-.col-odo  { width: 110px; text-align: right; }
-.col-tech { max-width: 220px; }
-.col-loc  { max-width: 320px; }
-.col-view { width: 72px; text-align: right; }
+.col-date { width: 112px; }
+.col-unit { width: 130px; }   /* wider per request */
+.col-odo  { width: 140px; text-align: right; } /* wider per request */
+.col-tech { max-width: 110px; } /* ~half the previous size */
+.col-loc  { max-width: 360px; }
+.col-view { width: 56px; text-align: center; } /* keep under header */
 
 .cell-ellipsis { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
-/* Minimal, theme-friendly ghost button */
-:root {
-  --btn-border: rgba(0,0,0,0.15);
-  --btn-hover: rgba(0,0,0,0.05);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --btn-border: rgba(255,255,255,0.25);
-    --btn-hover: rgba(255,255,255,0.06);
-  }
-}
-.btn-ghost-sm {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
+/* Tiny link button (no border box, not "big") */
+.btn-link-sm {
+  display: inline-block;
   font-size: 12px;
-  border-radius: 9999px;
-  border: 1px solid var(--btn-border);
+  line-height: 1.2;
+  padding: 2px 4px;
+  border: 0;
   background: transparent;
   text-decoration: none;
-  line-height: 1;
 }
-.btn-ghost-sm:hover { background: var(--btn-hover); }
-.btn-ghost-sm svg { width: 14px; height: 14px; flex: 0 0 14px; }
+.btn-link-sm:hover { text-decoration: underline; }
