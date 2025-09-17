@@ -1,12 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!--
+  TEMP: Disable silent session check to avoid 401 console noise on first load.
+  Set AUTO_REDIRECT_IF_LOGGED_IN = true to re-enable the check/redirect.
+-->
 <script defer>
-(async () => {
-  try {
-    const r = await fetch('/api/users/me', { credentials: 'include' });
-    if (r.ok) window.location.href = 'app.html';
-  } catch {}
+(() => {
+  const AUTO_REDIRECT_IF_LOGGED_IN = false; // <- toggle to true to restore auto-redirect
+  if (!AUTO_REDIRECT_IF_LOGGED_IN) return;
+  fetch('/api/users/me', { credentials: 'include' })
+    .then(r => { if (r.ok) window.location.href = 'app.html'; })
+    .catch(() => {});
 })();
 </script>
 
