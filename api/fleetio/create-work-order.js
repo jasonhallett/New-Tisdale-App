@@ -1,238 +1,272 @@
-import { NextResponse } from 'next/server'; // If using Next.js 13+. If on pages/api, swap to default req,res handler.
-import chromium from '@sparticuz/chromium';
-import puppeteer from 'puppeteer-core';
+// /api/fleetio/create-work-order.js
+// Vercel/Next.js "pages/api" style function (Node runtime)
+// Creates a Fleetio Work Order, attaches the inspection PDF, and adds a Service Task line item.
+// Maps Schedule 4 fields: issued_at + started_at = "Date Inspected"; meters from "odometer".
 
 export const config = { runtime: 'nodejs' };
 
-// ---------- env ----------
-const FLEETIO_BASE_URL = process.env.FLEETIO_BASE_URL || 'https://secure.fleetio.com/api';
-const FLEETIO_API_TOKEN = process.env.FLEETIO_API_TOKEN; // "Token xxxxx"
-const FLEETIO_ACCOUNT_TOKEN = process.env.FLEETIO_ACCOUNT_TOKEN; // e.g. 80ce8e499c
-const APP_BASE_URL = process.env.APP_BASE_URL; // e.g. https://your-app.vercel.app
+const BASE_V2 = 'https://secure.fleetio.com/api/v2';
+const BASE_V1 = 'https://secure.fleetio.com/api/v1';
 
-if (!FLEETIO_API_TOKEN) console.warn('Missing FLEETIO_API_TOKEN');
-if (!FLEETIO_ACCOUNT_TOKEN) console.warn('Missing FLEETIO_ACCOUNT_TOKEN');
-if (!APP_BASE_URL) console.warn('Missing APP_BASE_URL (used to call /api/pdf/print)');
+function assertEnv(name) {
+  const val = process.env[name];
+  if (!val) throw new Error(`Missing required env var: ${name}`);
+  return val;
+}
+const API_TOKEN = assertEnv('FLEETIO_API_TOKEN');
+const ACCOUNT_TOKEN = assertEnv('FLEETIO_ACCOUNT_TOKEN');
+const APP_BASE_URL = assertEnv('APP_BASE_URL');
 
-// ---------- tiny fetch wrapper ----------
-async function fleetio(path, init = {}) {
-  const headers = {
-    'Authorization': `Token ${FLEETIO_API_TOKEN}`,
-    'Account-Token': FLEETIO_ACCOUNT_TOKEN,
-    ...(init.headers || {}),
-  };
-  const res = await fetch(`${FLEETIO_BASE_URL}${path}`, { ...init, headers });
+// ---------- small utils ----------
+const jsonHeaders = {
+  'Content-Type': 'application/json',
+  'Authorization': `Token ${API_TOKEN}`,
+  'Account-Token': ACCOUNT_TOKEN
+};
+
+function toIsoDate(dateLike) {
+  // Produces YYYY-MM-DD
+  if (!dateLike) return new Date().toISOString().slice(0, 10);
+  // handle "mm/dd/yyyy" or "yyyy-mm-dd"
+  if (typeof dateLike === 'string') {
+    const mdy = dateLike.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (mdy) {
+      const [ , m, d, y ] = mdy;
+      const dt = new Date(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T00:00:00`);
+      return dt.toISOString().slice(0, 10);
+    }
+  }
+  const d = new Date(dateLike);
+  if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
+function toIsoDateTime(dateLike) {
+  // Full ISO timestamp
+  if (!dateLike) return new Date().toISOString();
+  const d = new Date(dateLike);
+  if (Number.isNaN(d.getTime())) return new Date().toISOString();
+  return d.toISOString();
+}
+
+function numOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const cleaned = String(v).replace(/,/g, '').trim();
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalize(s) { return String(s || '').trim().toLowerCase(); }
+
+// ---------- Fleetio HTTP ----------
+async function fleetioV2(path, init = {}) {
+  const res = await fetch(`${BASE_V2}${path}`, {
+    ...init,
+    headers: { ...(init.headers || {}), ...jsonHeaders }
+  });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Fleetio ${init.method || 'GET'} ${path} failed: ${res.status} ${text}`);
+    const body = await res.text().catch(() => '');
+    throw new Error(`Fleetio V2 ${init.method || 'GET'} ${path} failed: ${res.status} ${body}`);
   }
   const ct = res.headers.get('content-type') || '';
   return ct.includes('application/json') ? res.json() : res.text();
 }
 
-// ---------- PDF generation via your existing /api/pdf/print ----------
+async function fleetioV1(path, init = {}) {
+  const res = await fetch(`${BASE_V1}${path}`, {
+    ...init,
+    headers: { ...(init.headers || {}), ...jsonHeaders }
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Fleetio V1 ${init.method || 'GET'} ${path} failed: ${res.status} ${body}`);
+  }
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : res.text();
+}
+
+// ---------- PDF: use your existing /api/pdf/print ----------
 async function renderPdfBuffer({ reportUrl, filename, data }) {
-  // call your own printer endpoint so we don't duplicate logic
   const res = await fetch(`${APP_BASE_URL}/api/pdf/print`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: reportUrl, filename: filename || 'schedule4.pdf', data: data || {} }),
+    body: JSON.stringify({
+      url: reportUrl,
+      filename: filename || 'schedule4.pdf',
+      data: data || {}
+    })
   });
   if (!res.ok) {
     const t = await res.text().catch(() => '');
-    throw new Error(`Printer failed: ${res.status} ${t}`);
+    throw new Error(`PDF print failed: ${res.status} ${t}`);
   }
-  return Buffer.from(await res.arrayBuffer());
+  const ab = await res.arrayBuffer();
+  return Buffer.from(ab);
 }
 
-// ---------- Upload PDF into Fleetio-managed storage (policy + upload) ----------
-async function getUploadPolicy() {
-  return fleetio('/v1/uploads/policies', { method: 'POST' });
-}
-async function uploadToFleetioStorage({ pdfBuffer, filename }) {
-  const { policy, signature, path } = await getUploadPolicy();
-  // Fleetio docs show this fixed endpoint for uploads
-  const endpoint = 'https://lmuavc3zg4.execute-api.us-east-1.amazonaws.com/prod/uploads';
-  const url = new URL(endpoint);
-  url.searchParams.set('signature', signature);
-  url.searchParams.set('policy', policy);
-  url.searchParams.set('path', path);
-  if (filename) url.searchParams.set('filename', filename);
-
-  const res = await fetch(url.toString(), {
+// ---------- Upload PDF to Fleetio-managed storage, return public file_url ----------
+async function uploadPdfToFleetio({ pdfBuffer, filename }) {
+  // Ask Fleetio for an upload policy
+  // Many accounts return an S3-style policy: { upload_url, fields, asset_host, public_url }
+  const policy = await fleetioV1('/uploads/policies', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/pdf' },
-    body: pdfBuffer
+    body: JSON.stringify({
+      filename: filename || 'schedule4.pdf',
+      file_content_type: 'application/pdf'
+    })
   });
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`Upload failed: ${res.status} ${t}`);
+
+  // If it's the S3 multipart style (upload_url + fields), perform a multipart POST
+  if (policy?.upload_url && policy?.fields) {
+    const form = new FormData();
+    Object.entries(policy.fields).forEach(([k, v]) => form.append(k, v));
+    // 'file' must be the last field for some S3 configs
+    form.append('file', new Blob([pdfBuffer], { type: 'application/pdf' }), filename || 'schedule4.pdf');
+
+    const s3Res = await fetch(policy.upload_url, { method: 'POST', body: form });
+    if (!s3Res.ok) {
+      const t = await s3Res.text().catch(() => '');
+      throw new Error(`S3 upload failed: ${s3Res.status} ${t}`);
+    }
+
+    // Construct a public URL if not provided directly
+    const key = policy.fields.key || policy.fields.Key;
+    const fileUrl =
+      policy.public_url ||
+      (policy.asset_host && key ? `${policy.asset_host}/${key}` : null);
+
+    if (!fileUrl) {
+      throw new Error('Upload policy did not include a resolvable public URL');
+    }
+    return fileUrl;
   }
-  const json = await res.json();
-  if (!json?.url) throw new Error('Upload response missing url');
-  return json.url;
+
+  // Some older policies may return { policy, signature, path, endpoint } with a direct binary POST.
+  if (policy?.endpoint && policy?.policy && policy?.signature && policy?.path) {
+    const url = new URL(policy.endpoint);
+    url.searchParams.set('policy', policy.policy);
+    url.searchParams.set('signature', policy.signature);
+    url.searchParams.set('path', policy.path);
+    if (filename) url.searchParams.set('filename', filename);
+
+    const upRes = await fetch(url.toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/pdf' },
+      body: pdfBuffer
+    });
+    if (!upRes.ok) {
+      const t = await upRes.text().catch(() => '');
+      throw new Error(`Binary upload failed: ${upRes.status} ${t}`);
+    }
+    const j = await upRes.json().catch(() => null);
+    const fileUrl = j?.url || j?.file_url || policy.public_url;
+    if (!fileUrl) throw new Error('Upload response missing public url');
+    return fileUrl;
+  }
+
+  throw new Error('Unrecognized upload policy shape from Fleetio');
 }
 
-// ---------- Helper lookups ----------
+// ---------- Lookups ----------
 async function listAllVehicles() {
-  // Newer API uses keyset pagination with start_cursor
-  let cursor = undefined;
-  const results = [];
-  do {
-    const qp = new URLSearchParams();
-    if (cursor) qp.set('start_cursor', cursor);
-    qp.set('per_page', '200');
-    const page = await fleetio(`/v1/vehicles?${qp.toString()}`);
-    const items = Array.isArray(page?.data) ? page.data : Array.isArray(page) ? page : [];
-    const next = page?.next_cursor || page?.start_cursor; // be liberal
-    results.push(...items);
-    cursor = page?.next_cursor || null;
-  } while (cursor);
-  return results;
+  // Simple page-based pagination
+  let page = 1;
+  const per_page = 200;
+  const all = [];
+  // Some tenants may cap pages; loop up to a safe bound
+  for (let i = 0; i < 25; i++) {
+    const qs = new URLSearchParams({ page: String(page), per_page: String(per_page) });
+    const out = await fleetioV2(`/vehicles?${qs.toString()}`);
+    const items = Array.isArray(out?.data) ? out.data : (Array.isArray(out) ? out : []);
+    if (!items.length) break;
+    all.push(...items);
+    if (items.length < per_page) break;
+    page++;
+  }
+  return all;
 }
-
-function normalize(s) { return String(s || '').trim().toLowerCase(); }
 
 function vehicleLabel(v) {
-  return v?.name || v?.label || v?.vehicle_number || v?.id;
+  return v?.name || v?.vehicle_number || v?.external_id || v?.label || `Vehicle ${v?.id}`;
 }
 
 function bestVehicleMatch(vehicles, unitNumber) {
-  const target = normalize(unitNumber);
-  if (!target) return null;
-  // try exact matches on common fields
+  const t = normalize(unitNumber);
+  if (!t) return null;
   for (const v of vehicles) {
-    const fields = [
-      v?.name, v?.label, v?.vehicle_number, v?.external_id, v?.identifier, v?.unit, v?.unit_number, v?.number
+    const candidates = [
+      v?.name, v?.vehicle_number, v?.external_id, v?.label,
+      v?.identifier, v?.unit, v?.unit_number, v?.number
     ];
-    if (fields.some(f => normalize(f) === target)) return v;
+    if (candidates.some(c => normalize(c) === t)) return v;
   }
-  // fallback: contains
   for (const v of vehicles) {
-    const f = normalize(vehicleLabel(v));
-    if (f && f.includes(target)) return v;
+    const lab = normalize(vehicleLabel(v));
+    if (lab && lab.includes(t)) return v;
   }
   return null;
 }
 
 async function getOpenStatusId() {
-  const statuses = await fleetio('/work_order_statuses'); // versionless doc page resolves to latest
-  const items = Array.isArray(statuses?.data) ? statuses.data : Array.isArray(statuses) ? statuses : [];
+  const qs = new URLSearchParams({ per_page: '200' });
+  const out = await fleetioV2(`/work_order_statuses?${qs.toString()}`);
+  const items = Array.isArray(out?.data) ? out.data : (Array.isArray(out) ? out : []);
   const open = items.find(s => normalize(s?.name) === 'open') || items.find(s => s?.is_default);
   if (!open?.id) throw new Error('Could not resolve Work Order Status "Open"');
   return open.id;
 }
 
 async function findOrCreateServiceTaskId(name) {
-  const qp = new URLSearchParams();
-  qp.set('per_page', '200');
-  // try filter by name if supported; otherwise search client-side
-  const page = await fleetio(`/v1/service_tasks?${qp.toString()}`);
-  const items = Array.isArray(page?.data) ? page.data : Array.isArray(page) ? page : [];
-  const hit = items.find(t => normalize(t?.name) === normalize(name));
-  if (hit?.id) return hit.id;
+  const per_page = 200;
+  let page = 1;
+  let found = null;
 
-  // create it
-  const created = await fleetio('/v1/service_tasks', {
+  while (!found && page < 20) {
+    const qs = new URLSearchParams({ per_page: String(per_page), page: String(page) });
+    const out = await fleetioV1(`/service_tasks?${qs.toString()}`);
+    const items = Array.isArray(out?.data) ? out.data : (Array.isArray(out) ? out : []);
+    found = items.find(t => normalize(t?.name) === normalize(name)) || null;
+    if (items.length < per_page) break;
+    page++;
+  }
+
+  if (found?.id) return found.id;
+
+  const created = await fleetioV1('/service_tasks', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name })
   });
-  if (!created?.id) throw new Error('Service Task creation failed');
+  if (!created?.id) throw new Error('Failed to create Service Task');
   return created.id;
 }
 
-// ---------- main handler ----------
+// ---------- Main handler ----------
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { inspectionId, unitNumber, data, filename, reportUrl, vehicleId, serviceTaskName } = req.body || {};
+    // Expected body from your viewer:
+    // {
+    //   inspectionId, filename, reportUrl, data: { inspectionDate, odometer, ... },
+    //   unitNumber, vehicleId?, serviceTaskName?
+    // }
+    const {
+      inspectionId,
+      filename,
+      reportUrl,
+      data = {},
+      unitNumber,
+      vehicleId: vehicleIdFromBody,
+      serviceTaskName
+    } = req.body || {};
 
     if (!inspectionId) return res.status(400).json({ error: 'inspectionId is required' });
     if (!filename) return res.status(400).json({ error: 'filename is required' });
     if (!reportUrl) return res.status(400).json({ error: 'reportUrl is required' });
 
-    // Step 1: resolve vehicle id if not provided
-    let finalVehicleId = vehicleId;
-    let allVehicles = null;
-    if (!finalVehicleId) {
-      allVehicles = await listAllVehicles();
-      const match = bestVehicleMatch(allVehicles, unitNumber);
-      if (match) finalVehicleId = match.id;
-    }
-
-    if (!finalVehicleId) {
-      // Return choices for modal
-      if (!allVehicles) allVehicles = await listAllVehicles();
-      const choices = (allVehicles || []).map(v => ({
-        id: v.id, label: vehicleLabel(v)
-      }));
-      return res.status(404).json({
-        code: 'vehicle_not_found',
-        message: `Could not find a Fleetio vehicle matching Unit "${unitNumber}". Pick one below.`,
-        choices
-      });
-    }
-
-    // Step 2: create a work order in "Open"
-    const work_order_status_id = await getOpenStatusId();
-    const issued_at = new Date().toISOString().slice(0, 10); // date only
-
-    const created = await fleetio('/v2/work_orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        vehicle_id: finalVehicleId,
-        issued_at,
-        work_order_status_id
-      })
-    });
-
-    const workOrderId = created?.id;
-    if (!workOrderId) throw new Error('Work Order creation returned no id');
-
-    // Step 3: render PDF and upload to Fleetio storage, then attach to WO
-    const pdfBuffer = await renderPdfBuffer({ reportUrl, filename, data });
-    const file_url = await uploadToFleetioStorage({ pdfBuffer, filename });
-
-    await fleetio(`/v2/work_orders/${workOrderId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        documents_attributes: [
-          { name: filename, file_url }
-        ]
-      })
-    });
-
-    // Step 4: add a Work Order line item for the specified Service Task
-    const taskName = serviceTaskName || 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
-    const serviceTaskId = await findOrCreateServiceTaskId(taskName);
-    await fleetio(`/v2/work_orders/${workOrderId}/work_order_line_items`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'WorkOrderServiceTaskLineItem',
-        item_type: 'ServiceTask',
-        item_id: serviceTaskId,
-        description: taskName
-      })
-    });
-
-    // Compose a friendly response. Many Fleetio resources include a web URL field; if not, construct one.
-    const work_order_url = created?.web_url || `https://secure.fleetio.com/work_orders/${workOrderId}`;
-
-    res.status(200).json({
-      ok: true,
-      work_order: created,
-      work_order_url
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-}
+    // Pull values from your Schedule 4 data
+    const inspectionDate =
+      data.inspectionDate || data.dateInspected || data.date_inspected || null;_
