@@ -34,6 +34,12 @@
       #page { width:8.5in !important; min-height:11in !important; margin:0 !important; }
       .no-print { display:none !important; }
     }
+
+   @media (max-width: 640px){
+    .always-two-col{
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+  }
   </style>
 
   <style id="single-page-fix">
@@ -163,7 +169,7 @@
         <div class="form-group flex items-center"><label>Date Expires</label><div class="output-text"></div></div>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 always-two-col">
         <!-- Left column -->
         <div>
           <h2 class="section-header my-1">1. Air Brake System</h2>
