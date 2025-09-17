@@ -35,152 +35,71 @@
       .no-print { display:none !important; }
     }
 
-   @media (max-width: 640px){
-    .always-two-col{
-      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    @media (max-width: 640px){
+      .always-two-col{ grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     }
-  }
-  </style>
 
-  <style id="single-page-fix">
-    /* Hide stray page counters like "/1" on screen and in print */
-    body::before, body::after, html::before, html::after,
-    #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
+    /* Hide stray page counters like "/1" */
+    body::before, body::after, html::before, html::after, #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
     .page-number, .pageNumber, [data-page-number] { display: none !important; }
 
     @media print {
       .page, #page { page-break-after: auto !important; break-after: auto !important; }
       .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
     }
-  </style>
 
-  <style id="print-scale-95">
+    /* Desktop print: scale to 95% and center */
     @media print {
-      .no-print { display: none !important; }
-      /* center the 95% scaled page on Letter */
-      #page {
-        transform: translate(0.2125in, 0.275in) scale(0.95) !important;
-        transform-origin: top left !important;
+      #page { transform: translate(0.2125in, 0.275in) scale(0.95) !important; transform-origin: top left !important; }
+    }
+
+    /* iPhone/iPad Safari nudge */
+    @media print {
+      @supports (-webkit-touch-callout: none) {
+        #page { transform: translate(0.28in, 0.40in) scale(0.90) !important; transform-origin: top left !important; }
       }
     }
   </style>
-
-<style id="ios-print-fit">
-  /* iPhone/iPad Safari only */
-  @media print {
-    @supports (-webkit-touch-callout: none) {
-      /* Nudge and scale a bit more than desktop so we clear Safari's footer area */
-      #page {
-        transform: translate(0.28in, 0.40in) scale(0.90) !important;
-        transform-origin: top left !important;
-      }
-    }
-  }
-</style>
-
-
-  <!-- Preload data by ID (runs before population script) -->
-  <script>
-  (function () {
-    try {
-      var params = new URLSearchParams(location.search);
-      var id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
-      if (!id) return;
-
-      // 🔧 Minimal fix:
-      // Previously: returned if "schedule4LoadedFromId" was '1', which caused reopens to reuse the very first record.
-      // Now: only skip fetch if we're opening the *same* id *and* we already have cached data.
-      var lastId = sessionStorage.getItem('schedule4_current_id');
-      if (lastId === id && sessionStorage.getItem('schedule4Data')) return;
-
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', '/api/schedule4s/get?id=' + encodeURIComponent(id), false); // sync on purpose
-      xhr.setRequestHeader('Accept','application/json');
-      xhr.send(null);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        var resp = {};
-        try { resp = JSON.parse(xhr.responseText) || {}; } catch(e){ resp = {}; }
-        var row = resp.item || resp || {};
-        var p = row.payload_json || row.payload || {};
-
-        function pick() {
-          for (var i = 0; i < arguments.length; i++) {
-            var k = arguments[i];
-            if (p && p[k] != null && p[k] !== '') return p[k];
-          }
-          return '';
-        }
-
-        var data = {};
-        data.carrierName     = pick('carrierName','carrier');
-        data.locationAddress = pick('locationAddress','address','inspectionLocation');
-        data.unitNumber      = pick('unitNumber','unit','vehicle_number') || row.vehicle_name || '';
-        data.licensePlate    = pick('licensePlate','licencePlate','plate');
-        data.odometer        = pick('odometer','odometerKm','odometer_km');
-        data.inspectionDate  = pick('inspectionDate') || row.performed_at || row.created_at || '';
-        data.odometerExpires = pick('odometerExpires');
-        data.dateExpires     = pick('dateExpires') || row.expiry_date || '';
-        data.tireSize        = pick('tireSize');
-        data.repairs         = pick('repairs','repairsNotes','repairs_text');
-        data.inspectorName   = pick('inspectorName') || row.technician_name || '';
-
-        data.rSteerBrake = pick('rSteerBrake');
-        data.rDriveBrake = pick('rDriveBrake');
-        data.rTagBrake   = pick('rTagBrake');
-        data.lSteerBrake = pick('lSteerBrake');
-        data.lDriveBrake = pick('lDriveBrake');
-        data.lTagBrake   = pick('lTagBrake');
-        
-        data.signature       = pick('signature');
-        data.checklist       = p.checklist || {};
-
-        try { sessionStorage.setItem('schedule4Data', JSON.stringify(data)); } catch(e){}
-        try { sessionStorage.setItem('schedule4LoadedFromId','1'); } catch(e){} // keep your existing semantics
-        try { sessionStorage.setItem('schedule4_current_id', id); } catch(e){}
-      }
-    } catch (e) {}
-  })();
-  </script>
-
 </head>
 <body>
-  <!-- Buttons -->
+  <!-- Top-right action buttons (hidden in print) -->
   <div class="no-print" style="position:fixed;top:10px;right:10px;z-index:999;display:flex;gap:8px;">
     <button onclick="window.print()"
-            style="background:#111827;color:#fff;border:none;
-                   padding:8px 12px;border-radius:6px;cursor:pointer;">
+            style="background:#111827;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;">
       Print
-    </button> 
-    <button onclick="downloadServerPDF()"
-            style="background:#2563eb;color:#fff;border:none;
-                   padding:8px 12px;border-radius:6px;cursor:pointer;">
+    </button>
+    <button id="btnDownload"
+            style="background:#2563eb;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;">
       Download (PDF)
     </button>
   </div>
 
+  <!-- Loading / error area (hidden once ready) -->
+  <div id="status" class="no-print" style="position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:999;background:#0f172a;color:#fff;padding:8px 12px;border-radius:8px;border:1px solid #ffffff22;display:none;"></div>
+
   <!-- Page -->
-  <div id="page">
+  <div id="page" aria-busy="true">
     <div class="content" id="pdf-root">
       <h1 class="text-xs font-bold text-center text-gray-800 mb-3">Schedule 4 Motor Coach Under-Vehicle Inspection Report</h1>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-1">
-        <div class="form-group"><label>Carrier</label><div class="output-text"></div></div>
-        <div class="form-group"><label>Address of the location where the inspection is conducted</label><div class="output-text"></div></div>
+        <div class="form-group"><label>Carrier</label><div class="output-text" data-field="carrierName"></div></div>
+        <div class="form-group"><label>Address of the location where the inspection is conducted</label><div class="output-text" data-field="locationAddress"></div></div>
       </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-1 mb-1">
-        <div class="form-group flex items-center"><label>Unit #</label><div class="output-text"></div></div>
-        <div class="form-group flex items-center"><label>Licence Plate</label><div class="output-text"></div></div>
-        <div class="form-group flex items-center"><label>Odometer (km)</label><div class="output-text"></div></div>
-        <div class="form-group flex items-center"><label>Date Inspected</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Unit #</label><div class="output-text" data-field="unitNumber"></div></div>
+        <div class="form-group flex items-center"><label>Licence Plate</label><div class="output-text" data-field="licensePlate"></div></div>
+        <div class="form-group flex items-center"><label>Odometer (km)</label><div class="output-text" data-field="odometer"></div></div>
+        <div class="form-group flex items-center"><label>Date Inspected</label><div class="output-text" data-field="inspectionDate"></div></div>
       </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-1 mb-1">
         <p class="text-xxs text-gray-500 italic col-span-2">
           An under-vehicle inspection is valid until the 31st day after it is conducted or until the motor coach has been driven 12,000 kilometres, whichever occurs last.
         </p>
-        <div class="form-group flex items-center"><label>Odometer Expires</label><div class="output-text"></div></div>
-        <div class="form-group flex items-center"><label>Date Expires</label><div class="output-text"></div></div>
+        <div class="form-group flex items-center"><label>Odometer Expires</label><div class="output-text" data-field="odometerExpires"></div></div>
+        <div class="form-group flex items-center"><label>Date Expires</label><div class="output-text" data-field="dateExpires"></div></div>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 always-two-col">
@@ -193,14 +112,14 @@
             <div class="pl-4 mt-1">
               <h3 class="font-bold my-1 text-gray-800 text-xxs">Brake Pushrod Stroke Measurements</h3>
               <div class="flex flex-wrap gap-2">
-                <div class="flex items-center"><label class="mr-1 text-xxs">R Steer</label><div class="output-text" style="width:45px;"></div></div>
-                <div class="flex items-center"><label class="mr-1 text-xxs">R Drive</label><div class="output-text" style="width:45px;"></div></div>
-                <div class="flex items-center"><label class="mr-1 text-xxs">R Tag</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">R Steer</label><div class="output-text" style="width:45px;" data-field="rSteerBrake"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">R Drive</label><div class="output-text" style="width:45px;" data-field="rDriveBrake"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">R Tag</label><div class="output-text" style="width:45px;" data-field="rTagBrake"></div></div>
               </div>
               <div class="flex flex-wrap gap-2 mt-1">
-                <div class="flex items-center"><label class="mr-1 text-xxs">L Steer</label><div class="output-text" style="width:45px;"></div></div>
-                <div class="flex items-center"><label class="mr-1 text-xxs">L Drive</label><div class="output-text" style="width:45px;"></div></div>
-                <div class="flex items-center"><label class="mr-1 text-xxs">L Tag</label><div class="output-text" style="width:45px;"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">L Steer</label><div class="output-text" style="width:45px;" data-field="lSteerBrake"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">L Drive</label><div class="output-text" style="width:45px;" data-field="lDriveBrake"></div></div>
+                <div class="flex items-center"><label class="mr-1 text-xxs">L Tag</label><div class="output-text" style="width:45px;" data-field="lTagBrake"></div></div>
               </div>
             </div>
             <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">Clearance between disc brake pads and rotor exceeds manufacturer's specified limit</span></div>
@@ -268,20 +187,20 @@
           <h2 class="section-header my-1">For buses travelling to USA, per FMCSA Regulations, Part 396.3</h2>
           <div class="grid grid-cols-1 gap-0.5">
             <div class="checklist-item"><span class="checklist-status"></span><span class="checklist-item-text">All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally</span></div>
-            <div class="form-group flex items-center"><label>Tire size:</label><div class="output-text"></div></div>
+            <div class="form-group flex items-center"><label>Tire size:</label><div class="output-text" data-field="tireSize"></div></div>
           </div>
         </div>
       </div>
 
       <div class="mt-2">
         <h2 class="section-header my-1">Repairs</h2>
-        <div class="output-text"></div>
+        <div class="output-text" data-field="repairs"></div>
       </div>
 
       <div class="mt-2 grid grid-cols-2 gap-1">
         <div class="form-group">
           <h2 class="section-header my-1">Name of the person who conducted the inspection (Printed)</h2>
-          <div class="output-text"></div>
+          <div class="output-text" data-field="inspectorName"></div>
           <div class="text-xxs text-gray-700 leading-tight mt-1">
             I declare that the vehicle shown above has been inspected in accordance with this Regulation and that at the end of the inspection, there are no defects listed in Schedule 4. O. Reg. 199/07, s. 12 (1); O. Reg. 242/14, s. 6 (1-3); O. Reg. 256/15, s. 5 (1).
           </div>
@@ -297,227 +216,194 @@
   </div>
 
   <script>
-    (function () {
-      // --- Date helpers (mm/dd/yyyy display) ---
-      function toUSDateString(input) {
-        if (!input) return '';
-        if (typeof input === 'string') {
-          var m = input.match(/^(\d{4})-(\d{2})-(\d{2})/); // yyyy-mm-dd
-          if (m) return m[2] + '/' + m[3] + '/' + m[1];
-          var mmdd = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // mm/dd/yyyy
-          if (mmdd) return mmdd[1].padStart(2,'0') + '/' + mmdd[2].padStart(2,'0') + '/' + mmdd[3];
-        }
-        var d = new Date(input);
-        if (!isNaN(d)) return String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0') + '/' + d.getFullYear();
-        return '';
+    // ---------- Helpers ----------
+    function toUSDateString(input) {
+      if (!input) return '';
+      if (typeof input === 'string') {
+        var m = input.match(/^(\d{4})-(\d{2})-(\d{2})/); // yyyy-mm-dd
+        if (m) return m[2] + '/' + m[3] + '/' + m[1];
+        var mmdd = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // mm/dd/yyyy
+        if (mmdd) return mmdd[1].padStart(2,'0') + '/' + mmdd[2].padStart(2,'0') + '/' + mmdd[3];
       }
-      function fromUSDate(us) {
-        var mmdd = String(us||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (mmdd) return new Date(+mmdd[3], +mmdd[1]-1, +mmdd[2]);
-        var iso = String(us||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
-        if (iso) return new Date(+iso[1], +iso[2]-1, +iso[3]);
-        var d = new Date(us);
-        return isNaN(d) ? null : d;
-      }
-      function addDays(date, days) {
-        var d = new Date(date.getTime());
-        d.setDate(d.getDate() + days);
-        return d;
-      }
-      // Formats numbers like "#,###,##0"
-      function fmtKM(val) {
-        if (val == null || val === '') return '';
-        const n = typeof val === 'number' ? val : parseInt(String(val).replace(/,/g, ''), 10);
-        if (Number.isNaN(n)) return String(val);
-        return n.toLocaleString('en-US'); // e.g., 1234567 -> "1,234,567"
-      }        
-      
+      var d = new Date(input);
+      if (!isNaN(d)) return String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0') + '/' + d.getFullYear();
+      return '';
+    }
+    function fmtKM(val) {
+      if (val == null || val === '') return '';
+      const n = typeof val === 'number' ? val : parseInt(String(val).replace(/,/g, ''), 10);
+      if (Number.isNaN(n)) return String(val);
+      return n.toLocaleString('en-US');
+    }
+    function normalizeLabel(s){
+      return String(s||'')
+        .toLowerCase()
+        .replace(/&amp;|&&|&/g, 'and')
+        .replace(/\band\/or\b/g,'and or')
+        .replace(/[^a-z0-9]+/g,' ')
+        .replace(/\s+/g,' ')
+        .trim();
+    }
+    function renderError(msg) {
+      const status = document.getElementById('status');
+      status.textContent = msg;
+      status.style.display = 'block';
+      document.title = 'Error – Schedule 4';
+      window.__REPORT_ERROR = msg;
+      // Replace page with a printable error state
+      const page = document.getElementById('page');
+      page.innerHTML = `
+        <div class="content">
+          <h1 class="text-base font-bold text-red-700 mb-2">Unable to render report</h1>
+          <div class="text-sm text-gray-800">${msg.replace(/</g,'&lt;')}</div>
+        </div>
+      `;
+      page.setAttribute('aria-busy', 'false');
+      window.__REPORT_READY = true;
+    }
 
-      // --- Load data ---
-      function getData() {
-        var data = {};
-        try { var ss = sessionStorage.getItem('schedule4Data'); if (ss) data = JSON.parse(ss) || {}; } catch(e){}
-        var params = new URLSearchParams(location.search);
-        var keys = [
-          'carrierName','locationAddress','unitNumber','licensePlate','odometer','inspectionDate',
-          'odometerExpires','dateExpires','rSteerBrake','rDriveBrake','rTagBrake','lSteerBrake','lDriveBrake','lTagBrake',
-          'tireSize','repairs','inspectorName','signature'
-        ];
-        for (var i=0;i<keys.length;i++){ var k = keys[i]; if (!(k in data) && params.has(k)) data[k] = params.get(k); }
-        data.checklist = data.checklist || {};
-
-        // Normalize dates to mm/dd/yyyy for display
-        var inspUS = toUSDateString(data.inspectionDate);
-        data.inspectionDate = inspUS;
-
-        var expUS = toUSDateString(data.dateExpires);
-        if (!expUS && inspUS) {
-          // Fallback: compute +31 days from Inspection Date if Date Expires missing
-          var d = fromUSDate(inspUS);
-          if (d) expUS = toUSDateString(addDays(d, 31));
-        }
-        data.dateExpires = expUS;
-
-        return data;
-      }
-      var data = getData();
-
-      // --- Fill simple fields by label ---
-      function fillByLabel(labelText, value) {
-        if (value == null || value === '') return;
-        var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
-        var label = labels.find(function(l){ return l.textContent.trim().toLowerCase() === labelText.toLowerCase(); });
-        if (label) {
-          var box = (label.closest('.form-group,.flex') || document).querySelector('.output-text');
-          if (box) box.textContent = value;
-        }
-      }
-      fillByLabel('Carrier', data.carrierName);
-      fillByLabel('Address of the location where the inspection is conducted', data.locationAddress);
-      fillByLabel('Unit #', data.unitNumber);
-      fillByLabel('Licence Plate', data.licensePlate);
-      fillByLabel('Odometer (km)', fmtKM(data.odometer));
-      fillByLabel('Date Inspected', data.inspectionDate);
-      fillByLabel('Odometer Expires', fmtKM(data.odometerExpires));
-      fillByLabel('Date Expires', data.dateExpires);
-      fillByLabel('Tire size:', data.tireSize);
-
-      // --- Tiny brake stroke fields ---
-      function fillTiny(lbl, val) {
-        if (!val) return;
-        var tiny = Array.prototype.slice.call(document.querySelectorAll('.pl-4 .flex.items-center'));
-        var match = tiny.find(function(g){ 
-          var txt = (g.querySelector('label') || {}).textContent || '';
-          return txt.trim().toLowerCase() === lbl.toLowerCase();
-        });
-        var box = match && match.querySelector('.output-text');
-        if (box) box.textContent = val;
-      }
-      fillTiny('r steer', data.rSteerBrake);
-      fillTiny('r drive', data.rDriveBrake);
-      fillTiny('r tag', data.rTagBrake);
-      fillTiny('l steer', data.lSteerBrake);
-      fillTiny('l drive', data.lDriveBrake);
-      fillTiny('l tag', data.lTagBrake);
-
-      // --- Repairs & Inspector name ---
-      var repHdr = Array.prototype.slice.call(document.querySelectorAll('.section-header'))
-        .find(function(h){ return h.textContent.trim().toLowerCase()==='repairs'; });
-      if (repHdr) {
-        var box1 = repHdr.parentElement.querySelector('.output-text');
-        if (box1 && data.repairs) box1.textContent = data.repairs;
+    // ---------- Load from DB by id (DB-ONLY) ----------
+    (async function init() {
+      const params = new URLSearchParams(location.search);
+      const id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
+      if (!id) {
+        renderError('Missing inspection id. Add ?id= to the URL.');
+        return;
       }
 
-      var inspHdr = Array.prototype.slice.call(document.querySelectorAll('.section-header'))
-        .find(function(h){ return h.textContent.toLowerCase().indexOf('name of the person') !== -1; });
-      if (inspHdr) {
-        var box2 = inspHdr.parentElement.querySelector('.output-text');
-        if (box2 && data.inspectorName) box2.textContent = data.inspectorName;
-      }
+      const status = document.getElementById('status');
+      status.textContent = 'Loading...';
+      status.style.display = 'block';
 
-      if (data.signature) {
-        var img = document.getElementById('signatureImg');
-        if (img) img.src = data.signature;
-      }
-
-      // --- Checklist matching with normalization (fixes "&&" vs "and" etc.) ---
-      function normalizeLabel(s){
-        return String(s||'')
-          .toLowerCase()
-          .replace(/&amp;|&&|&/g, 'and')
-          .replace(/\band\/or\b/g,'and or')
-          .replace(/[^a-z0-9]+/g,' ')
-          .replace(/\s+/g,' ')
-          .trim();
-      }
-      var dataChecklistNorm = {};
       try {
+        const res = await fetch('/api/schedule4s/get?id=' + encodeURIComponent(id), { headers: { 'Accept':'application/json' } });
+        if (!res.ok) {
+          if (res.status === 404) { renderError('Inspection not found for id "'+id+'".'); return; }
+          const t = await res.text().catch(()=>String(res.status));
+          renderError('Failed to load inspection (' + res.status + '): ' + t);
+          return;
+        }
+        const resp = await res.json().catch(()=> ({}));
+        const row = resp.item || resp || {};
+        const p = row.payload_json || row.payload || {};
+
+        function pick() {
+          for (var i = 0; i < arguments.length; i++) {
+            var k = arguments[i];
+            if (p && p[k] != null && p[k] !== '') return p[k];
+          }
+          return '';
+        }
+
+        const data = {
+          carrierName:     pick('carrierName','carrier'),
+          locationAddress: pick('locationAddress','address','inspectionLocation'),
+          unitNumber:      pick('unitNumber','unit','vehicle_number') || row.vehicle_name || '',
+          licensePlate:    pick('licensePlate','licencePlate','plate'),
+          odometer:        pick('odometer','odometerKm','odometer_km'),
+          inspectionDate:  pick('inspectionDate') || row.performed_at || row.created_at || '',
+          odometerExpires: pick('odometerExpires'),
+          dateExpires:     pick('dateExpires') || row.expiry_date || '',
+          tireSize:        pick('tireSize'),
+          repairs:         pick('repairs','repairsNotes','repairs_text'),
+          inspectorName:   pick('inspectorName') || row.technician_name || '',
+          rSteerBrake: pick('rSteerBrake'),
+          rDriveBrake: pick('rDriveBrake'),
+          rTagBrake:   pick('rTagBrake'),
+          lSteerBrake: pick('lSteerBrake'),
+          lDriveBrake: pick('lDriveBrake'),
+          lTagBrake:   pick('lTagBrake'),
+          signature:       pick('signature'),
+          checklist:       p.checklist || {}
+        };
+
+        // Normalize dates for display
+        data.inspectionDate = toUSDateString(data.inspectionDate);
+        data.dateExpires = toUSDateString(data.dateExpires) || (data.inspectionDate ? toUSDateString(new Date(new Date(data.inspectionDate).getTime()+31*864e5)) : '');
+        // Fill simple fields
+        document.querySelector('[data-field="carrierName"]').textContent = data.carrierName || '';
+        document.querySelector('[data-field="locationAddress"]').textContent = data.locationAddress || '';
+        document.querySelector('[data-field="unitNumber"]').textContent = data.unitNumber || '';
+        document.querySelector('[data-field="licensePlate"]').textContent = data.licensePlate || '';
+        document.querySelector('[data-field="odometer"]').textContent = fmtKM(data.odometer);
+        document.querySelector('[data-field="inspectionDate"]').textContent = data.inspectionDate || '';
+        document.querySelector('[data-field="odometerExpires"]').textContent = fmtKM(data.odometerExpires);
+        document.querySelector('[data-field="dateExpires"]').textContent = data.dateExpires || '';
+        document.querySelector('[data-field="tireSize"]').textContent = data.tireSize || '';
+        document.querySelector('[data-field="repairs"]').textContent = data.repairs || '';
+        if (data.inspectorName) document.querySelector('[data-field="inspectorName"]').textContent = data.inspectorName;
+        if (data.signature) document.getElementById('signatureImg').src = data.signature;
+
+        // Checklist
+        const dataChecklistNorm = {};
         Object.keys(data.checklist || {}).forEach(function(k){
           dataChecklistNorm[normalizeLabel(k)] = data.checklist[k];
         });
-      } catch(e){}
-
-      function setStatus(el, status) {
-        if (!status) return;
-        var badge = el.querySelector('.checklist-status'); if (!badge) return;
-        badge.className = 'checklist-status';
-        var s = String(status||'').toLowerCase();
-        if (['pass','ok','✓','yes','y'].indexOf(s) !== -1) { badge.textContent='✓'; badge.classList.add('status-pass'); }
-        else if (['repair','repaired','r','fail','f'].indexOf(s) !== -1) { badge.textContent='R'; badge.classList.add('status-repair'); }
-        else if (['na','n/a','not applicable'].indexOf(s) !== -1) { badge.textContent='N/A'; badge.classList.add('status-na'); }
-      }
-
-      Array.prototype.slice.call(document.querySelectorAll('.checklist-item')).forEach(function(item){
-        var labelTxt = (item.querySelector('.checklist-item-text') || {}).textContent || '';
-        var norm = normalizeLabel(labelTxt);
-        var st = dataChecklistNorm[norm];
-
-        // very light fuzzy fallback: try to match longest included key
-        if (!st) {
-          var bestKey = ''; 
-          for (var k in dataChecklistNorm) {
-            if (norm.indexOf(k) !== -1 && k.length > bestKey.length) bestKey = k;
-          }
-          if (bestKey) st = dataChecklistNorm[bestKey];
+        function setStatus(el, status) {
+          if (!status) return;
+          const badge = el.querySelector('.checklist-status'); if (!badge) return;
+          badge.className = 'checklist-status';
+          const s = String(status||'').toLowerCase();
+          if (['pass','ok','✓','yes','y','true'].includes(s)) { badge.textContent='✓'; badge.classList.add('status-pass'); }
+          else if (['repair','repaired','r','fail','f','false'].includes(s)) { badge.textContent='R'; badge.classList.add('status-repair'); }
+          else if (['na','n/a','not applicable'].includes(s)) { badge.textContent='N/A'; badge.classList.add('status-na'); }
         }
-        setStatus(item, st);
-      });
+        Array.prototype.slice.call(document.querySelectorAll('.checklist-item')).forEach(function(item){
+          const labelTxt = (item.querySelector('.checklist-item-text') || {}).textContent || '';
+          const norm = normalizeLabel(labelTxt);
+          let st = dataChecklistNorm[norm];
+          if (!st) {
+            // light fuzzy: longest included key
+            let bestKey = '';
+            for (const k in dataChecklistNorm) { if (norm.indexOf(k) !== -1 && k.length > bestKey.length) bestKey = k; }
+            if (bestKey) st = dataChecklistNorm[bestKey];
+          }
+          setStatus(item, st);
+        });
 
-      // Expose helpers for filename builder
-      window.__schedule4_getData = function(){ return data; };
-      window.__schedule4_toUS = toUSDateString;
+        // Expose for filename and server print
+        window.__schedule4_getData = function(){ return data; };
+        window.__schedule4_toUS = toUSDateString;
+
+        // Ready
+        document.getElementById('page').setAttribute('aria-busy','false');
+        status.style.display = 'none';
+        window.__REPORT_READY = true;
+      } catch (err) {
+        renderError('Error loading inspection: ' + (err && err.message ? err.message : String(err)));
+      }
     })();
 
-    // === Server PDF with exact filename "Schedule4-UNIT#-DATEINSPECTED.pdf" ===
-    async function downloadServerPDF() {
+    // ---------- Server PDF download (uses current id) ----------
+    document.getElementById('btnDownload').addEventListener('click', async () => {
       try {
-        const data = (window.__schedule4_getData && window.__schedule4_getData()) || JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
-        const toUS = (window.__schedule4_toUS || function(x){ return x; });
-
+        const data = (window.__schedule4_getData && window.__schedule4_getData()) || {};
         const unitRaw = (data.unitNumber || 'Unit').toString().trim();
-        // Sanitize only illegal filename characters; preserve spaces and # as requested
-        const unitSan = unitRaw.replace(/[\/\\<>:"|?*]+/g,'').trim();
-
+        const unitSan = unitRaw.replace(/[\/\\<>:"|?*]+/g,'').trim(); // keep spaces and #
+        const toUS = (window.__schedule4_toUS || function(x){ return x; });
         const dateUS = toUS(data.inspectionDate) || toUS(new Date());
         const dateForFile = String(dateUS || '').replace(/\//g,'-'); // mm-dd-yyyy
-
         const filename = `Schedule4-${unitSan}-${dateForFile}.pdf`;
+
+        const params = new URLSearchParams(location.search);
+        const id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
+        if (!id) throw new Error('Missing inspection id, cannot print.');
 
         const res = await fetch('/api/pdf/print', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: '/output.html', data, filename })
+          body: JSON.stringify({ path: `/output.html?id=${encodeURIComponent(id)}`, data, filename })
         });
         if (!res.ok) throw new Error(await res.text());
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click(); a.remove();
+        a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
         URL.revokeObjectURL(url);
       } catch (err) {
         alert('Server PDF failed: ' + err.message);
       }
-    }
+    });
   </script>
-
-  <script>
-  // Fallback save to DB if first attempt was missed (no UI change)
-  document.addEventListener('DOMContentLoaded', () => {
-    try { if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return; } catch(e) {}
-    try {
-      const raw = sessionStorage.getItem('schedule4Data');
-      if (!raw) return;
-      const payload = JSON.parse(raw);
-      fetch('/api/inspections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payload }),
-        keepalive: true
-      }).catch(() => {});
-    } catch (e) {}
-  });
-  </script>
-
 </body>
 </html>
