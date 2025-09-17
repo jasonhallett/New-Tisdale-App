@@ -1,17 +1,33 @@
 /* css/schedule4s-grid.css */
-/* Compact table + tiny link-style View control. */
-.table.compact th, .table.compact td { padding: 4px 6px; vertical-align: middle; }
-.col-date, .col-unit, .col-odo, .col-tech, .col-loc, .col-view { white-space: nowrap; }
-.col-date { width: 200px; }            /* widened further for safety */
-.col-unit { width: 130px; }
+/* Desktop/tablet defaults (unchanged) */
+.table.compact th,
+.table.compact td {
+  padding: 4px 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.col-date,
+.col-unit,
+.col-odo,
+.col-tech,
+.col-loc,
+.col-view { white-space: nowrap; }
+
+.col-date { width: 200px; }            /* fits mm/dd/yyyy hh:mm AM/PM */
+.col-unit { width: 130px; }            /* slightly wider per prior tweak */
 .col-odo  { width: 140px; text-align: left; }
 .col-tech { max-width: 110px; }
 .col-loc  { max-width: 360px; }
 .col-view { width: 56px; text-align: center; }
 
-.cell-ellipsis { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cell-ellipsis {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 
-/* Tiny link button */
+/* Tiny link-style "View" (unchanged) */
 .btn-link-sm {
   display: inline-block;
   font-size: 12px;
@@ -22,3 +38,43 @@
   text-decoration: none;
 }
 .btn-link-sm:hover { text-decoration: underline; }
+
+/* -------- Phone layout (only) -------- */
+@media (max-width: 640px) {
+  /* Keep things inside the card without horizontal scroll */
+  #grid {
+    width: 100%;
+    table-layout: fixed; /* ensures columns respect widths */
+  }
+
+  /* Show only: Date Inspected, Unit #, View */
+  .col-odo,
+  .col-tech,
+  .col-loc {
+    display: none;
+  }
+
+  /* Make the three visible columns fit neatly */
+  .col-date { width: 56%; }  /* date + time */
+  .col-unit { width: 28%; }  /* unit number */
+  .col-view { width: 16%; text-align: right; }
+
+  /* Slightly more breathing room for tap targets */
+  .table.compact th,
+  .table.compact td {
+    padding: 6px 8px;
+  }
+
+  /* Toolbar wraps nicely on small screens without affecting desktop */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .toolbar .search {
+    width: 100% !important;   /* search full-width on phone */
+    max-width: 100%;
+  }
+  #newBtn { margin-left: auto; } /* keep button on the right when space allows */
+}
