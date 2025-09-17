@@ -1005,8 +1005,15 @@
   document.addEventListener('DOMContentLoaded', function(){
     const insp = findInputByLabelText('date inspected') || document.getElementById('inspection-date');
     const exp  = findInputByLabelText('date expires') || document.getElementById('expiry-date');
-    if (insp && !insp.value){ insp.value = todayUS(); }
-    if (exp){ exp.value = addDaysUS(insp ? insp.value : todayUS(), 31); }
+if (insp && !insp.value){
+  const d = new Date();
+  insp.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+if (exp){
+  const base = (insp && insp.value) ? new Date(insp.value) : new Date();
+  base.setDate(base.getDate() + 31);
+  exp.value = `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-${String(base.getDate()).padStart(2,'0')}`;
+}
     const odo = findInputByLabelText('odometer (km)') || document.getElementById('odometer');
     const odoExp = findInputByLabelText('odometer expires') || document.getElementById('expiry-odometer') || findInputByLabelText('odometer expiration');
     function recalcOdoExp(){
@@ -1021,7 +1028,12 @@
       fmtKMInput(odo); recalcOdoExp();
     }
     if (insp && exp){
-      insp.addEventListener('blur', function(){ exp.value = addDaysUS(insp.value, 31); });
+insp.addEventListener('blur', function(){
+  const d = insp.value ? new Date(insp.value) : new Date();
+  d.setDate(d.getDate() + 31);
+  exp.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+});
+
     }
     document.addEventListener('submit', function(e){
       if (insp) insp.value = todayUS() && insp.value ? insp.value : todayUS();
