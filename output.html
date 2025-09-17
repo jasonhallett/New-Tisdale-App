@@ -421,12 +421,18 @@
       // date (prefer YYYY-MM-DD; fall back to whatever we have)
       let dateStr = safe(data.inspectionDate || '');
       try {
-        const d = new Date(data.inspectionDate);
-        if (!isNaN(d)) {
-          const mm = String(d.getMonth() + 1).padStart(2, '0');
-          const dd = String(d.getDate()).padStart(2, '0');
-          dateStr = `${d.getFullYear()}-${mm}-${dd}`;
-        }
+        let d;
+if (typeof data.inspectionDate === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(data.inspectionDate)) {
+  const parts = data.inspectionDate.split('/');
+  d = new Date(parseInt(parts[2],10), parseInt(parts[0],10)-1, parseInt(parts[1],10));
+} else {
+  d = new Date(data.inspectionDate);
+}
+if (!isNaN(d)) {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  dateStr = `${mm}-${dd}-${d.getFullYear()}`;
+}
       } catch {}
 
       const filename = `Schedule4-${unit}-${dateStr || 'UnknownDate'}.pdf`;
