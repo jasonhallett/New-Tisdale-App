@@ -28,11 +28,11 @@
     .text-xxs { font-size: 0.5rem; }
     .signature-img { width: 400px; height: 100px; border: 1px solid #e5e7eb; object-fit: contain; }
 
+
     @page { size: 8.5in 11in; margin: 0; }
     @media print {
       html, body { width:8.5in; height:11in; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       #page { width:8.5in !important; min-height:11in !important; margin:0 !important; }
-      .no-print { display:none !important; }
     }
   </style>
 
@@ -67,7 +67,6 @@
       var id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
       if (!id) return;
       if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return;
-
       var xhr = new XMLHttpRequest();
       xhr.open('GET', '/api/schedule4s/get?id=' + encodeURIComponent(id), false); // sync on purpose to ensure data is ready
       xhr.setRequestHeader('Accept','application/json');
@@ -77,22 +76,6 @@
         try { resp = JSON.parse(xhr.responseText) || {}; } catch(e){ resp = {}; }
         var row = resp.item || resp || {};
         var p = row.payload_json || row.payload || {};
-        var checklist = p.checklist || {};
-
-        // --- Targeted label alignment for two checklist items you called out ---
-        try {
-          var keys = Object.keys(checklist);
-          // "Clearance between disc brake pads and rotor exceeds manufacturer's specified limit"
-          var kDisc = keys.find(function(k){ return /disc/i.test(k) && /rotor/i.test(k) && /pad/i.test(k); });
-          if (kDisc && !checklist["Clearance between disc brake pads and rotor exceeds manufacturer's specified limit"]) {
-            checklist["Clearance between disc brake pads and rotor exceeds manufacturer's specified limit"] = checklist[kDisc];
-          }
-          // "All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally"
-          var kPush = keys.find(function(k){ return /push[- ]?out/i.test(k) && /windows/i.test(k); });
-          if (kPush && !checklist["All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally"]) {
-            checklist["All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally"] = checklist[kPush];
-          }
-        } catch (e) {}
 
         function pick() {
           for (var i = 0; i < arguments.length; i++) {
@@ -116,7 +99,8 @@
         data.inspectorName   = pick('inspectorName') || row.technician_name || '';
         data.signature       = pick('signature');
 
-        // --- Six Brake Pushrod Stroke Measurements (support a few common key variants) ---
+        /* >>> ADDED: Brake Pushrod Stroke values + checklist key normalization (no UI changes) <<< */
+        // Map Brake Pushrod Stroke values from payload_json (supporting a few key variants)
         data.rSteerBrake = pick('rSteerBrake','r_steer_brake','rSteer');
         data.rDriveBrake = pick('rDriveBrake','r_drive_brake','rDrive');
         data.rTagBrake   = pick('rTagBrake','r_tag_brake','rTag');
@@ -124,8 +108,16 @@
         data.lDriveBrake = pick('lDriveBrake','l_drive_brake','lDrive');
         data.lTagBrake   = pick('lTagBrake','l_tag_brake','lTag');
 
-        // Use the (lightly) normalized checklist object
-        data.checklist = checklist;
+        // Normalize checklist keys so DOM labels that use "and" match payload keys that use "&&"
+        var cl = p.checklist || {};
+        var clNorm = {};
+        try {
+          Object.keys(cl).forEach(function(k){
+            var nk = String(k).replace(/\s*&&\s*/g, ' and ').replace(/\s+/g, ' ').trim();
+            clNorm[nk] = cl[k];
+          });
+        } catch(e) {}
+        data.checklist = clNorm;
 
         try { sessionStorage.setItem('schedule4Data', JSON.stringify(data)); } catch(e){}
         try { sessionStorage.setItem('schedule4LoadedFromId','1'); } catch(e){}
@@ -360,26 +352,6 @@
         if (label && data.checklist[label]) setStatus(item, data.checklist[label]);
       });
     })();
-
-    // === Puppeteer Server PDF START ===
-    async function downloadServerPDF() {
-      try {
-        const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
-        const res = await fetch('/api/pdf/print', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: '/output.html', data, filename: 'Schedule-4-Inspection.pdf' })
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'Schedule-4-Inspection.pdf';
-        document.body.appendChild(a); a.click(); a.remove();
-        URL.revokeObjectURL(url);
-      } catch (err) { alert('Server PDF failed: ' + err.message); }
-    }
-    // === Puppeteer Server PDF END ===
   </script>
 
   <script>
@@ -399,6 +371,27 @@
       }).catch(() => {});
     } catch (e) {}
   });
+  </script>
+
+  <script>
+    // Server PDF generator
+    async function downloadServerPDF() {
+      try {
+        const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
+        const res = await fetch('/api/pdf/print', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: '/output.html', data, filename: 'Schedule-4-Inspection.pdf' })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'Schedule-4-Inspection.pdf';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) { alert('Server PDF failed: ' + err.message); }
+    }
   </script>
 
 </body>
