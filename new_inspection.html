@@ -1161,6 +1161,126 @@ insp.addEventListener('blur', function(){
   });
 })();
 </script>
+
+<!-- ================================ -->
+<!-- TEMP DEBUG AUTOFILL (CMD+SHIFT+F on macOS) — REMOVE BEFORE PRODUCTION -->
+<script>
+(function(){
+  const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform) || navigator.userAgent.includes('Mac');
+
+  const PREFILL = {
+    repairs: "None-Prefilled Form for Debug",
+    tireSize: "315/80r22.5",
+    checklist: {
+      "Fuel leak": "pass",
+      "Exhaust leak": "pass",
+      "Audible air leak": "pass",
+      "Tire treads worn to wear limits": "pass",
+      "Damaged wheel or wheel component": "pass",
+      "Tire inflation less than required": "pass",
+      "Damage to tread or sidewall of tire": "pass",
+      "Compressor drive belt loose or damaged": "na",
+      "Spring brake is broken or malfunctions": "pass",
+      "Air line or fitting damaged or insecure": "pass",
+      "Air tank defective, damaged or insecure": "pass",
+      "Steering linkage is damaged or insecure": "pass",
+      "Fuel line or fitting damaged or insecure": "pass",
+      "Any component mount is damaged or insecure": "pass",
+      "Power steering component damaged or insecure": "pass",
+      "Retread or rebuilt tire is used on front axle": "pass",
+      "Inoperative service, parking or emergency brake": "pass",
+      "Insecure fuel tanks, fuel tank mounts or guards": "pass",
+      "Excessive discharge of fluids from air reservoir": "pass",
+      "Damage or deterioration of any suspension component": "pass",
+      "Power steering fluid is leaking, contaminated or low": "pass",
+      "Air tank drain or moisture ejector device inoperative": "pass",
+      "Loose, missing, damaged or ineffective wheel fastener": "pass",
+      "Exhaust system component insecure, damaged or perforated": "pass",
+      "Brake pushrod stroke is at or beyond the adjustment limit": "na",
+      "Air compressor, mounts or attachments damaged or defective": "pass",
+      "Any frame member or fastener is damaged, cracked or insecure": "pass",
+      "Air leak or malfunction of air suspension system or component": "pass",
+      "Wedge brake shoe movement exceeds manufacturer's specified limit": "na",
+      "Clearance between disc brake pads and rotor exceeds manufacturer's specified limit": "pass",
+      "Brake chamber, brake linkage or other brake component is defective, damaged or insecure": "pass",
+      "All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally": "pass"
+    },
+    lTagBrake: "Disc",
+    rTagBrake: "Disc",
+    lDriveBrake: "Disc",
+    lSteerBrake: "Disc",
+    rDriveBrake: "Disc",
+    rSteerBrake: "Disc"
+  };
+
+  function setValue(id, val){
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  }
+
+  function setChecklist(label, status){
+    const group = document.querySelector(`.option-boxes[data-name="${CSS.escape(label)}"]`);
+    if (!group) { console.warn('Prefill: checklist item not found:', label); return; }
+    const map = { pass:'ok', repair:'repaired', na:'na' };
+    const code = map[status] || 'ok';
+    group.querySelectorAll('.option-box').forEach(b=>b.classList.remove('selected'));
+    const target = group.querySelector(`.option-box[data-value="${code}"]`);
+    if (target) target.classList.add('selected');
+  }
+
+  function applyPrefill(){
+    try {
+      // Repairs & Tire
+      setValue('repairs-notes', PREFILL.repairs || '');
+      setValue('tire-size', PREFILL.tireSize || '');
+
+      // Toggle Disc Brakes to auto-set NA for pushrod & wedge and prefill "Disc" in stroke fields
+      const disc = document.getElementById('disc-brakes');
+      if (disc && !disc.checked){
+        disc.checked = true;
+        disc.dispatchEvent(new Event('change', { bubbles:true }));
+      }
+
+      // Ensure stroke inputs exactly match requested values
+      setValue('l-tag',   PREFILL.lTagBrake || '');
+      setValue('r-tag',   PREFILL.rTagBrake || '');
+      setValue('l-drive', PREFILL.lDriveBrake || '');
+      setValue('l-steer', PREFILL.lSteerBrake || '');
+      setValue('r-drive', PREFILL.rDriveBrake || '');
+      setValue('r-steer', PREFILL.rSteerBrake || '');
+
+      // Checklist statuses
+      if (PREFILL.checklist){
+        Object.entries(PREFILL.checklist).forEach(([label, st])=> setChecklist(label, st));
+      }
+
+      // Quick feedback banner
+      const box = document.getElementById('message-box');
+      if (box){
+        box.classList.remove('hidden','text-red-600');
+        box.classList.add('text-green-600');
+        box.textContent = 'Debug prefill applied.';
+        setTimeout(()=>{ box.classList.add('hidden'); }, 2000);
+      }
+    } catch(err){
+      console.error('Prefill failed', err);
+      alert('Prefill failed: ' + (err?.message || err));
+    }
+  }
+
+  // CMD+SHIFT+F on macOS
+  document.addEventListener('keydown', function(e){
+    if (!IS_MAC) return;
+    if (e.key && e.key.toLowerCase() === 'f' && e.metaKey && e.shiftKey){
+      e.preventDefault();
+      applyPrefill();
+    }
+  }, true);
+})();
+</script>
+<!-- END TEMP DEBUG AUTOFILL — REMOVE BEFORE PRODUCTION -->
+<!-- ================================ -->
+
 <script defer src="/js/submit-flow.js"></script>
 </body>
 </html>
