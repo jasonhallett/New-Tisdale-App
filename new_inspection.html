@@ -69,7 +69,8 @@
   <div class="form-container">
     <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center sm:text-left">Schedule 4 Motor Coach Under-Vehicle Inspection Report</h1>
 
-    <form id="inspectionForm" action="#">
+    <form id="inspectionForm" action="#" data-inspection-form>
+
       <div id="message-box" class="mb-4 text-center text-red-600 font-bold hidden"></div>
 
       <!-- General Information -->
@@ -901,10 +902,6 @@
           }
           return;
         }
-
-        // Persist payload for output + navigate
-        sessionStorage.setItem('schedule4Data', JSON.stringify(payload));
-        window.location.href = 'output.html';
       });
     });
 
@@ -1164,6 +1161,6 @@ insp.addEventListener('blur', function(){
   });
 })();
 </script>
-
+<script defer src="/js/submit-flow.js"></script>
 </body>
 </html>
