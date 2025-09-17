@@ -372,25 +372,62 @@
   });
   </script>
 
-  <script>
-    async function downloadServerPDF() {
+<script>
+  async function downloadServerPDF() {
+    try {
+      // grab the data already on the page
+      const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
+
+      // sanitize for filenames (Windows-safe)
+      const safe = s => String(s || '')
+        .trim()
+        .replace(/[/\\?%*:|"<>]/g, '-')   // illegal filename chars -> '-'
+        .replace(/\s+/g, '-');            // spaces -> '-'
+
+      // unit
+      const unit = safe(data.unitNumber || 'Unit');
+
+      // date (prefer YYYY-MM-DD; fall back to whatever we have)
+      let dateStr = safe(data.inspectionDate || '');
       try {
-        const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
-        const res = await fetch('/api/pdf/print', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: '/output.html', data, filename: 'Schedule-4-Inspection.pdf' })
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'Schedule-4-Inspection.pdf';
-        document.body.appendChild(a); a.click(); a.remove();
-        URL.revokeObjectURL(url);
-      } catch (err) { alert('Server PDF failed: ' + err.message); }
+        const d = new Date(data.inspectionDate);
+        if (!isNaN(d)) {
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          dateStr = `${d.getFullYear()}-${mm}-${dd}`;
+        }
+      } catch {}
+
+      const filename = `Schedule4-${unit}-${dateStr || 'UnknownDate'}.pdf`;
+
+      // ask server to render, passing filename (server may set Content-Disposition)
+      const res = await fetch('/api/pdf/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: '/output.html',
+          data,
+          filename
+        })
+      });
+      if (!res.ok) throw new Error(await res.text());
+
+      // download with our desired name (works even if server ignores filename)
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Server PDF failed: ' + err.message);
     }
-  </script>
+  }
+</script>
+
 
 </body>
 </html>
