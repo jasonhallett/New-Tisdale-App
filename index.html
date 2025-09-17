@@ -4,7 +4,7 @@
 <script defer>
 (async () => {
   try {
-    const r = await fetch('/api/technicians/me', { credentials: 'include' });
+    const r = await fetch('/api/users/me', { credentials: 'include' });
     if (r.ok) window.location.href = 'app.html';
   } catch {}
 })();
@@ -13,58 +13,33 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>TBL Internal App - Login</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
     :root { color-scheme: light; }
-    body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f5f7fb; margin:0; }
-    .card { max-width: 420px; margin: 8vh auto; background:#fff; border-radius:16px; box-shadow: 0 6px 24px rgba(0,0,0,0.08); padding:28px; }
-    h1 { font-size: 22px; margin: 0 0 16px; }
-    label { font-size: 14px; color:#374151; display:block; margin:14px 0 8px; }
-    select, input { width:100%; padding:12px; border-radius:12px; border:1px solid #d1d7e2; font-size:15px; }
-    button { width:100%; padding:12px; border-radius:12px; border:0; background:#111827; color:white; font-size:15px; font-weight:600; margin-top:18px; cursor:pointer; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:#f5f7fb; margin:0; }
+    .card { max-width: 420px; margin: 8vh auto; background:#fff; border-radius:12px; box-shadow: 0 6px 24px rgba(0,0,0,0.08); padding:24px; }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    label { font-size: 14px; display:block; margin:14px 0 8px; }
+    input[type="email"], input[type="password"] { width:100%; padding:12px; border-radius:8px; border:1px solid #d1d7e2; font-size:15px; }
+    button { width:100%; padding:12px; border-radius:8px; border:1px solid #d1d7e2; background:#f6f6f6; font-size:15px; margin-top:18px; cursor:pointer; }
     button:disabled { opacity:.6; cursor:not-allowed; }
     .err { color:#b91c1c; font-size: 14px; min-height: 1.2em; margin-top: 10px; }
     .muted { font-size: 12px; color:#6b7280; margin-top:10px; }
 
-    /* row wrapper below password */
     .row { display:flex; align-items:center; gap:8px; margin-top:10px; }
-
-    /* ✅ Make checkbox NOT full-width and inline with text */
-    input[type="checkbox"] {
-      width: auto;
-      height: auto;
-      padding: 0;
-      border: none;
-      border-radius: 0;
-      margin: 0;
-      appearance: auto;
-    }
-
-    /* ✅ Keep checkbox + text on one line, aligned left */
-    .row .check {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;      /* space between box and text */
-      margin: 0;     /* override global label margins */
-      font-size: 14px;
-      color: #374151;
-      cursor: pointer; /* clicking text toggles checkbox */
-    }
+    input[type="checkbox"] { width:auto; height:auto; padding:0; border:none; border-radius:0; margin:0; appearance:auto; }
+    .row .check { display:inline-flex; align-items:center; gap:8px; margin:0; font-size:14px; cursor:pointer; }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Technician Login</h1>
+    <h1>User Login</h1>
 
-    <label for="tech">Technician</label>
-    <select id="tech"></select>
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="you@example.com" required />
 
     <label for="pw">Password</label>
-    <input id="pw" type="password" autocomplete="current-password" />
+    <input id="pw" type="password" autocomplete="current-password" required />
 
-    <!-- ✅ Remember-me checkbox: left-aligned, text to the right on the same line -->
     <div class="row">
       <label class="check" for="remember7">
         <input id="remember7" type="checkbox" />
@@ -74,47 +49,31 @@
 
     <button id="btn">Sign In</button>
     <div class="err" id="err"></div>
-    <div class="muted">After login, you’ll be taken to the menu.</div>
+    <div class="muted">After login, you’ll be taken to the app.</div>
   </div>
 
 <script>
-(async function init(){
-  const sel = document.getElementById('tech');
+(() => {
   const btn = document.getElementById('btn');
   const err = document.getElementById('err');
-  const pw  = document.getElementById('pw');
-  const rememberEl = document.getElementById('remember7');
-
-  try {
-    const res = await fetch('/api/technicians/list', { credentials: 'include' });
-    if (!res.ok) throw new Error('Load error');
-    const data = await res.json();
-    sel.innerHTML = (data.technicians || [])
-      .map(t => `<option value="${t.technicianId}">${t.fullName}</option>`)
-      .join('');
-  } catch (e) {
-    err.textContent = 'Unable to load technicians.';
-    btn.disabled = true;
-    return;
-  }
 
   btn.addEventListener('click', async () => {
     err.textContent = '';
     btn.disabled = true;
     try {
-      const technicianId = sel.value;
-      const password = pw.value;
-      const remember = !!rememberEl.checked;
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('pw').value;
+      const remember = !!document.getElementById('remember7').checked;
+      if (!email || !password) throw new Error('Enter email and password');
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianId, password, remember }),
-        credentials: 'include'
+        credentials: 'include',
+        body: JSON.stringify({ email, password, remember })
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error || 'Login failed');
-      }
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) throw new Error(j.error || 'Login failed');
       window.location.href = 'app.html';
     } catch (e) {
       err.textContent = e.message || 'Login failed';

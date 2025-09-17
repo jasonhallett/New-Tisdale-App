@@ -1,7 +1,7 @@
-// auth-guard.js — block access to this page unless logged in
+// auth-guard.js — block access to this page unless logged in (generic user)
 (async () => {
   try {
-    const res = await fetch('/api/technicians/me', { credentials: 'include' });
+    const res = await fetch('/api/users/me', { credentials: 'include' });
     if (!res.ok) {
       window.location.replace('/');
     }
