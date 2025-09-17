@@ -304,6 +304,14 @@
         d.setDate(d.getDate() + days);
         return d;
       }
+      // Formats numbers like "#,###,##0"
+      function fmtKM(val) {
+        if (val == null || val === '') return '';
+        const n = typeof val === 'number' ? val : parseInt(String(val).replace(/,/g, ''), 10);
+        if (Number.isNaN(n)) return String(val);
+        return n.toLocaleString('en-US'); // e.g., 1234567 -> "1,234,567"
+      }        
+      
 
       // --- Load data ---
       function getData() {
@@ -348,9 +356,9 @@
       fillByLabel('Address of the location where the inspection is conducted', data.locationAddress);
       fillByLabel('Unit #', data.unitNumber);
       fillByLabel('Licence Plate', data.licensePlate);
-      fillByLabel('Odometer (km)', data.odometer);
+      fillByLabel('Odometer (km)', fmtKM(data.odometer));
       fillByLabel('Date Inspected', data.inspectionDate);
-      fillByLabel('Odometer Expires', data.odometerExpires);
+      fillByLabel('Odometer Expires', fmtKM(data.odometerExpires));
       fillByLabel('Date Expires', data.dateExpires);
       fillByLabel('Tire size:', data.tireSize);
 
