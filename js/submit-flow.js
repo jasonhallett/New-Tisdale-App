@@ -1,7 +1,8 @@
 /* submit-flow.js — POST-only + auto-retry create on 404 + DB-only render + server PDF
- * - Always POST /api/inspections (server handles create *or* update if id is present)
+ * - Always POST /api/inspections (server handles create or update if id is present)
  * - If POST returns 404 "Inspection not found" while updating, clear the stale id and POST again to create
  * - Builds canonical payload + flat column map (aligned to DB) to reduce NULLs
+ * - Explicitly sets odometer_source (manual/gps) so DB won't show 'unknown' when user typed it
  * - Generates PDF via /api/pdf/print (server puppeteer), using /output.html?id=...
  */
 (function () {
@@ -174,6 +175,16 @@
       checklist: buildChecklist()
     };
 
+    // --- Ensure odometer source is explicit so server doesn't infer 'unknown' ---
+    // If user typed an odometer and we do NOT have a Samsara reading, call it user_entered (maps to manual)
+    if (payload.odometer && !payload.samsaraOdometerKm) {
+      payload.odometerSource = 'user_entered';
+    }
+    // If Samsara reading is present and equals the odometer, mark as samsara/gps
+    if (payload.samsaraOdometerKm && Number(payload.samsaraOdometerKm) === Number(payload.odometer || NaN)) {
+      payload.odometerSource = 'samsara';
+    }
+
     const cols = {
       carrier_name: payload.carrierName || null,
       location: payload.locationAddress || null,          // DB uses 'location'
@@ -183,7 +194,10 @@
       inspection_date: payload.inspectionDate || null,
       expiry_date: payload.dateExpires || null,
       next_service_odometer_km: payload.odometerExpires ? Number(payload.odometerExpires) : null,
-      notes: payload.repairs || null                      // map repairs to notes
+      notes: payload.repairs || null,
+      // Populate DB enum directly for consistency with server mapping
+      odometer_source: (payload.odometerSource === 'samsara' ? 'gps' :
+                        payload.odometerSource === 'user_entered' ? 'manual' : null)
     };
 
     return { payload, columns: cols };
@@ -207,12 +221,9 @@
     const maybeId = existingInspectionId();
     const makeBody = (idOpt) => JSON.stringify({ payload, ...columns, id: idOpt || undefined });
 
-    // 1) Try update-or-create with current id
     if (maybeId) {
       const first = await postInspection(makeBody(maybeId));
       if (first.ok) return first.data.id || maybeId;
-
-      // If the server says "not found" for that id, clear it and retry as create
       if (first.status === 404 && (first.data?.error || "").toLowerCase().includes("not found")) {
         Progress.update("Previous record not found. Creating a new one…");
         clearExistingInspectionId();
@@ -220,12 +231,9 @@
         if (!second.ok) throw new Error(`Save failed (${second.status}) ${second.text || ""}`);
         return second.data.id || second.data?.inspection_id;
       }
-
-      // Any other error
       throw new Error(`Save failed (${first.status}) ${first.text || ""}`);
     }
 
-    // 2) Create
     const created = await postInspection(makeBody(undefined));
     if (!created.ok) throw new Error(`Save failed (${created.status}) ${created.text || ""}`);
     const newId = created.data.id || created.data?.inspection_id || created.data?.result?.id;
@@ -259,17 +267,14 @@
         Progress.show("Saving...");
         const { payload, columns } = makePayloadAndColumns();
 
-        // Save (update-or-create)
         const id = await saveInspection(payload, columns);
         rememberInspectionId(id);
 
-        // Server-side PDF
         Progress.update("Generating PDF...");
         const filename = CONFIG.filenameFrom(payload);
         const path = CONFIG.reportPath(id);
         const pdfBlob = await requestServerPdf({ filename, path });
 
-        // Open viewer
         Progress.update("Opening PDF...");
         const objectUrl = URL.createObjectURL(pdfBlob);
         const viewerUrl = `/pdf_viewer.html?src=${encodeURIComponent(objectUrl)}&filename=${encodeURIComponent(filename)}&id=${encodeURIComponent(id)}`;

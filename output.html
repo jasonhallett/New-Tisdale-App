@@ -20,7 +20,7 @@
 
     .checklist-item { display: flex; align-items: center; background-color: #f9fafb; padding: 0.025rem; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 0.025rem; }
     .checklist-item-text { font-size: 0.625rem; color: #374151; }
-    .checklist-status { font-weight: 600; font-size: 0.625rem; padding: 0.1rem 0.6rem; border-radius: 4px; margin-right: 0.25rem; }
+    .checklist-status { display:inline-flex; align-items:center; justify-content:center; min-width:1.25rem; height:1rem; border-radius:4px; font-weight:600; font-size:0.625rem; padding:0 0.35rem; margin-right:0.25rem; }
     .status-pass { color: #166534; background-color: #dcfce7; }
     .status-repair { color: #991b1b; background-color: #fee2e2; }
     .status-na { color: #4b5563; background-color: #e5e7eb; }
@@ -39,7 +39,6 @@
       .always-two-col{ grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     }
 
-    /* Hide stray page counters like "/1" */
     body::before, body::after, html::before, html::after, #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
     .page-number, .pageNumber, [data-page-number] { display: none !important; }
 
@@ -48,12 +47,9 @@
       .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
     }
 
-    /* Desktop print: scale to 95% and center */
     @media print {
       #page { transform: translate(0.2125in, 0.275in) scale(0.95) !important; transform-origin: top left !important; }
     }
-
-    /* iPhone/iPad Safari nudge */
     @media print {
       @supports (-webkit-touch-callout: none) {
         #page { transform: translate(0.28in, 0.40in) scale(0.90) !important; transform-origin: top left !important; }
@@ -62,22 +58,13 @@
   </style>
 </head>
 <body>
-  <!-- Top-right action buttons (hidden in print) -->
   <div class="no-print" style="position:fixed;top:10px;right:10px;z-index:999;display:flex;gap:8px;">
-    <button onclick="window.print()"
-            style="background:#111827;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;">
-      Print
-    </button>
-    <button id="btnDownload"
-            style="background:#2563eb;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;">
-      Download (PDF)
-    </button>
+    <button onclick="window.print()" style="background:#111827;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;">Print</button>
+    <button id="btnDownload" style="background:#2563eb;color:#fff;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;">Download (PDF)</button>
   </div>
 
-  <!-- Loading / error area (hidden once ready) -->
   <div id="status" class="no-print" style="position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:999;background:#0f172a;color:#fff;padding:8px 12px;border-radius:8px;border:1px solid #ffffff22;display:none;"></div>
 
-  <!-- Page -->
   <div id="page" aria-busy="true">
     <div class="content" id="pdf-root">
       <h1 class="text-xs font-bold text-center text-gray-800 mb-3">Schedule 4 Motor Coach Under-Vehicle Inspection Report</h1>
@@ -103,7 +90,6 @@
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 always-two-col">
-        <!-- Left column -->
         <div>
           <h2 class="section-header my-1">1. Air Brake System</h2>
           <div class="grid grid-cols-1 gap-0.5">
@@ -148,7 +134,6 @@
           </div>
         </div>
 
-        <!-- Right column -->
         <div>
           <h2 class="section-header my-1">4. Fuel System</h2>
           <div class="grid grid-cols-1 gap-0.5">
@@ -216,13 +201,13 @@
   </div>
 
   <script>
-    // ---------- Helpers ----------
+    // Helpers
     function toUSDateString(input) {
       if (!input) return '';
       if (typeof input === 'string') {
-        var m = input.match(/^(\d{4})-(\d{2})-(\d{2})/); // yyyy-mm-dd
+        var m = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
         if (m) return m[2] + '/' + m[3] + '/' + m[1];
-        var mmdd = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // mm/dd/yyyy
+        var mmdd = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
         if (mmdd) return mmdd[1].padStart(2,'0') + '/' + mmdd[2].padStart(2,'0') + '/' + mmdd[3];
       }
       var d = new Date(input);
@@ -250,26 +235,16 @@
       status.style.display = 'block';
       document.title = 'Error – Schedule 4';
       window.__REPORT_ERROR = msg;
-      // Replace page with a printable error state
       const page = document.getElementById('page');
-      page.innerHTML = `
-        <div class="content">
-          <h1 class="text-base font-bold text-red-700 mb-2">Unable to render report</h1>
-          <div class="text-sm text-gray-800">${msg.replace(/</g,'&lt;')}</div>
-        </div>
-      `;
+      page.innerHTML = `<div class="content"><h1 class="text-base font-bold text-red-700 mb-2">Unable to render report</h1><div class="text-sm text-gray-800">${msg.replace(/</g,'&lt;')}</div></div>`;
       page.setAttribute('aria-busy', 'false');
       window.__REPORT_READY = true;
     }
 
-    // ---------- Load from DB by id (DB-ONLY) ----------
     (async function init() {
       const params = new URLSearchParams(location.search);
       const id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
-      if (!id) {
-        renderError('Missing inspection id. Add ?id= to the URL.');
-        return;
-      }
+      if (!id) return renderError('Missing inspection id. Add ?id= to the URL.');
 
       const status = document.getElementById('status');
       status.textContent = 'Loading...';
@@ -278,10 +253,9 @@
       try {
         const res = await fetch('/api/schedule4s/get?id=' + encodeURIComponent(id), { headers: { 'Accept':'application/json' } });
         if (!res.ok) {
-          if (res.status === 404) { renderError('Inspection not found for id "'+id+'".'); return; }
+          if (res.status === 404) { return renderError('Inspection not found for id "'+id+'".'); }
           const t = await res.text().catch(()=>String(res.status));
-          renderError('Failed to load inspection (' + res.status + '): ' + t);
-          return;
+          return renderError('Failed to load inspection (' + res.status + '): ' + t);
         }
         const resp = await res.json().catch(()=> ({}));
         const row = resp.item || resp || {};
@@ -297,30 +271,34 @@
 
         const data = {
           carrierName:     pick('carrierName','carrier'),
-          locationAddress: pick('locationAddress','address','inspectionLocation'),
+          locationAddress: pick('locationAddress','address','inspectionLocation') || row.location || '',
           unitNumber:      pick('unitNumber','unit','vehicle_number') || row.vehicle_name || '',
-          licensePlate:    pick('licensePlate','licencePlate','plate'),
-          odometer:        pick('odometer','odometerKm','odometer_km'),
+          licensePlate:    pick('licensePlate','licencePlate','plate') || row.license_plate || '',
+          odometer:        pick('odometer','odometerKm','odometer_km') || row.odometer_km || '',
           inspectionDate:  pick('inspectionDate') || row.performed_at || row.created_at || '',
-          odometerExpires: pick('odometerExpires'),
+          odometerExpires: pick('odometerExpires') || row.next_service_odometer_km || '',
           dateExpires:     pick('dateExpires') || row.expiry_date || '',
           tireSize:        pick('tireSize'),
-          repairs:         pick('repairs','repairsNotes','repairs_text'),
+          repairs:         pick('repairs','repairsNotes','repairs_text') || row.notes || '',
           inspectorName:   pick('inspectorName') || row.technician_name || '',
+
+          // ---- the six fields you said aren't showing ----
           rSteerBrake: pick('rSteerBrake'),
           rDriveBrake: pick('rDriveBrake'),
           rTagBrake:   pick('rTagBrake'),
           lSteerBrake: pick('lSteerBrake'),
           lDriveBrake: pick('lDriveBrake'),
           lTagBrake:   pick('lTagBrake'),
+
           signature:       pick('signature'),
           checklist:       p.checklist || {}
         };
 
-        // Normalize dates for display
+        // Dates
         data.inspectionDate = toUSDateString(data.inspectionDate);
         data.dateExpires = toUSDateString(data.dateExpires) || (data.inspectionDate ? toUSDateString(new Date(new Date(data.inspectionDate).getTime()+31*864e5)) : '');
-        // Fill simple fields
+
+        // Simple fields
         document.querySelector('[data-field="carrierName"]').textContent = data.carrierName || '';
         document.querySelector('[data-field="locationAddress"]').textContent = data.locationAddress || '';
         document.querySelector('[data-field="unitNumber"]').textContent = data.unitNumber || '';
@@ -334,17 +312,28 @@
         if (data.inspectorName) document.querySelector('[data-field="inspectorName"]').textContent = data.inspectorName;
         if (data.signature) document.getElementById('signatureImg').src = data.signature;
 
-        // Checklist
+        // ---- fill the six brake values ----
+        const bind = (k) => { const el = document.querySelector(`[data-field="${k}"]`); if (el) el.textContent = (data[k] || ''); };
+        bind('rSteerBrake'); bind('rDriveBrake'); bind('rTagBrake');
+        bind('lSteerBrake'); bind('lDriveBrake'); bind('lTagBrake');
+
+        // Checklist with data-URI <img> check for PASS
         const dataChecklistNorm = {};
-        Object.keys(data.checklist || {}).forEach(function(k){
-          dataChecklistNorm[normalizeLabel(k)] = data.checklist[k];
-        });
+        Object.keys(data.checklist || {}).forEach(function(k){ dataChecklistNorm[normalizeLabel(k)] = data.checklist[k]; });
+
+        function imgCheck() {
+          return '<img alt="✓" width="10" height="10" src="data:image/svg+xml;utf8,' +
+                 '<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22>' +
+                 '<path d=%22M2 6.5 L5 9.5 L10 2.5%22 stroke=%22%23166534%22 stroke-width=%222%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/>' +
+                 '</svg>' +
+                 '"/>';
+        }
         function setStatus(el, status) {
           if (!status) return;
           const badge = el.querySelector('.checklist-status'); if (!badge) return;
           badge.className = 'checklist-status';
           const s = String(status||'').toLowerCase();
-          if (['pass','ok','✓','yes','y','true'].includes(s)) { badge.textContent='✓'; badge.classList.add('status-pass'); }
+          if (['pass','ok','yes','y','true','✓','✔'].includes(s)) { badge.innerHTML=imgCheck(); badge.classList.add('status-pass'); }
           else if (['repair','repaired','r','fail','f','false'].includes(s)) { badge.textContent='R'; badge.classList.add('status-repair'); }
           else if (['na','n/a','not applicable'].includes(s)) { badge.textContent='N/A'; badge.classList.add('status-na'); }
         }
@@ -353,17 +342,12 @@
           const norm = normalizeLabel(labelTxt);
           let st = dataChecklistNorm[norm];
           if (!st) {
-            // light fuzzy: longest included key
             let bestKey = '';
             for (const k in dataChecklistNorm) { if (norm.indexOf(k) !== -1 && k.length > bestKey.length) bestKey = k; }
             if (bestKey) st = dataChecklistNorm[bestKey];
           }
           setStatus(item, st);
         });
-
-        // Expose for filename and server print
-        window.__schedule4_getData = function(){ return data; };
-        window.__schedule4_toUS = toUSDateString;
 
         // Ready
         document.getElementById('page').setAttribute('aria-busy','false');
@@ -374,25 +358,22 @@
       }
     })();
 
-    // ---------- Server PDF download (uses current id) ----------
     document.getElementById('btnDownload').addEventListener('click', async () => {
       try {
-        const data = (window.__schedule4_getData && window.__schedule4_getData()) || {};
-        const unitRaw = (data.unitNumber || 'Unit').toString().trim();
-        const unitSan = unitRaw.replace(/[\/\\<>:"|?*]+/g,'').trim(); // keep spaces and #
-        const toUS = (window.__schedule4_toUS || function(x){ return x; });
-        const dateUS = toUS(data.inspectionDate) || toUS(new Date());
-        const dateForFile = String(dateUS || '').replace(/\//g,'-'); // mm-dd-yyyy
-        const filename = `Schedule4-${unitSan}-${dateForFile}.pdf`;
-
         const params = new URLSearchParams(location.search);
         const id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
         if (!id) throw new Error('Missing inspection id, cannot print.');
 
+        const unitRaw = (document.querySelector('[data-field="unitNumber"]').textContent || 'Unit').trim();
+        const unitSan = unitRaw.replace(/[\/\\<>:"|?*]+/g,'').trim();
+        const dateUS = (document.querySelector('[data-field="inspectionDate"]').textContent || '').trim();
+        const dateForFile = dateUS ? dateUS.replace(/\//g,'-') : '';
+
+        const filename = `Schedule4-${unitSan || 'Unit'}-${dateForFile || 'Report'}.pdf`;
         const res = await fetch('/api/pdf/print', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: `/output.html?id=${encodeURIComponent(id)}`, data, filename })
+          body: JSON.stringify({ path: `/output.html?id=${encodeURIComponent(id)}`, filename })
         });
         if (!res.ok) throw new Error(await res.text());
         const blob = await res.blob();
