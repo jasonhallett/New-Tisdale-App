@@ -98,14 +98,14 @@
         data.repairs         = pick('repairs','repairsNotes','repairs_text');
         data.inspectorName   = pick('inspectorName') || row.technician_name || '';
 
-        <!-- ✨ minimal fix: copy brake pushrod stroke measurements into cache -->
+      
         data.rSteerBrake = pick('rSteerBrake');
         data.rDriveBrake = pick('rDriveBrake');
         data.rTagBrake   = pick('rTagBrake');
         data.lSteerBrake = pick('lSteerBrake');
         data.lDriveBrake = pick('lDriveBrake');
         data.lTagBrake   = pick('lTagBrake');
-        <!-- ✨ end minimal fix -->
+       
 
         data.signature       = pick('signature');
         data.checklist       = p.checklist || {};
