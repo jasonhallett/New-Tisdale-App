@@ -28,33 +28,85 @@
     .text-xxs { font-size: 0.5rem; }
     .signature-img { width: 400px; height: 100px; border: 1px solid #e5e7eb; object-fit: contain; }
 
+
     @page { size: 8.5in 11in; margin: 0; }
     @media print {
       html, body { width:8.5in; height:11in; margin:0; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       #page { width:8.5in !important; min-height:11in !important; margin:0 !important; }
+      .no-print { display:none !important; }
     }
   </style>
 
-  <style id="single-page-fix">
-  body::before, body::after, html::before, html::after,
-  #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
-  .page-number, .pageNumber, [data-page-number] { display: none !important; }
+<style id="single-page-fix">
+/* Hide stray page counters like "/1" on screen and in print */
+body::before, body::after, html::before, html::after,
+#page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
+.page-number, .pageNumber, [data-page-number] { display: none !important; }
 
+@media print {
+  .page, #page { page-break-after: auto !important; break-after: auto !important; }
+  .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
+}
+</style>
+
+<style id="print-scale-95">
   @media print {
-    .page, #page { page-break-after: auto !important; break-after: auto !important; }
-    .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
-  }
-  </style>
-
-  <style id="print-scale-95">
-    @media print {
-      .no-print { display: none !important; }
-      #page {
-        transform: translate(0.2125in, 0.275in) scale(0.95) !important;
-        transform-origin: top left !important;
-      }
+    .no-print { display: none !important; }
+    /* center the 95% scaled page on Letter */
+    #page {
+      transform: translate(0.2125in, 0.275in) scale(0.95) !important;
+      transform-origin: top left !important;
     }
-  </style>
+  }
+</style>
+
+  <!-- Preload data by ID (runs before population script) -->
+  <script>
+  (function () {
+    try {
+      var params = new URLSearchParams(location.search);
+      var id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
+      if (!id) return;
+      if (sessionStorage.getItem('schedule4LoadedFromId') === '1') return;
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/api/schedule4s/get?id=' + encodeURIComponent(id), false); // sync on purpose to ensure data is ready
+      xhr.setRequestHeader('Accept','application/json');
+      xhr.send(null);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        var resp = {};
+        try { resp = JSON.parse(xhr.responseText) || {}; } catch(e){ resp = {}; }
+        var row = resp.item || resp || {};
+        var p = row.payload_json || row.payload || {};
+
+        function pick() {
+          for (var i = 0; i < arguments.length; i++) {
+            var k = arguments[i];
+            if (p && p[k] != null && p[k] !== '') return p[k];
+          }
+          return '';
+        }
+
+        var data = {};
+        data.carrierName     = pick('carrierName','carrier');
+        data.locationAddress = pick('locationAddress','address','inspectionLocation');
+        data.unitNumber      = pick('unitNumber','unit','vehicle_number') || row.vehicle_name || '';
+        data.licensePlate    = pick('licensePlate','licencePlate','plate');
+        data.odometer        = pick('odometer','odometerKm','odometer_km');
+        data.inspectionDate  = pick('inspectionDate') || row.performed_at || row.created_at || '';
+        data.odometerExpires = pick('odometerExpires');
+        data.dateExpires     = pick('dateExpires') || row.expiry_date || '';
+        data.tireSize        = pick('tireSize');
+        data.repairs         = pick('repairs','repairsNotes','repairs_text');
+        data.inspectorName   = pick('inspectorName') || row.technician_name || '';
+        data.signature       = pick('signature');
+        data.checklist       = p.checklist || {};
+
+        try { sessionStorage.setItem('schedule4Data', JSON.stringify(data)); } catch(e){}
+        try { sessionStorage.setItem('schedule4LoadedFromId','1'); } catch(e){}
+      }
+    } catch (e) {}
+  })();
+  </script>
 
 </head>
 <body>
@@ -65,11 +117,13 @@
                    padding:8px 12px;border-radius:6px;cursor:pointer;">
       Print
     </button>
-    <button onclick="downloadServerPDF"
+    <!-- === Puppeteer Server PDF START === -->
+    <button onclick="downloadServerPDF()"
             style="background:#2563eb;color:#fff;border:none;
                    padding:8px 12px;border-radius:6px;cursor:pointer;">
       Download (PDF)
     </button>
+    <!-- === Puppeteer Server PDF END === -->
   </div>
 
   <!-- Page -->
@@ -204,6 +258,7 @@
           <h2 class="section-header my-1">Signature of the person who conducted the inspection</h2>
           <div class="output-text p-1" style="height:100px;">
             <img id="signatureImg" alt="Signature" class="mx-auto block signature-img">
+
           </div>
         </div>
       </div>
@@ -211,61 +266,31 @@
   </div>
 
   <script>
-  (async function () {
-    function normalizeKey(s) {
-      return String(s || '')
-        .toLowerCase()
-        .replace(/&/g, ' and ')     // handle "&&"
-        .replace(/[-–—]/g, ' ')     // push-out -> push out
-        .replace(/['’]/g, '')       // manufacturer’s -> manufacturers
-        .replace(/[^a-z0-9 ]+/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
-
-    function setStatus(el, status) {
-      const badge = el.querySelector('.checklist-status'); if (!badge) return;
-      badge.className = 'checklist-status';
-      const v = (status || '').toString().trim().toLowerCase();
-      if (['pass','ok','✓','yes','y','good','normal'].includes(v)) { badge.textContent='✓'; badge.classList.add('status-pass'); }
-      else if (['repair','repaired','r','fail','f','defect'].includes(v)) { badge.textContent='R'; badge.classList.add('status-repair'); }
-      else if (['na','n/a','not applicable'].includes(v)) { badge.textContent='N/A'; badge.classList.add('status-na'); }
-      else { badge.textContent = v || ''; }
-    }
-
-    function fillByLabel(labelText, value) {
-      if (!value) return;
-      const labels = [...document.querySelectorAll('label')];
-      const label = labels.find(l => l.textContent.trim().toLowerCase() === labelText.toLowerCase());
-      if (label) {
-        const box = label.closest('.form-group,.flex')?.querySelector('.output-text');
-        if (box) box.textContent = value;
+    (function () {
+      function getData() {
+        let data = {};
+        try { const ss = sessionStorage.getItem('schedule4Data'); if (ss) data = JSON.parse(ss) || {}; } catch(e){}
+        const params = new URLSearchParams(location.search);
+        const keys = [
+          'carrierName','locationAddress','unitNumber','licensePlate','odometer','inspectionDate',
+          'odometerExpires','dateExpires','rSteerBrake','rDriveBrake','rTagBrake','lSteerBrake','lDriveBrake','lTagBrake',
+          'tireSize','repairs','inspectorName','signature'
+        ];
+        for (const k of keys) if (!(k in data) && params.has(k)) data[k] = params.get(k);
+        data.checklist = data.checklist || {};
+        return data;
       }
-    }
+      const data = getData();
 
-    function fillTiny(lbl, val) {
-      if (!val) return;
-      const tiny = [...document.querySelectorAll('.pl-4 .flex.items-center')];
-      const match = tiny.find(g => g.querySelector('label')?.textContent.trim().toLowerCase() === lbl.toLowerCase());
-      const box = match?.querySelector('.output-text');
-      if (box) box.textContent = val;
-    }
-
-    function containsAllTokens(haystack, tokens) {
-      return tokens.every(t => haystack.includes(t));
-    }
-
-    // Forgiving token maps for the two stubborn labels
-    const CHECKLIST_TOKEN_MAP = {
-      [ "clearance between disc brake pads and rotor exceeds manufacturer's specified limit" ]: [
-        'clearance','disc','brake','pad','rotor','manufacturer','specified','limit'
-      ],
-      [ "all push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally" ]: [
-        'push','out','window','emergency','door','marking','light','inspect','operating','normally'
-      ]
-    };
-
-    function applyData(data) {
+      function fillByLabel(labelText, value) {
+        if (!value) return;
+        const labels = [...document.querySelectorAll('label')];
+        const label = labels.find(l => l.textContent.trim().toLowerCase() === labelText.toLowerCase());
+        if (label) {
+          const box = label.closest('.form-group,.flex')?.querySelector('.output-text');
+          if (box) box.textContent = value;
+        }
+      }
       fillByLabel('Carrier', data.carrierName);
       fillByLabel('Address of the location where the inspection is conducted', data.locationAddress);
       fillByLabel('Unit #', data.unitNumber);
@@ -276,6 +301,13 @@
       fillByLabel('Date Expires', data.dateExpires);
       fillByLabel('Tire size:', data.tireSize);
 
+      function fillTiny(lbl, val) {
+        if (!val) return;
+        const tiny = [...document.querySelectorAll('.pl-4 .flex.items-center')];
+        const match = tiny.find(g => g.querySelector('label')?.textContent.trim().toLowerCase() === lbl.toLowerCase());
+        const box = match?.querySelector('.output-text');
+        if (box) box.textContent = val;
+      }
       fillTiny('r steer', data.rSteerBrake);
       fillTiny('r drive', data.rDriveBrake);
       fillTiny('r tag', data.rTagBrake);
@@ -291,97 +323,38 @@
 
       if (data.signature) { const img = document.getElementById('signatureImg'); if (img) img.src = data.signature; }
 
-      // Build normalized incoming checklist map
-      const rawCL = data.checklist || {};
-      const normIn = {};
-      Object.keys(rawCL).forEach(k => { normIn[normalizeKey(k)] = rawCL[k]; });
-
-      // Apply statuses with robust matching for the two tricky items
-      document.querySelectorAll('.checklist-item').forEach(item => {
-        const label = item.querySelector('.checklist-item-text')?.textContent.trim() || '';
-        const normLabel = normalizeKey(label);
-
-        // 1) direct normalized match (or exact raw match)
-        let v = normIn[normLabel] ?? rawCL[label];
-
-        // 2) if missing, try token-based search for the two known labels
-        if (v == null) {
-          const keyLower = label.toLowerCase();
-          const tokens = CHECKLIST_TOKEN_MAP[keyLower];
-          if (tokens) {
-            const matchKey = Object.keys(normIn).find(nk => containsAllTokens(nk, tokens));
-            if (matchKey) v = normIn[matchKey];
-          }
-        }
-
-        if (v != null) setStatus(item, v);
-      });
-    }
-
-    async function loadFromServerById(id) {
-      const res = await fetch('/api/schedule4s/get?id=' + encodeURIComponent(id), { credentials:'include', cache: 'no-store' });
-      if (!res.ok) throw new Error('fetch failed');
-      const j = await res.json();
-      const row = j.item || j || {};
-      const p = row.payload_json || row.payload || {};
-      const checklist = p.checklist || {};
-
-      function pick() {
-        for (let i=0;i<arguments.length;i++) {
-          const k = arguments[i];
-          if (p && p[k] != null && p[k] !== '') return p[k];
-        }
-        return '';
+      function setStatus(el, status) {
+        const badge = el.querySelector('.checklist-status'); if (!badge) return;
+        badge.className = 'checklist-status';
+        if (['pass','ok','✓','yes','y'].includes((status||'').toLowerCase())) { badge.textContent='✓'; badge.classList.add('status-pass'); }
+        else if (['repair','repaired','r','fail','f'].includes((status||'').toLowerCase())) { badge.textContent='R'; badge.classList.add('status-repair'); }
+        else if (['na','n/a','not applicable'].includes((status||'').toLowerCase())) { badge.textContent='N/A'; badge.classList.add('status-na'); }
       }
+      document.querySelectorAll('.checklist-item').forEach(item => {
+        const label = item.querySelector('.checklist-item-text')?.textContent.trim();
+        if (label && data.checklist[label]) setStatus(item, data.checklist[label]);
+      });
+    })();
 
-      const data = {
-        carrierName     : pick('carrierName','carrier'),
-        locationAddress : pick('locationAddress','address','inspectionLocation'),
-        unitNumber      : pick('unitNumber','unit','vehicle_number') || row.vehicle_name || '',
-        licensePlate    : pick('licensePlate','licencePlate','plate'),
-        odometer        : pick('odometer','odometerKm','odometer_km'),
-        inspectionDate  : pick('inspectionDate') || row.performed_at || row.created_at || '',
-        odometerExpires : pick('odometerExpires'),
-        dateExpires     : pick('dateExpires') || row.expiry_date || '',
-        tireSize        : pick('tireSize'),
-        repairs         : pick('repairs','repairsNotes','repairs_text'),
-        inspectorName   : pick('inspectorName') || row.technician_name || '',
-        signature       : pick('signature'),
-        rSteerBrake     : pick('rSteerBrake','r_steer_brake','rSteer'),
-        rDriveBrake     : pick('rDriveBrake','r_drive_brake','rDrive'),
-        rTagBrake       : pick('rTagBrake','r_tag_brake','rTag'),
-        lSteerBrake     : pick('lSteerBrake','l_steer_brake','lSteer'),
-        lDriveBrake     : pick('lDriveBrake','l_drive_brake','lDrive'),
-        lTagBrake       : pick('lTagBrake','l_tag_brake','lTag'),
-        checklist       : checklist
-      };
-      try { sessionStorage.setItem('schedule4Data', JSON.stringify(data)); } catch(e){}
-      try { sessionStorage.setItem('schedule4LoadedFromId','1'); } catch(e){}
-      return data;
+    // === Puppeteer Server PDF START ===
+    async function downloadServerPDF() {
+      try {
+        const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
+        const res = await fetch('/api/pdf/print', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: '/output.html', data, filename: 'Schedule-4-Inspection.pdf' })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'Schedule-4-Inspection.pdf';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) { alert('Server PDF failed: ' + err.message); }
     }
-
-    const params = new URLSearchParams(location.search);
-    const id = params.get('id') || params.get('inspectionId') || params.get('schedule4Id');
-
-    let data = {};
-    if (id) {
-      try { data = await loadFromServerById(id); }
-      catch(e) { /* leave blank if fetch fails */ }
-    } else {
-      try { const ss = sessionStorage.getItem('schedule4Data'); if (ss) data = JSON.parse(ss) || {}; } catch(e){}
-      const keys = [
-        'carrierName','locationAddress','unitNumber','licensePlate','odometer','inspectionDate',
-        'odometerExpires','dateExpires','rSteerBrake','rDriveBrake','rTagBrake','lSteerBrake','lDriveBrake','lTagBrake',
-        'tireSize','repairs','inspectorName','signature'
-      ];
-      for (const k of keys) if (!(k in data) && params.has(k)) data[k] = params.get(k);
-      data.checklist = data.checklist || {};
-    }
-
-    applyData(data);
-
-    window.addEventListener('pageshow', function(e){ if (e.persisted) location.reload(); });
-  })();
+    // === Puppeteer Server PDF END ===
   </script>
 
   <script>
@@ -402,69 +375,6 @@
     } catch (e) {}
   });
   </script>
-
-<script>
-  async function downloadServerPDF() {
-    try {
-      // grab the data already on the page
-      const data = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
-
-      // sanitize for filenames (Windows-safe)
-      const safe = s => String(s || '')
-        .trim()
-        .replace(/[/\\?%*:|"<>]/g, '-')   // illegal filename chars -> '-'
-        .replace(/\s+/g, '-');            // spaces -> '-'
-
-      // unit
-      const unit = safe(data.unitNumber || 'Unit');
-
-      // date (prefer YYYY-MM-DD; fall back to whatever we have)
-      let dateStr = safe(data.inspectionDate || '');
-      try {
-        let d;
-if (typeof data.inspectionDate === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(data.inspectionDate)) {
-  const parts = data.inspectionDate.split('/');
-  d = new Date(parseInt(parts[2],10), parseInt(parts[0],10)-1, parseInt(parts[1],10));
-} else {
-  d = new Date(data.inspectionDate);
-}
-if (!isNaN(d)) {
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  dateStr = `${mm}-${dd}-${d.getFullYear()}`;
-}
-      } catch {}
-
-      const filename = `Schedule4-${unit}-${dateStr || 'UnknownDate'}.pdf`;
-
-      // ask server to render, passing filename (server may set Content-Disposition)
-      const res = await fetch('/api/pdf/print', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: '/output.html',
-          data,
-          filename
-        })
-      });
-      if (!res.ok) throw new Error(await res.text());
-
-      // download with our desired name (works even if server ignores filename)
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert('Server PDF failed: ' + err.message);
-    }
-  }
-</script>
-
 
 </body>
 </html>

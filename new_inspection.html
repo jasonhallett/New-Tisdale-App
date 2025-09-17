@@ -924,5 +924,81 @@
       });
     })();
   </script>
+
+<script>
+(function(){
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function todayUS(){
+    const d = new Date();
+    return pad(d.getMonth()+1) + '/' + pad(d.getDate()) + '/' + d.getFullYear();
+  }
+  function addDaysUS(s, days){
+    // s in mm/dd/yyyy
+    let d;
+    const m = String(s||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m){ d = new Date(parseInt(m[3],10), parseInt(m[1],10)-1, parseInt(m[2],10)); }
+    else { d = new Date(); }
+    d.setDate(d.getDate() + days);
+    return pad(d.getMonth()+1) + '/' + pad(d.getDate()) + '/' + d.getFullYear();
+  }
+  function fmtKMInput(input){
+    let v = (input.value||'').replace(/,/g,'');
+    if (v !== '' && !/^\d+$/.test(v)) v = v.replace(/\D/g,'');
+    input.value = v ? Number(v).toLocaleString('en-US') : '';
+  }
+  function findInputByLabelText(target){
+    target = target.toLowerCase().replace(/\s+/g,' ').trim();
+    const labels = Array.from(document.querySelectorAll('label'));
+    for (const lab of labels){
+      const txt = lab.textContent.toLowerCase().replace(/\s+/g,' ').trim();
+      if (txt.startsWith(target)){
+        const forId = lab.getAttribute('for');
+        if (forId){
+          const el = document.getElementById(forId);
+          if (el) return el;
+        }
+        // fallback: next input in same container
+        const el = lab.parentElement && lab.parentElement.querySelector('input,textarea,select');
+        if (el) return el;
+      }
+    }
+    return null;
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    // Prefill dates
+    const insp = findInputByLabelText('date inspected') || document.getElementById('inspection-date');
+    const exp  = findInputByLabelText('date expires') || document.getElementById('expiry-date');
+    if (insp && !insp.value){ insp.value = todayUS(); }
+    if (exp){ exp.value = addDaysUS(insp ? insp.value : todayUS(), 31); }
+    // Odometer formatting + expiry
+    const odo = findInputByLabelText('odometer (km)') || document.getElementById('odometer');
+    const odoExp = findInputByLabelText('odometer expires') || document.getElementById('expiry-odometer') || findInputByLabelText('odometer expiration');
+    function recalcOdoExp(){
+      if (!odo || !odoExp) return;
+      const raw = (odo.value||'').replace(/,/g,'');
+      const n = parseInt(raw,10);
+      if (!isNaN(n)) odoExp.value = (n+12000).toLocaleString('en-US');
+    }
+    if (odo){
+      odo.addEventListener('input', function(){ fmtKMInput(odo); });
+      odo.addEventListener('blur', recalcOdoExp);
+      // Initialize
+      fmtKMInput(odo); recalcOdoExp();
+    }
+    // Keep expiry date synced if user edits inspection date
+    if (insp && exp){
+      insp.addEventListener('blur', function(){ exp.value = addDaysUS(insp.value, 31); });
+    }
+    // On submit (capture), convert dates to mm/dd/yyyy and strip commas from odometer before app handler runs
+    document.addEventListener('submit', function(e){
+      if (insp) insp.value = todayUS() && insp.value ? insp.value : todayUS();
+      if (exp && insp) exp.value = addDaysUS(insp.value, 31);
+      if (odo) odo.value = (odo.value||'').replace(/,/g,'');
+      if (odoExp) odoExp.value = (odoExp.value||'').replace(/,/g,'');
+    }, true);
+  });
+})();
+</script>
+
 </body>
 </html>
