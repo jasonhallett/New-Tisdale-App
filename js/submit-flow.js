@@ -1,8 +1,7 @@
-/* submit-flow.js — Upsert + DB-only render + server PDF
- * - Single submit handler (capture phase) prevents other handlers
- * - Builds canonical payload (same keys as legacy code)
- * - Sends flat column map aligned to your DB sample to reduce NULLs
- * - Upserts (/api/inspections or /api/inspections/:id)
+/* submit-flow.js — POST-only + auto-retry create on 404 + DB-only render + server PDF
+ * - Always POST /api/inspections (server handles create *or* update if id is present)
+ * - If POST returns 404 "Inspection not found" while updating, clear the stale id and POST again to create
+ * - Builds canonical payload + flat column map (aligned to DB) to reduce NULLs
  * - Generates PDF via /api/pdf/print (server puppeteer), using /output.html?id=...
  */
 (function () {
@@ -72,7 +71,6 @@
                || byId("unit-number") || $('input[name="unit"]') || $('input[name="unit_number"]') || $('input[name="unitNumber"]');
     return { select, other };
   }
-
   function getUnitNumber() {
     const { select, other } = findUnitElements();
     if (select && select.value && select.value !== "other") {
@@ -84,7 +82,6 @@
     if (guess && guess.value) return guess.value.trim();
     return "";
   }
-
   function getSamsaraVehicleId() {
     const { select } = findUnitElements();
     if (select && select.value && select.value !== "other") return String(select.value);
@@ -92,7 +89,6 @@
     if (hidden && hidden.value) return String(hidden.value);
     return null;
   }
-
   function getSignatureDataURL() {
     const hidden = byId("signature-data-url") || $('input[name="signatureDataURL"]') || $('input[name="signature"]');
     if (hidden && hidden.value && hidden.value.startsWith("data:image/")) return hidden.value;
@@ -119,7 +115,6 @@
     }
     return "";
   }
-
   function buildChecklist() {
     const out = {};
     $$(".option-boxes").forEach(group => {
@@ -141,11 +136,16 @@
     const q = new URLSearchParams(location.search).get("id");
     return q || null;
   }
+  function clearExistingInspectionId() {
+    try { sessionStorage.removeItem("__inspectionId"); } catch(_) {}
+    const hidden = byId("inspection-id"); if (hidden) hidden.value = "";
+  }
   function rememberInspectionId(id) {
     try { sessionStorage.setItem("__inspectionId", id); } catch(_){}
     const hidden = byId("inspection-id"); if (hidden) hidden.value = id;
   }
 
+  // Build canonical payload + flat column map (aligned to DB)
   function makePayloadAndColumns() {
     const samsaraVehicleId = getSamsaraVehicleId();
     const unitNumber = getUnitNumber();
@@ -174,7 +174,6 @@
       checklist: buildChecklist()
     };
 
-    // Align to DB sample you shared
     const cols = {
       carrier_name: payload.carrierName || null,
       location: payload.locationAddress || null,          // DB uses 'location'
@@ -190,48 +189,51 @@
     return { payload, columns: cols };
   }
 
-  async function saveInspection(payload, columns) {
-    const id = existingInspectionId();
-    const body = JSON.stringify({ payload, ...columns, id: id || undefined });
-
-    if (id) {
-      const res = await fetch(`${CONFIG.saveBase}/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body
-      });
-      if (res.ok) {
-        const j = await res.json().catch(() => ({}));
-        return j.id || j.inspection_id || j.data?.id || id;
-      }
-      if ([404,405,501].includes(res.status)) {
-        const postRes = await fetch(CONFIG.saveBase, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body
-        });
-        if (!postRes.ok) throw new Error(`Save failed (${postRes.status}) ${await postRes.text().catch(()=> "")}`);
-        const pj = await postRes.json().catch(() => ({}));
-        return pj.id || pj.inspection_id || pj.data?.id || id;
-      }
-      throw new Error(`Update failed (${res.status}) ${await res.text().catch(()=> "")}`);
-    }
-
-    const createRes = await fetch(CONFIG.saveBase, {
+  // ---- POST only; handle update-or-create via body.id; if 404 => create ----
+  async function postInspection(bodyJson) {
+    const res = await fetch(CONFIG.saveBase, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body
+      body: bodyJson
     });
-    if (!createRes.ok) throw new Error(`Save failed (${createRes.status}) ${await createRes.text().catch(()=> "")}`);
-    const cj = await createRes.json().catch(() => ({}));
-    const newId = cj.id || cj.inspection_id || cj.data?.id || cj.upsertedId || cj.result?.id;
+    const text = await res.text().catch(() => "");
+    let data;
+    try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
+    return { ok: res.ok, status: res.status, data, text };
+  }
+
+  async function saveInspection(payload, columns) {
+    const maybeId = existingInspectionId();
+    const makeBody = (idOpt) => JSON.stringify({ payload, ...columns, id: idOpt || undefined });
+
+    // 1) Try update-or-create with current id
+    if (maybeId) {
+      const first = await postInspection(makeBody(maybeId));
+      if (first.ok) return first.data.id || maybeId;
+
+      // If the server says "not found" for that id, clear it and retry as create
+      if (first.status === 404 && (first.data?.error || "").toLowerCase().includes("not found")) {
+        Progress.update("Previous record not found. Creating a new one…");
+        clearExistingInspectionId();
+        const second = await postInspection(makeBody(undefined));
+        if (!second.ok) throw new Error(`Save failed (${second.status}) ${second.text || ""}`);
+        return second.data.id || second.data?.inspection_id;
+      }
+
+      // Any other error
+      throw new Error(`Save failed (${first.status}) ${first.text || ""}`);
+    }
+
+    // 2) Create
+    const created = await postInspection(makeBody(undefined));
+    if (!created.ok) throw new Error(`Save failed (${created.status}) ${created.text || ""}`);
+    const newId = created.data.id || created.data?.inspection_id || created.data?.result?.id;
     if (!newId) throw new Error("Save succeeded but no inspection id was returned.");
     return newId;
   }
 
+  // ---- Print via server (Puppeteer) ----
   async function requestServerPdf({ filename, path }) {
     const res = await fetch(CONFIG.printEndpoint, {
       method: "POST",
@@ -256,14 +258,18 @@
       try {
         Progress.show("Saving...");
         const { payload, columns } = makePayloadAndColumns();
-        const id = await saveInspection(payload, columns);
-        try { sessionStorage.setItem("__inspectionId", id); } catch(_){}
 
+        // Save (update-or-create)
+        const id = await saveInspection(payload, columns);
+        rememberInspectionId(id);
+
+        // Server-side PDF
         Progress.update("Generating PDF...");
         const filename = CONFIG.filenameFrom(payload);
         const path = CONFIG.reportPath(id);
         const pdfBlob = await requestServerPdf({ filename, path });
 
+        // Open viewer
         Progress.update("Opening PDF...");
         const objectUrl = URL.createObjectURL(pdfBlob);
         const viewerUrl = `/pdf_viewer.html?src=${encodeURIComponent(objectUrl)}&filename=${encodeURIComponent(filename)}&id=${encodeURIComponent(id)}`;
@@ -274,7 +280,7 @@
       } catch (err) {
         console.error(err);
         Progress.error("Error: " + (err && err.message ? err.message : "Unexpected error."));
-        setTimeout(() => Progress.hide(), 6000);
+        setTimeout(() => Progress.hide(), 7000);
       }
     }, true); // capture=true
   }
