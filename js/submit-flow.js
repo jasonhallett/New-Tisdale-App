@@ -1,32 +1,30 @@
-/* submit-flow.js
- * Drop-in submit workflow for new_inspection.html:
- *  - Shows a no-button status modal (Saving → Generating report → Converting to PDF → Opening Viewer)
- *  - Saves form data to your API
- *  - Loads output.html in a hidden iframe and converts it to PDF (client-side)
- *  - Opens a custom viewer window (pdf_viewer.html) with toolbar: Print, Save to Files, Import to Fleetio, Close
+/* submit-flow.js — Path A (cleanest, single handler)
+ * - Intercepts form submit (capture phase), prevents any other submit handlers
+ * - Validates (lightly), constructs the SAME payload shape as your previous inline code
+ * - POSTs to /api/inspections with body: { payload: ... }, credentials: 'include'
+ * - Renders /output.html?id=... in a hidden iframe, converts to PDF, opens /pdf_viewer.html
  *
- * Usage:
- *  <script defer src="/assets/submit-flow.js"></script>
- * This script auto-attaches to the first <form> on the page. To be explicit, add data-inspection-form to the form.
+ * Usage in new_inspection.html (keep your existing id/action; just add the attribute):
+ *   <form id="inspectionForm" action="#" data-inspection-form>
+ *   ...
+ *   <script defer src="/assets/submit-flow.js"></script>
  */
+
 (function () {
-  // ---- CONFIG ----
+  // ---------- CONFIG ----------
   const CONFIG = {
-    // Adjust this if your save endpoint differs. It must return JSON { id: "<inspectionId>", ... }
     saveEndpoint: "/api/inspections",
-    // How to construct the report URL that output.html will use to render this inspection
     reportUrl: (inspectionId) => `/output.html?id=${encodeURIComponent(inspectionId)}&mode=pdf`,
-    // Filename pattern for the PDF
-    filename: (meta) => {
-      const unit = (meta.unit || "Unit").toString().replace(/[^\w\-]+/g, "_");
-      const d = meta.date || new Date().toISOString().slice(0,10);
+    filenameFrom: (payload) => {
+      const unit = (payload.unitNumber || "Unit").toString().replace(/[^\w\-]+/g, "_");
+      // prefer the explicit inspectionDate (already formatted on the page)
+      const d = payload.inspectionDate || new Date().toISOString().slice(0,10);
       return `Schedule-4_Inspection_${unit}_${d}.pdf`;
     },
-    // How we pick PDF source element inside output.html
     pickPdfElement: (doc) => doc.querySelector("#page") || doc.body,
   };
 
-  // ---- Utility: tiny modal for progress ----
+  // ---------- Tiny progress overlay ----------
   const Progress = (() => {
     let el, textEl;
     function ensure() {
@@ -75,44 +73,61 @@
       el.appendChild(box);
       document.body.appendChild(el);
     }
-    function show(msg) {
-      ensure();
-      textEl.textContent = msg || "Working...";
-      el.style.display = "flex";
-      // prevent scroll behind
-      document.documentElement.style.overflow = "hidden";
-      document.body.style.overscrollBehavior = "none";
-    }
-    function update(msg) {
-      ensure();
-      textEl.textContent = msg || textEl.textContent;
-    }
-    function hide() {
-      if (!el) return;
-      el.style.display = "none";
-      document.documentElement.style.overflow = "";
-      document.body.style.overscrollBehavior = "";
-    }
-    function error(msg) {
-      ensure();
-      textEl.textContent = msg || "An error occurred.";
-      // keep visible; caller may choose to hide()
-    }
+    function show(msg) { ensure(); textEl.textContent = msg || "Working..."; el.style.display = "flex"; document.documentElement.style.overflow="hidden"; }
+    function update(msg) { ensure(); textEl.textContent = msg || textEl.textContent; }
+    function hide() { if (!el) return; el.style.display="none"; document.documentElement.style.overflow=""; }
+    function error(msg) { ensure(); textEl.textContent = msg || "An error occurred."; }
     return { show, update, hide, error };
   })();
 
-  // ---- Helpers ----
-  function formToJSON(form) {
-    const fd = new FormData(form);
-    const out = {};
-    for (const [k, v] of fd.entries()) {
-      if (k in out) {
-        if (Array.isArray(out[k])) out[k].push(v);
-        else out[k] = [out[k], v];
-      } else {
-        out[k] = v;
+  // ---------- Helpers ----------
+  const $ = (sel, ctx) => (ctx || document).querySelector(sel);
+  const $$ = (sel, ctx) => Array.from((ctx || document).querySelectorAll(sel));
+  const byId = (id) => document.getElementById(id);
+
+  function valById(id, def = "") { const el = byId(id); return el && "value" in el ? (el.value ?? def) : def; }
+  function cleanNumberString(v) { return (v || "").toString().replace(/,/g, ""); }
+
+  function getUnitSelect() {
+    return byId("unit-select") || byId("unit") || byId("unitId") ||
+           $('select[name="unit"]') || $('select[name="unitId"]');
+  }
+  function getUnitOtherInput() {
+    return byId("unit-other") || $('input[name="unitOther"]') || $('input[name="unit-other"]') || $('input[data-unit-other]');
+  }
+
+  function getSignatureDataURL() {
+    // Try known globals first (if your page already created them)
+    try {
+      if (window.canvas && typeof window.canvas.toDataURL === "function") {
+        return window.canvas.toDataURL("image/png");
       }
+    } catch(_) {}
+    // Try common selectors
+    const cand = byId("signature-canvas") || byId("signature") || $("#signature canvas") ||
+                 $("canvas#signature") || $("canvas.signature") || $('[data-signature-canvas]');
+    if (cand && typeof cand.toDataURL === "function") {
+      return cand.toDataURL("image/png");
     }
+    // Hidden input fallback (if you store it there)
+    const hidden = byId("signature-data-url") || $('input[name="signatureDataURL"]');
+    if (hidden && hidden.value) return hidden.value;
+
+    // As a last resort return empty string; your server should reject if required
+    return "";
+  }
+
+  function buildChecklist() {
+    const out = {};
+    $$(".option-boxes").forEach(group => {
+      const label = group.getAttribute("data-name");
+      const sel = group.querySelector(".option-box.selected");
+      if (!label || !sel) return;
+      const v = sel.dataset.value || "";
+      if (v === "ok") out[label] = "pass";
+      else if (v === "repaired") out[label] = "repair";
+      else if (v === "na") out[label] = "na";
+    });
     return out;
   }
 
@@ -133,10 +148,8 @@
     return new Promise((resolve, reject) => {
       const iframe = document.createElement("iframe");
       iframe.style.position = "fixed";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      iframe.style.opacity = "0";
+      iframe.style.width = "0"; iframe.style.height = "0";
+      iframe.style.border = "0"; iframe.style.opacity = "0";
       iframe.src = src;
       iframe.onload = () => resolve(iframe);
       iframe.onerror = () => reject(new Error("Failed to load report iframe."));
@@ -157,81 +170,124 @@
         scale: 2,
         useCORS: true,
         logging: false,
-        windowWidth: 816,   // letter width in px @ 96dpi
-        windowHeight: 1056, // letter height in px @ 96dpi
+        windowWidth: 816,   // Letter @ 96dpi
+        windowHeight: 1056,
       },
       jsPDF: { unit: "pt", format: "letter", orientation: "portrait" }
     };
-    // Output as Blob (no auto-save)
     const blob = await window.html2pdf().set(options).from(el).outputPdf("blob");
     return blob;
   }
 
-  // ---- Main submit flow ----
   function install() {
     const form = document.querySelector("form[data-inspection-form]") || document.querySelector("form");
-    if (!form) return;
-    if (form.dataset.submitFlowInstalled === "1") return;
+    if (!form || form.dataset.submitFlowInstalled === "1") return;
     form.dataset.submitFlowInstalled = "1";
 
+    // Attach in CAPTURE phase; stop other handlers from running
     form.addEventListener("submit", async (e) => {
+      // Stop any other listeners (including the old inline one)
       e.preventDefault();
+      e.stopImmediatePropagation();
+      e.stopPropagation();
 
       try {
         Progress.show("Saving...");
-        const payload = formToJSON(form);
 
-        // derive some filename-friendly meta if present
-        const meta = {
-          unit: payload.unit || payload.unit_number || payload["vehicle[unit]"] || "Unit",
-          date: payload.date || payload.inspection_date || new Date().toISOString().slice(0,10),
+        // --- Build canonical payload (same keys as your previous inline code) ---
+        const unitSelect = getUnitSelect();
+        const unitOtherInput = getUnitOtherInput();
+
+        const selectedVehicleId =
+          (unitSelect && unitSelect.value && unitSelect.value !== "other")
+            ? String(unitSelect.value)
+            : null;
+
+        let signatureSource = "drawn";
+        try {
+          const ss = sessionStorage.getItem("__signatureSource");
+          if (ss) signatureSource = ss;
+        } catch(_) {}
+
+        const unitNumber =
+          (unitSelect && unitSelect.value && unitSelect.value !== "other")
+            ? (unitSelect.options[unitSelect.selectedIndex]?.textContent || "")
+            : (unitOtherInput ? unitOtherInput.value || "" : "");
+
+        const odometerClean = cleanNumberString(valById("odometer"));
+
+        const payload = {
+          samsaraVehicleId: selectedVehicleId,
+          signatureSource: signatureSource,
+          carrierName: valById("carrier"),
+          locationAddress: valById("address"),
+          unitNumber: unitNumber,
+          licensePlate: valById("license-plate"),
+          odometer: odometerClean,
+          inspectionDate: valById("inspection-date"),
+          dateExpires: valById("expiry-date"),
+          odometerExpires: cleanNumberString(valById("expiry-odometer")),
+
+          rSteerBrake: valById("r-steer"),
+          rDriveBrake: valById("r-drive"),
+          rTagBrake:   valById("r-tag"),
+          lSteerBrake: valById("l-steer"),
+          lDriveBrake: valById("l-drive"),
+          lTagBrake:   valById("l-tag"),
+
+          tireSize: valById("tire-size"),
+          repairs: valById("repairs-notes"),
+          inspectorName: valById("inspector-name"),
+
+          // Pull from globals if present, fall back to hidden inputs or empty
+          odometerSource: (window._odometerSource ?? valById("odometer-source") ?? ""),
+          samsaraOdometerKm: (window._samsaraOdometerKm ?? (function(){ const v = valById("samsara-odometer-km"); return v ? Number(v) : null; })()),
+
+          signature: getSignatureDataURL(),
+          checklist: buildChecklist()
         };
-        const filename = CONFIG.filename(meta);
 
-        // Save to API
+        // --- POST { payload } to your API (exact shape expected) ---
         const res = await fetch(CONFIG.saveEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          credentials: "include",
+          body: JSON.stringify({ payload })
         });
+
         if (!res.ok) {
-          const txt = await res.text().catch(()=>"");
+          const txt = await res.text().catch(() => "");
           throw new Error(`Save failed (${res.status}) ${txt}`);
         }
         const saved = await res.json().catch(() => ({}));
         const inspectionId = saved.id || saved.inspection_id || saved.data?.id;
-        if (!inspectionId) {
-          throw new Error("Save succeeded but no inspection id was returned.");
-        }
+        if (!inspectionId) throw new Error("Save succeeded but no inspection id was returned.");
 
+        // --- Generate PDF from output.html ---
         Progress.update("Generating report...");
         const reportUrl = CONFIG.reportUrl(inspectionId);
         const iframe = await openHiddenIframe(reportUrl);
 
         Progress.update("Converting to PDF...");
+        const filename = CONFIG.filenameFrom(payload);
         const pdfBlob = await generatePdfBlobFromIframe(iframe, filename);
         const objectUrl = URL.createObjectURL(pdfBlob);
 
+        // --- Open viewer ---
         Progress.update("Opening PDF viewer...");
         const viewerUrl = `/pdf_viewer.html?src=${encodeURIComponent(objectUrl)}&filename=${encodeURIComponent(filename)}&id=${encodeURIComponent(inspectionId)}`;
         window.open(viewerUrl, "_blank", "noopener");
 
-        // keep URL alive for a while, then revoke
-        setTimeout(() => {
-          try { URL.revokeObjectURL(objectUrl); } catch {}
-        }, 10 * 60 * 1000); // 10 minutes
+        // Keep URL alive for 10 min; then revoke
+        setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch {} }, 10 * 60 * 1000);
 
         Progress.hide();
-
-        // OPTIONAL: you might want to reset the form or show a toast here
-        // form.reset();
       } catch (err) {
         console.error(err);
         Progress.error("Error: " + (err && err.message ? err.message : "Unexpected error."));
-        // auto-hide after a short delay so user isn't stuck
-        setTimeout(() => Progress.hide(), 5000);
+        setTimeout(() => Progress.hide(), 6000);
       }
-    }, { passive: false });
+    }, true); // <-- capture=true
   }
 
   if (document.readyState === "loading") {
