@@ -1,7 +1,9 @@
 // /js/fleetio-integration.js
-// Finds the displayed PDF, captures it (base64) when possible,
-// and always sends the current page URL so the server can force ?id=<inspectionId>
-// to generate a correct PDF if capture fails.
+// Fixes:
+// - NO prompt() for Unit #
+// - Sends both window.location.href (outer) AND the inner report src (if it's a real URL) as reportSrc
+//   so the server can inject ?id= into the actual report route (not just the viewer), preventing the "Missing inspection id" PDF.
+// - Only shows the picker if the server truly can’t match a vehicle. Cancel means no request is sent.
 
 (function () {
   function $(sel) { return document.querySelector(sel); }
@@ -14,26 +16,27 @@
     return `Schedule4_${unitSafe}_${y}-${m}-${d}.pdf`;
   }
 
+  function sameOriginUrl(u) {
+    try { const x = new URL(u, window.location.origin); return x.origin === window.location.origin ? x.toString() : null; } catch { return null; }
+  }
+
   async function findPdfSrc() {
-    // Embedded candidates
     const iframe = document.querySelector('iframe[src$=".pdf"], iframe[type="application/pdf"], #pdfFrame, .pdf-iframe');
     const embed  = document.querySelector('embed[type="application/pdf"], embed[src$=".pdf"]');
-    const objectEl = document.querySelector('object[type="application/pdf"], object[data$=".pdf"]');
-    const candidates = [];
-    if (iframe && iframe.src) candidates.push(iframe.src);
-    if (embed && embed.src) candidates.push(embed.src);
-    if (objectEl && objectEl.data) candidates.push(objectEl.data);
-
-    // Or your viewer passed ?src=...
+    const obj    = document.querySelector('object[type="application/pdf"], object[data$=".pdf"]');
+    const cand = [];
+    if (iframe && iframe.src) cand.push(iframe.src);
+    if (embed && embed.src)   cand.push(embed.src);
+    if (obj && obj.data)      cand.push(obj.data);
     const q = getQuery();
-    const srcParam = q.get('src'); if (srcParam) candidates.push(srcParam);
-
-    for (const src of candidates) {
+    const srcQ = q.get('src'); if (srcQ) cand.push(srcQ);
+    for (const src of cand) {
       if (!src) continue;
       if (/^data:application\/pdf/i.test(src)) return src;
       if (/^blob:/i.test(src)) return src;
       if (/\.pdf(\?|$)/i.test(src)) return src;
-      if (/\/api\/pdf\/print/i.test(src)) return src; // server can render
+      // If your app passes a URL to an HTML report (not PDF), still return it so server can print it
+      if (/^https?:/i.test(src) || src.startsWith('/')) return src;
     }
     return null;
   }
@@ -42,6 +45,8 @@
     if (!src) throw new Error('No PDF src');
     if (src.startsWith('data:application/pdf')) return src;
     // blob: and same-origin URLs should fetch
+    const allow = src.startsWith('blob:') || !!sameOriginUrl(src);
+    if (!allow) throw new Error('PDF is cross-origin; will render via server');
     const resp = await fetch(src);
     if (!resp.ok) throw new Error(`Failed to fetch PDF: ${resp.status}`);
     const ab = await resp.arrayBuffer();
@@ -92,16 +97,8 @@
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const ct = r.headers.get('content-type') || '';
     const json = ct.includes('application/json') ? await r.json() : { ok: r.ok, text: await r.text() };
-    if (!r.ok) {
-      const err = new Error(json?.error || `HTTP ${r.status}`);
-      err.step = json?.step; err.details = json?.details; err.payload = json; throw err;
-    }
+    if (!r.ok) { const err = new Error(json?.error || `HTTP ${r.status}`); err.step = json?.step; err.details = json?.details; err.payload = json; throw err; }
     return json;
-  }
-
-  function ensure(val, label) {
-    if (val == null || val === '') throw new Error(`${label} is required`);
-    return val;
   }
 
   function showVehiclePicker(choices) {
@@ -140,48 +137,51 @@
       btn.disabled = true; btn.setAttribute('data-busy','1');
 
       const ctx = getContext();
-      const inspectionId = ensure(ctx.inspectionId, 'Inspection Id');
-      const unitNumber = ctx.unitNumber || prompt('Unit # not found on page. Enter the Fleet Unit #:');
-      const inspectionDate = ctx.inspectionDate || new Date().toISOString().slice(0,10);
-      const odometer = ctx.odometer;
+      if (!ctx.inspectionId) throw new Error('Inspection Id is required');
 
       // Try to capture the exact PDF currently shown
       const src = await findPdfSrc();
       let pdfDataUrl = null;
+      let reportSrc = null;
       if (src) {
+        // If it's a real URL (same-origin or absolute), pass it so server can inject ?id= correctly
+        if (/^https?:/i.test(src) || src.startsWith('/')) reportSrc = src;
         try { pdfDataUrl = await fetchPdfBase64(src); }
         catch (e) { console.warn('PDF capture failed; server will render from URL:', e); }
       }
 
-      const filename = guessFilename(unitNumber, inspectionDate);
+      const filename = guessFilename(ctx.unitNumber || 'unit', ctx.inspectionDate || new Date().toISOString().slice(0,10));
 
-      // Always pass current page URL so server can force ?id= and render if capture is invalid/missing
       const payload = {
-        inspectionId,
-        unitNumber,
-        data: { inspectionDate, odometer },
+        inspectionId: ctx.inspectionId,
+        unitNumber: ctx.unitNumber || null,
+        data: { inspectionDate: ctx.inspectionDate, odometer: ctx.odometer },
         filename,
         pdfBase64: pdfDataUrl || null,
-        reportUrl: window.location.href
+        reportUrl: window.location.href, // outer viewer
+        reportSrc                          // inner report url (server will inject ?id= here)
       };
 
-      const res = await postJson('/api/fleetio/create-work-order', payload);
+      let res = await postJson('/api/fleetio/create-work-order', payload);
+
+      if (res?.code === 'vehicle_not_found') {
+        // Only if server truly couldn't match, show the picker.
+        const vehicleId = await showVehiclePicker(res.choices || []);
+        res = await postJson('/api/fleetio/create-work-order', { ...payload, vehicleId });
+      }
+
       if (res?.ok) {
         window.open(res.work_order_url, '_blank');
-        alert('Fleetio Work Order created and PDF attached.');
-        return;
-      }
-      if (res?.code === 'vehicle_not_found') {
-        const vehicleId = await showVehiclePicker(res.choices || []);
-        const res2 = await postJson('/api/fleetio/create-work-order', { ...payload, vehicleId });
-        window.open(res2.work_order_url, '_blank');
-        alert('Fleetio Work Order created and PDF attached.');
+        const meterMsg = (res.current_meter != null) ? ` (Fleetio current meter: ${res.current_meter})` : '';
+        alert('Fleetio Work Order created and PDF attached.' + meterMsg);
         return;
       }
       alert('Fleetio error: ' + JSON.stringify(res || {}, null, 2));
     } catch (err) {
       console.error(err);
-      alert('Fleetio Error: ' + (err?.message || String(err)));
+      if (err.message !== 'cancelled') {
+        alert('Fleetio Error: ' + (err?.message || String(err)));
+      }
     } finally {
       const btn = this;
       btn.disabled = false; btn.removeAttribute('data-busy');
@@ -190,8 +190,9 @@
   }
 
   window.addEventListener('DOMContentLoaded', () => {
+    // Ensure we attach exactly one click handler
     const btn = document.querySelector('#btnFleetio, [data-action="fleetio"], .btn-fleetio');
     if (!btn) return;
-    btn.addEventListener('click', onFleetioClick);
+    btn.addEventListener('click', onFleetioClick, { once: false });
   });
 })();
