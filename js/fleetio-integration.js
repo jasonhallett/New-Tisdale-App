@@ -1,30 +1,25 @@
 // /js/fleetio-integration.js
-// Minimal, robust client for creating a Fleetio WO:
+// Solid client for creating a Fleetio Work Order:
 //
-// - If Unit # is missing, prompt ONCE for it before posting
-// - Always tries to pull PDF bytes from any PDF.js viewer (window OR any iframe)
-//   with short retries (no dependence on fragile blob: URLs)
-// - Ensures only one click handler runs (removes inline onclick if present)
-// - Posts exactly once with pdfBase64 (no server-side re-render)
+// - NUKES duplicate handlers by cloning the button (removes all other listeners & inline onclick)
+// - WILL NOT POST unless BOTH Unit # and a real PDF (base64 from PDF.js) are ready
+// - Waits for PDF.js to initialize (short retries) and extracts exact bytes (no blob: fetches)
+// - If Unit # is missing, prompts once and persists to sessionStorage for the tab
 //
-// Assumes your server route is /api/fleetio/create-work-order
+// Server endpoint assumed: /api/fleetio/create-work-order
 
 (function () {
+  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+
   function $(sel) { return document.querySelector(sel); }
   function getQuery() { try { return new URL(window.location.href).searchParams; } catch { return new URLSearchParams(); } }
   function parseNumber(n) { if (n==null) return null; const s=String(n).replace(/,/g,'').trim(); if(!s) return null; const x=Number(s); return Number.isFinite(x)?x:null; }
-  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+  function alertBox(msg){ try{ alert(msg); }catch{} }
 
-  function uiAlert(msg) { try { alert(msg); } catch {} }
-
-  async function postJson(url, body) {
-    const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    const ct = r.headers.get('content-type')||''; const json = ct.includes('application/json')? await r.json():null;
-    if (!r.ok) {
-      if (r.status===404 && json?.code==='vehicle_not_found') return json; // let caller show vehicle picker
-      throw new Error(json?.error || `HTTP ${r.status}`);
-    }
-    return json;
+  function bytesToBase64(u8) {
+    let i=0, out='', CHUNK=0x8000;
+    for (; i<u8.length; i+=CHUNK) out += String.fromCharCode.apply(null, u8.subarray(i, i+CHUNK));
+    return btoa(out);
   }
 
   function getContext() {
@@ -54,46 +49,48 @@
     return ctx;
   }
 
-  function bytesToBase64(u8) {
-    let i = 0, out = '', CH = 0x8000;
-    for (; i < u8.length; i += CH) out += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
-    return btoa(out);
+  async function postJson(url, body) {
+    const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const ct = r.headers.get('content-type')||''; const json = ct.includes('application/json')? await r.json():null;
+    if (!r.ok) {
+      if (r.status===404 && json?.code==='vehicle_not_found') return json; // handled by caller
+      throw new Error(json?.error || `HTTP ${r.status}`);
+    }
+    return json;
   }
 
-  async function getPdfFromViewerOnce(win) {
-    try {
-      const app = win.PDFViewerApplication;
-      if (app && app.pdfDocument && typeof app.pdfDocument.getData === 'function') {
-        const data = await app.pdfDocument.getData(); // Uint8Array
-        return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data));
-      }
-    } catch {}
+  async function waitForPdfDoc(win, maxMs=6000) {
+    const start = Date.now();
+    while (Date.now()-start < maxMs) {
+      try {
+        const app = win.PDFViewerApplication;
+        if (app?.initialized) {
+          // PDF.js >=2.10 exposes initializedPromise; still, try direct access first
+          const doc = app.pdfDocument || app._pdfDocument || app.pdfViewer?._pdfDocument;
+          if (doc && typeof doc.getData === 'function') return doc;
+        }
+      } catch {}
+      await sleep(150);
+    }
     return null;
   }
 
-  async function getPdfBase64WithRetries() {
-    // try current window, then scan all iframes (same-origin), with short retries
-    const attempts = 8;
-    for (let i = 0; i < attempts; i++) {
-      // current window first
-      let b64 = await getPdfFromViewerOnce(window);
-      if (b64) return b64;
-
-      // scan iframes
-      const frames = Array.from(document.querySelectorAll('iframe'));
-      for (const f of frames) {
-        try {
-          if (!f.contentWindow) continue;
-          b64 = await getPdfFromViewerOnce(f.contentWindow);
-          if (b64) return b64;
-        } catch {/* cross-origin or sandboxed */}
-      }
-
-      // small backoff before next try (PDF.js might still be initializing)
-      await sleep(200);
+  async function getPdfBase64FromAnyViewer() {
+    // 1) This window
+    let doc = await waitForPdfDoc(window, 6000);
+    if (doc) {
+      const data = await doc.getData(); return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data));
     }
-
-    // last-ditch: if ?src is a non-blob URL on same origin, fetch and convert
+    // 2) Any same-origin iframe
+    const frames = Array.from(document.querySelectorAll('iframe'));
+    for (const f of frames) {
+      try {
+        if (!f.contentWindow) continue;
+        const d2 = await waitForPdfDoc(f.contentWindow, 4000);
+        if (d2) { const data2 = await d2.getData(); return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data2)); }
+      } catch {}
+    }
+    // 3) Last-ditch: if ?src is same-origin non-blob, fetch it and convert
     try {
       const src = getQuery().get('src');
       if (src && !src.startsWith('blob:')) {
@@ -107,19 +104,18 @@
         }
       }
     } catch {}
-
     return null;
   }
 
-  async function promptForUnitNumber() {
+  async function promptForUnit() {
     return await new Promise((resolve, reject) => {
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
       const modal = document.createElement('div');
       modal.style.cssText = 'background:#111;border:1px solid #333;padding:16px;border-radius:10px;min-width:320px;color:#fff;font:14px system-ui';
       modal.innerHTML = `
-        <div style="font-weight:600;margin-bottom:8px">Enter Unit # (must match Fleetio "name")</div>
-        <input id="unitInput" style="width:100%;background:#0b0b0c;border:1px solid #333;color:#fff;padding:8px;border-radius:8px;margin-bottom:12px" placeholder="e.g., AAN Coach or 255" />
+        <div style="font-weight:600;margin-bottom:8px">Enter Unit # (must equal Fleetio "name")</div>
+        <input id="unitInput" style="width:100%;background:#0b0b0c;border:1px solid #333;color:#fff;padding:8px;border-radius:8px;margin-bottom:12px" />
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button id="unitCancel" style="padding:8px 12px;background:#333;border-radius:8px">Cancel</button>
           <button id="unitOK" style="padding:8px 12px;background:#22c55e;color:#000;border-radius:8px">Use</button>
@@ -127,58 +123,50 @@
       overlay.appendChild(modal); document.body.appendChild(overlay);
       modal.querySelector('#unitCancel').onclick = () => { document.body.removeChild(overlay); reject(new Error('cancelled')); };
       modal.querySelector('#unitOK').onclick = () => {
-        const val = modal.querySelector('#unitInput').value.trim();
+        const v = modal.querySelector('#unitInput').value.trim();
         document.body.removeChild(overlay);
-        if (!val) reject(new Error('empty'));
-        else resolve(val);
+        v ? resolve(v) : reject(new Error('empty'));
       };
     });
   }
 
-  async function onFleetioClick(e) {
+  async function handleClick(e) {
     e.preventDefault();
-    const btn = this;
+    e.stopPropagation();
+    e.stopImmediatePropagation();
 
-    // Ensure single handler (remove any inline)
-    btn.onclick = null; btn.removeAttribute('onclick');
+    const btn = this;
     if (btn.dataset.busy === '1') return;
     btn.dataset.busy = '1'; btn.disabled = true;
 
     try {
       const ctx = getContext();
 
-      if (!ctx.inspectionId) {
-        uiAlert('Missing Inspection ID. Please reopen this inspection from the list and try again.');
-        return;
-      }
-
-      // If unit is missing, prompt once (simple, per your request)
+      // Ensure Unit #
       if (!ctx.unitNumber) {
         try {
-          const typed = await promptForUnitNumber();
+          const typed = await promptForUnit();
           ctx.unitNumber = typed;
-          // persist for this tab so subsequent clicks don’t ask again
           try {
-            const raw = sessionStorage.getItem('schedule4Data');
-            const base = raw ? JSON.parse(raw) : {};
-            base.unitNumber = typed;
-            sessionStorage.setItem('schedule4Data', JSON.stringify(base));
+            const raw = sessionStorage.getItem('schedule4Data'); const base = raw ? JSON.parse(raw) : {};
+            base.unitNumber = typed; sessionStorage.setItem('schedule4Data', JSON.stringify(base));
           } catch {}
-        } catch (e) {
-          if (e.message !== 'cancelled') uiAlert('Unit # is required.');
-          return;
+        } catch (err) {
+          if (err.message !== 'cancelled') alertBox('Unit # is required.');
+          return; // DO NOT POST
         }
       }
 
-      // Always pull exact bytes from PDF.js (avoid blob: fetches)
-      const pdfBase64 = await getPdfBase64WithRetries();
+      // Ensure PDF base64 (no blob fetches)
+      const pdfBase64 = await getPdfBase64FromAnyViewer();
       if (!pdfBase64) {
-        uiAlert('Unable to read the open PDF from the viewer. Please ensure this is the PDF viewer (PDF.js) and try again.');
-        return;
+        alertBox('Could not read the open PDF from the viewer. Please confirm this is the PDF viewer page and try again.');
+        return; // DO NOT POST
       }
 
-      const safeUnit = (ctx.unitNumber || 'Unit').toString().replace(/[^\w\-]+/g, '_');
+      // Build payload ONLY now (guards against accidental POSTs)
       const dateStr = ctx.inspectionDate || new Date().toISOString().slice(0,10);
+      const safeUnit = ctx.unitNumber.replace(/[^\w\-]+/g, '_');
       const filename = `Schedule-4_Inspection_${safeUnit}_${dateStr}.pdf`;
 
       const payload = {
@@ -186,13 +174,13 @@
         unitNumber: ctx.unitNumber,
         data: { inspectionDate: ctx.inspectionDate, odometer: ctx.odometer },
         filename,
-        pdfBase64 // no pdfUrl -> avoids blob issues entirely
+        pdfBase64
       };
 
-      let res = await postJson('/api/fleetio/create-work-order', payload);
+      const res = await postJson('/api/fleetio/create-work-order', payload);
 
-      // If server couldn’t find the vehicle, show picker with choices
       if (res?.code === 'vehicle_not_found') {
+        // only then show picker
         const id = await new Promise((resolve, reject) => {
           const overlay = document.createElement('div');
           overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
@@ -212,31 +200,48 @@
           modal.querySelector('#fleetioOK').onclick = () => { const sel = modal.querySelector('#fleetioVehicleSelect'); const id = sel.value; document.body.removeChild(overlay); resolve(id); };
         });
 
-        res = await postJson('/api/fleetio/create-work-order', { ...payload, vehicleId: id });
+        const res2 = await postJson('/api/fleetio/create-work-order', { ...payload, vehicleId: id });
+        if (res2?.ok) {
+          window.open(res2.work_order_url, '_blank');
+          alertBox('Fleetio Work Order created and PDF attached.');
+          return;
+        }
+        alertBox('Fleetio error: ' + JSON.stringify(res2 || {}, null, 2));
+        return;
       }
 
       if (res?.ok) {
         window.open(res.work_order_url, '_blank');
-        uiAlert('Fleetio Work Order created and PDF attached.');
+        alertBox('Fleetio Work Order created and PDF attached.');
         return;
       }
 
-      uiAlert('Fleetio error: ' + JSON.stringify(res || {}, null, 2));
+      alertBox('Fleetio error: ' + JSON.stringify(res || {}, null, 2));
     } catch (err) {
-      if (err.message !== 'cancelled') {
+      if (err?.message !== 'cancelled') {
         console.error(err);
-        uiAlert('Fleetio Error: ' + (err?.message || String(err)));
+        alertBox('Fleetio Error: ' + (err?.message || String(err)));
       }
     } finally {
       btn.disabled = false; btn.dataset.busy = '0';
     }
   }
 
+  function replaceWithClone(el) {
+    const clone = el.cloneNode(true);
+    el.parentNode.replaceChild(clone, el);
+    return clone;
+  }
+
   window.addEventListener('DOMContentLoaded', () => {
-    const btn = document.querySelector('#btnFleetio, [data-action="fleetio"], .btn-fleetio');
+    let btn = document.querySelector('#btnFleetio, [data-action="fleetio"], .btn-fleetio');
     if (!btn) return;
-    // remove any legacy inline handler BEFORE adding ours (de-dupe)
-    btn.onclick = null; btn.removeAttribute('onclick');
-    btn.addEventListener('click', onFleetioClick, { once: false });
+
+    // Strip ALL existing handlers (including inline) by cloning node
+    btn = replaceWithClone(btn);
+    btn.removeAttribute('onclick');
+
+    // Bind our single handler
+    btn.addEventListener('click', handleClick, { once: false });
   });
 })();
