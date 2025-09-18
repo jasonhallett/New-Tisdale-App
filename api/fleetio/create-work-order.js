@@ -1,13 +1,6 @@
 // /api/fleetio/create-work-order.js
-// CLEAN RESET: minimal, predictable server
-// - Expects: { inspectionId, unitNumber, filename, pdfBase64, data?: { inspectionDate, odometer }, vehicleId? }
-// - Looks up vehicle by EXACT name (unitNumber) via GET /api/vehicles
-// - Creates WO (status: Open), sets meters (void if higher), attaches the provided PDF bytes
-// - Returns { ok, work_order_id, work_order_number, work_order_url }
-//
-// Env: FLEETIO_API_TOKEN, FLEETIO_ACCOUNT_TOKEN
-// Optional env: DATABASE_URL, INSPECTIONS_TABLE  (idempotency & button lock)
-//
+// CLEAN RESET (patched): fixes .find() on /work_order_statuses by normalizing response to array.
+
 export const config = { runtime: 'nodejs' };
 
 const BASE_V1 = 'https://secure.fleetio.com/api';
@@ -101,8 +94,15 @@ function toDateTime(dateOnly){ const d=String(toIsoDate(dateOnly)); return new D
 function sanitizeNumber(n){ if(n==null) return null; const s=String(n).trim(); return s.startsWith('#')?s.slice(1):s; }
 function isPdf(buf){ try { return buf && buf.slice(0,5).toString('ascii')==='%PDF-'; } catch { return false; } }
 
+// ---------- utility ----------
+function asArray(maybe){ 
+  if(Array.isArray(maybe)) return maybe; 
+  if(maybe?.data && Array.isArray(maybe.data)) return maybe.data; 
+  if(maybe?.records && Array.isArray(maybe.records)) return maybe.records; 
+  return []; 
+}
+
 // ---------- vehicles ----------
-function asArray(maybe){ if(Array.isArray(maybe)) return maybe; if(maybe?.data && Array.isArray(maybe.data)) return maybe.data; if(maybe?.records && Array.isArray(maybe.records)) return maybe.records; return []; }
 async function listVehicles(){ return asArray(await fleetio('/vehicles', {}, 'vehicles')); }
 function findByExactName(vehicles, name){ const n=normalize(name); return vehicles.find(v => normalize(v?.name)===n) || null; }
 
@@ -173,7 +173,9 @@ export default async function handler(req, res){
     // Create WO
     const inspectionDate = data.inspectionDate || data.dateInspected || null;
     const odometerFromForm = numOrNull(data.odometer);
-    const work_order_status_id = (await fleetio('/work_order_statuses', {}, 'wo_status')).find(s => normalize(s?.name)==='open')?.id;
+    const statuses = asArray(await fleetio('/work_order_statuses', {}, 'wo_status'));
+    const open = statuses.find(s => normalize(s?.name) === 'open') || statuses.find(s=> s?.is_default);
+    const work_order_status_id = open?.id;
     if(!work_order_status_id) return res.status(400).json({ error:'Could not resolve Open status' });
 
     const issued_at = toDateTime(inspectionDate || new Date());

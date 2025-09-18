@@ -1,13 +1,22 @@
 // /js/fleetio.js
-// Single handler. Falls back to reading the iframe's blob/data URL if PDF.js isn't available.
+// CLEAN RESET client (patched):
+// - Auto-derive unitNumber from ?filename pattern if missing: Schedule-4_Inspection_<UNIT>_YYYY-MM-DD.pdf
 
 (function () {
   const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
+
   function $(sel){ return document.querySelector(sel); }
   function getQuery(){ try { return new URL(window.location.href).searchParams; } catch { return new URLSearchParams(); } }
   function parseNumber(n){ if(n==null) return null; const s=String(n).replace(/,/g,'').trim(); if(!s) return null; const x=Number(s); return Number.isFinite(x)?x:null; }
   function alertBox(msg){ try{ alert(msg); }catch{} }
   function bytesToBase64(u8){ let i=0,out='',CH=0x8000; for(;i<u8.length;i+=CH){ out += String.fromCharCode.apply(null,u8.subarray(i,i+CH)); } return btoa(out); }
+
+  function deriveUnitFromFilename(name){
+    // Expected like: Schedule-4_Inspection_290_2025-09-18.pdf  -> returns "290"
+    if(!name) return null;
+    const m = name.match(/Schedule-4_Inspection_([^_]+)_\d{4}-\d{2}-\d{2}\.pdf$/i);
+    return m ? m[1] : null;
+  }
 
   function getCtx(){
     const q = getQuery();
@@ -19,6 +28,13 @@
       odometer: parseNumber(q.get('odo') || q.get('odometer')),
       src: q.get('src') || ''
     };
+
+    // Auto-derive from filename if unitNumber missing
+    if (!ctx.unitNumber && ctx.filename) {
+      const u = deriveUnitFromFilename(ctx.filename);
+      if (u) ctx.unitNumber = u;
+    }
+
     try {
       const raw = sessionStorage.getItem('schedule4Data');
       if (raw) {
@@ -48,50 +64,39 @@
     return json;
   }
 
-  async function waitForPdfDoc(win, maxMs=5000){
+  async function waitForPdfDoc(win, maxMs=7000){
     const start = Date.now();
     while(Date.now()-start < maxMs){
       try{
         const app = win.PDFViewerApplication;
         if(app?.pdfDocument && typeof app.pdfDocument.getData === 'function') return app.pdfDocument;
       }catch{}
-      await sleep(150);
+      await (new Promise(r=>setTimeout(r,150)));
     }
     return null;
   }
 
-  async function getPdfBase64(){
-    // Try PDF.js first
-    let doc = await waitForPdfDoc(window, 5000);
+  async function requirePdfBase64(){
+    // window first
+    let doc = await waitForPdfDoc(window, 7000);
     if(doc){ const data = await doc.getData(); return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data)); }
-    // Try any same-origin iframe PDF.js
+
+    // try any same-origin iframe
     const frames = Array.from(document.querySelectorAll('iframe'));
     for(const f of frames){
       try{
         if(!f.contentWindow) continue;
-        const d2 = await waitForPdfDoc(f.contentWindow, 3500);
+        const d2 = await waitForPdfDoc(f.contentWindow, 5000);
         if(d2){ const data2 = await d2.getData(); return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data2)); }
       }catch{}
     }
-    // Fallback: read the iframe's src if it's blob: or data:application/pdf
-    try{
-      const frame = $('#pdfFrame');
-      const src = frame?.src || getQuery().get('src') || '';
-      if (src && (src.startsWith('blob:') || src.startsWith('data:application/pdf'))) {
-        const resp = await fetch(src);
-        if (resp.ok) {
-          const ab = await resp.arrayBuffer();
-          return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(ab));
-        }
-      }
-    }catch{}
+
     return null;
   }
 
-  async function ensureUnit(ctx){
-    if (ctx.unitNumber && ctx.unitNumber.trim()) return ctx.unitNumber.trim();
+  async function askUnit(initial=''){
     return await new Promise((resolve, reject)=>{
-      const v = prompt('Enter Unit # (must equal Fleetio "name")');
+      const v = prompt('Enter Unit # (must equal Fleetio "name")', initial);
       if (v && v.trim()) {
         try {
           const raw = sessionStorage.getItem('schedule4Data'); const base = raw ? JSON.parse(raw) : {};
@@ -104,18 +109,24 @@
     });
   }
 
-  async function handleClick(e){
+  async function onClick(e){
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
     const btn = this;
-    if (btn.dataset.busy==='1') return;
+    if(btn.dataset.busy==='1') return;
     btn.dataset.busy='1'; btn.disabled = true;
 
     try{
       const ctx = getCtx();
       if(!ctx.inspectionId) { alertBox('Missing Inspection ID.'); return; }
-      const unit = await ensureUnit(ctx);
 
-      const pdfBase64 = await getPdfBase64();
+      let unit = ctx.unitNumber;
+      if(!unit){
+        // If we auto-derived from filename earlier, use that as initial prompt text
+        const initial = deriveUnitFromFilename(ctx.filename) || '';
+        try{ unit = await askUnit(initial); }catch(err){ if(err.message!=='cancelled') alertBox('Unit # is required.'); return; }
+      }
+
+      const pdfBase64 = await requirePdfBase64();
       if(!pdfBase64){ alertBox('Could not read the open PDF from this viewer.'); return; }
 
       const unitSafe = unit.replace(/[^\w\-]+/g,'_');
@@ -132,12 +143,12 @@
 
       const res = await postJson('/api/fleetio/create-work-order', payload);
 
-      if (res?.code === 'vehicle_not_found') {
-        alertBox('Fleetio could not find a vehicle with that exact name. Please correct the Unit # or vehicle name in Fleetio.');
+      if(res?.code==='vehicle_not_found'){
+        alertBox('Fleetio couldn’t find that Unit # (exact match on vehicle "name"). Please verify the name in Fleetio.');
         return;
       }
 
-      if (res?.ok) {
+      if(res?.ok){
         window.open(res.work_order_url, '_blank');
         alertBox('Fleetio Work Order created and PDF attached.');
         return;
@@ -145,20 +156,19 @@
 
       alertBox('Fleetio error: ' + JSON.stringify(res || {}, null, 2));
     }catch(err){
-      console.error(err);
-      if (err.message !== 'cancelled') alertBox(err.message || 'Error');
+      if(err?.message!=='cancelled'){ console.error(err); alertBox('Fleetio Error: ' + (err?.message || String(err))); }
     }finally{
       btn.disabled = false; btn.dataset.busy='0';
     }
   }
 
   function bindOnce(){
-    const orig = document.getElementById('btnFleetio') || document.querySelector('[data-action="fleetio"], .btn-fleetio');
-    if(!orig) return;
-    const btn = orig.cloneNode(true);
-    orig.parentNode.replaceChild(btn, orig); // strip all existing listeners/onclick
-    btn.removeAttribute('onclick');
-    btn.addEventListener('click', handleClick, { once:false });
+    let btn = document.getElementById('btnFleetio') || document.querySelector('[data-action="fleetio"], .btn-fleetio');
+    if(!btn) return;
+    const clone = btn.cloneNode(true);
+    btn.parentNode.replaceChild(clone, btn);
+    clone.removeAttribute('onclick');
+    clone.addEventListener('click', onClick, { once:false });
   }
 
   window.addEventListener('DOMContentLoaded', bindOnce);
