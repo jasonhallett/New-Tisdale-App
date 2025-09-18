@@ -1,13 +1,9 @@
 // /api/fleetio/create-work-order.js
-// Single-create Work Order (no duplicates), attach the EXACT PDF (client must send),
-// set Start/Complete meters, and VOID meters if your inspection value is GREATER than Fleetio's current meter.
+// Single-create Work Order, attach the EXACT PDF (either base64 from client or fetched via pdfUrl),
+// set Start/Complete meters, and VOID meters if inspection value is GREATER than Fleetio's current meter.
 //
-// Important: This route NO LONGER re-renders PDFs. If pdfBase64 is missing or not a real PDF, it returns 400.
-//
-// Env:
-//  - FLEETIO_API_TOKEN
-//  - FLEETIO_ACCOUNT_TOKEN  (your account slug/id, e.g. "80ce8e499c")
-//  - (optional) DATABASE_URL (Neon). Works without 'pg' installed.
+// NOTE: We DO NOT re-render PDFs. If neither pdfBase64 nor a fetchable pdfUrl is provided, we error.
+// If pdfUrl is provided, we fetch the EXACT bytes server-side (with cookies forwarded) and attach.
 
 export const config = { runtime: 'nodejs' };
 
@@ -101,9 +97,8 @@ function toIsoDate(dateLike) {
   return d.toISOString().slice(0, 10);
 }
 function toInspectionDateTime(dateOnlyLike) {
-  // 15:00Z avoids previous-day rollover in America/Toronto
   const d = String(toIsoDate(dateOnlyLike));
-  const ts = new Date(`${d}T15:00:00Z`);
+  const ts = new Date(`${d}T15:00:00Z`); // avoid TZ rollover
   return ts.toISOString();
 }
 function numOrNull(v) {
@@ -115,6 +110,18 @@ function numOrNull(v) {
 function isPdf(buf) {
   if (!buf || typeof buf.slice !== 'function') return false;
   try { return buf.slice(0, 5).toString('ascii') === '%PDF-'; } catch { return false; }
+}
+function absoluteUrl(origin, url) {
+  try { return new URL(url, origin).toString(); } catch { return null; }
+}
+
+function headerPick(h, keys) {
+  const out = {};
+  for (const k of keys) {
+    const v = h[k] || h[k.toLowerCase()];
+    if (v) out[k] = v;
+  }
+  return out;
 }
 
 // ---------- Fleetio HTTP ----------
@@ -209,16 +216,16 @@ async function listAllVehicles() {
 }
 function vehicleLabel(v) { return v?.vehicle_number || v?.name || v?.external_id || v?.label || `Vehicle ${v?.id}`; }
 
+function sanitizeUnitStr(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 function bestVehicleMatch(vehicles, unitNumber) {
-  const t = normalize(unitNumber);
-  if (!t) return null;
+  const t = normalize(unitNumber); const tSan = sanitizeUnitStr(unitNumber);
   for (const v of vehicles) {
     const candidates = [v?.vehicle_number, v?.name, v?.external_id, v?.label, v?.identifier, v?.unit, v?.unit_number, v?.number];
-    if (candidates.some(c => normalize(c) === t)) return v;
+    if (candidates.some(c => normalize(c) === t || sanitizeUnitStr(c) === tSan)) return v;
   }
   for (const v of vehicles) {
     const lab = normalize(vehicleLabel(v));
-    if (lab && lab.includes(t)) return v;
+    if (lab && (lab.includes(t) || sanitizeUnitStr(lab).includes(tSan))) return v;
   }
   return null;
 }
@@ -281,19 +288,57 @@ export default async function handler(req, res) {
       unitNumber,
       vehicleId: vehicleIdFromBody,
       serviceTaskName,
-      pdfBase64  // REQUIRED and must be a real PDF (no server rendering fallback)
+      pdfBase64,     // optional
+      pdfUrl         // optional: exact URL to the open/downloadable PDF
     } = req.body || {};
 
     if (!inspectionId) return res.status(400).json({ error: 'inspectionId is required' });
-    if (!pdfBase64) return res.status(400).json({ error: 'pdfBase64 is required and must be a valid PDF (no server rendering)' });
 
-    // Decode and verify PDF
-    let raw = pdfBase64;
-    const idx = raw.indexOf(',');
-    if (raw.startsWith('data:') && idx !== -1) raw = raw.slice(idx + 1);
-    let pdfBuffer;
-    try { pdfBuffer = Buffer.from(raw, 'base64'); } catch { return res.status(400).json({ error: 'Invalid base64 for PDF' }); }
-    if (!isPdf(pdfBuffer)) return res.status(400).json({ error: 'Provided pdfBase64 is not a real PDF (missing %PDF- header)' });
+    // --- Build the PDF buffer from either base64 or pdfUrl
+    let pdfBuffer = null;
+    let nameForFile = filename || `inspection_${inspectionId}.pdf`;
+
+    if (typeof pdfBase64 === 'string' && pdfBase64.length > 20) {
+      let raw = pdfBase64;
+      const idx = raw.indexOf(',');
+      if (raw.startsWith('data:') && idx !== -1) raw = raw.slice(idx + 1);
+      try { pdfBuffer = Buffer.from(raw, 'base64'); } catch {}
+    }
+
+    // If no base64 or invalid, try pdfUrl fetch
+    if (!pdfBuffer || !isPdf(pdfBuffer)) {
+      const origin = (req.headers['x-forwarded-proto'] ? req.headers['x-forwarded-proto'] : 'https') +
+                     '://' + (req.headers['x-forwarded-host'] || req.headers['host']);
+      let candidate = pdfUrl;
+      if (candidate) candidate = absoluteUrl(origin, candidate);
+      if (candidate) {
+        const hdrs = headerPick(req.headers, ['cookie', 'user-agent', 'accept-language']);
+        const resp = await fetch(candidate, { method: 'GET', headers: { ...hdrs, Accept: 'application/pdf,*/*' } });
+        if (!resp.ok) {
+          const t = await resp.text().catch(()=>'');
+          throw Object.assign(new Error(`[fetch_pdf] Could not fetch pdfUrl: ${resp.status} ${t.slice(0,200)}`), { step: 'fetch_pdf', status: resp.status, details: t });
+        }
+        const ct = resp.headers.get('content-type') || '';
+        const ab = await resp.arrayBuffer();
+        const buf = Buffer.from(ab);
+        if (!isPdf(buf)) {
+          throw Object.assign(new Error('[fetch_pdf] The fetched url did not return a PDF.'), { step: 'fetch_pdf', status: 400 });
+        }
+        pdfBuffer = buf;
+
+        // Try to derive filename from Content-Disposition
+        const cd = resp.headers.get('content-disposition') || '';
+        const m = cd.match(/filename\*?=(?:UTF-8''|")?([^;\"]+)/i);
+        if (m) {
+          const n = decodeURIComponent(m[1].replace(/\"/g,'').trim());
+          if (n && /\.pdf$/i.test(n)) nameForFile = n;
+        }
+      }
+    }
+
+    if (!pdfBuffer || !isPdf(pdfBuffer)) {
+      return res.status(400).json({ error: 'Could not obtain a real PDF to attach. Provide pdfBase64 or pdfUrl to the actual file.' });
+    }
 
     const inspectionDate = data.inspectionDate || data.dateInspected || data.date_inspected || null;
     const odometer       = numOrNull(data.odometer ?? data.odometerStart ?? data.startOdometer);
@@ -305,11 +350,10 @@ export default async function handler(req, res) {
         ? `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${sanitizeWorkOrderNumber(existing.work_order_number)}/edit`
         : `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${existing.work_order_id}/edit`;
 
-      // Attach the PDF (idempotent-ish; Fleetio will just add another doc if names differ)
-      const file_url = await uploadPdfToFleetio(pdfBuffer, filename || `inspection_${inspectionId}.pdf`);
+      const file_url = await uploadPdfToFleetio(pdfBuffer, nameForFile);
       await fleetioV2(`/work_orders/${existing.work_order_id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ documents_attributes: [ { name: filename || `inspection_${inspectionId}.pdf`, file_url } ] })
+        body: JSON.stringify({ documents_attributes: [ { name: nameForFile, file_url } ] })
       }, 'attach_document_existing');
 
       return res.status(200).json({
@@ -365,7 +409,7 @@ export default async function handler(req, res) {
 
     const createdWO = await fleetioV2('/work_orders', {
       method: 'POST',
-      headers: { 'Idempotency-Key': `inspection:${inspectionId}` }, // <-- prevent duplicates
+      headers: { 'Idempotency-Key': `inspection:${inspectionId}` },
       body: JSON.stringify(woPayload)
     }, 'create_work_order');
 
@@ -444,9 +488,9 @@ export default async function handler(req, res) {
       }
     }
 
-    // 5) Attach EXACT PDF from client (no server rendering)
+    // 5) Attach EXACT PDF
     const suggestedFilename =
-      filename ||
+      nameForFile ||
       `Schedule4_${vehicleNumber}_${toIsoDate(inspectionDate || new Date())}.pdf`;
 
     const file_url = await uploadPdfToFleetio(pdfBuffer, suggestedFilename);
