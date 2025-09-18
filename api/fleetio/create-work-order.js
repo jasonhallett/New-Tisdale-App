@@ -1,11 +1,13 @@
 // /api/fleetio/create-work-order.js
-// Single-create Work Order (no duplicates), robust PDF fallback, and meter logic with voiding.
-// - Uses Fleetio Idempotency-Key = inspectionId to prevent double WOs
-// - If PDF capture isn't a real PDF, server renders your report and FORCE-injects ?id=
-//   (also fixes nested viewer "?src=..." by injecting id into the inner URL)
-// - Pulls current vehicle meter, voids your start/end readings if your value is GREATER
-// - No prompt flows here; vehicle picker is handled client-side only if server truly can't match
-// - Optional Neon idempotency map (skips if 'pg' isn't installed)
+// Single-create Work Order (no duplicates), attach the EXACT PDF (client must send),
+// set Start/Complete meters, and VOID meters if your inspection value is GREATER than Fleetio's current meter.
+//
+// Important: This route NO LONGER re-renders PDFs. If pdfBase64 is missing or not a real PDF, it returns 400.
+//
+// Env:
+//  - FLEETIO_API_TOKEN
+//  - FLEETIO_ACCOUNT_TOKEN  (your account slug/id, e.g. "80ce8e499c")
+//  - (optional) DATABASE_URL (Neon). Works without 'pg' installed.
 
 export const config = { runtime: 'nodejs' };
 
@@ -109,11 +111,6 @@ function numOrNull(v) {
   const cleaned = String(v).replace(/,/g, '').trim();
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
-}
-function deriveOrigin(req) {
-  const proto = req.headers['x-forwarded-proto'] || 'https';
-  const host = req.headers['x-forwarded-host'] || req.headers['host'];
-  return `${proto}://${host}`;
 }
 function isPdf(buf) {
   if (!buf || typeof buf.slice !== 'function') return false;
@@ -280,16 +277,23 @@ export default async function handler(req, res) {
     const {
       inspectionId,
       filename,
-      reportUrl,     // outer viewer URL
-      reportSrc,     // inner report URL (if known)
       data = {},
       unitNumber,
       vehicleId: vehicleIdFromBody,
       serviceTaskName,
-      pdfBase64
+      pdfBase64  // REQUIRED and must be a real PDF (no server rendering fallback)
     } = req.body || {};
 
     if (!inspectionId) return res.status(400).json({ error: 'inspectionId is required' });
+    if (!pdfBase64) return res.status(400).json({ error: 'pdfBase64 is required and must be a valid PDF (no server rendering)' });
+
+    // Decode and verify PDF
+    let raw = pdfBase64;
+    const idx = raw.indexOf(',');
+    if (raw.startsWith('data:') && idx !== -1) raw = raw.slice(idx + 1);
+    let pdfBuffer;
+    try { pdfBuffer = Buffer.from(raw, 'base64'); } catch { return res.status(400).json({ error: 'Invalid base64 for PDF' }); }
+    if (!isPdf(pdfBuffer)) return res.status(400).json({ error: 'Provided pdfBase64 is not a real PDF (missing %PDF- header)' });
 
     const inspectionDate = data.inspectionDate || data.dateInspected || data.date_inspected || null;
     const odometer       = numOrNull(data.odometer ?? data.odometerStart ?? data.startOdometer);
@@ -300,6 +304,14 @@ export default async function handler(req, res) {
       const work_order_url = existing.work_order_number
         ? `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${sanitizeWorkOrderNumber(existing.work_order_number)}/edit`
         : `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${existing.work_order_id}/edit`;
+
+      // Attach the PDF (idempotent-ish; Fleetio will just add another doc if names differ)
+      const file_url = await uploadPdfToFleetio(pdfBuffer, filename || `inspection_${inspectionId}.pdf`);
+      await fleetioV2(`/work_orders/${existing.work_order_id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ documents_attributes: [ { name: filename || `inspection_${inspectionId}.pdf`, file_url } ] })
+      }, 'attach_document_existing');
+
       return res.status(200).json({
         ok: true,
         reused: true,
@@ -324,7 +336,6 @@ export default async function handler(req, res) {
     }
 
     if (!finalVehicleId) {
-      // No guess — return list so client shows picker. DO NOT create WO.
       const choices = (allVehicles || []).map(v => ({ id: v.id, label: vehicleLabel(v) }));
       return res.status(404).json({
         code: 'vehicle_not_found',
@@ -433,70 +444,10 @@ export default async function handler(req, res) {
       }
     }
 
-    // 5) PDF attach
+    // 5) Attach EXACT PDF from client (no server rendering)
     const suggestedFilename =
       filename ||
       `Schedule4_${vehicleNumber}_${toIsoDate(inspectionDate || new Date())}.pdf`;
-
-    // Prefer client-provided base64 iff it’s an actual PDF
-    let pdfBuffer = null;
-    let raw = pdfBase64;
-    if (raw && typeof raw === 'string') {
-      const idx = raw.indexOf(',');
-      if (raw.startsWith('data:') && idx !== -1) raw = raw.slice(idx + 1);
-      try { pdfBuffer = Buffer.from(raw, 'base64'); } catch {}
-      if (pdfBuffer && !isPdf(pdfBuffer)) pdfBuffer = null;
-    }
-
-    if (!pdfBuffer) {
-      // Build the URL we will print, forcing ?id= on either the outer URL or the nested ?src= URL
-      const origin = deriveOrigin(req);
-
-      // choose best candidate: reportSrc (if provided), else reportUrl, else referer
-      let target = reportSrc || reportUrl || req.headers.referer || '/';
-
-      // make absolute
-      try {
-        const abs = new URL(target, origin);
-
-        // If this is a viewer with ?src=, inject id into the nested src
-        const srcParam = abs.searchParams.get('src');
-        if (srcParam) {
-          try {
-            const inner = new URL(srcParam, origin);
-            if (!inner.searchParams.has('id') && inspectionId) {
-              inner.searchParams.set('id', String(inspectionId));
-            }
-            abs.searchParams.set('src', inner.toString());
-          } catch {
-            // if src isn't a valid URL, leave as-is
-          }
-        } else {
-          // No nested src — inject id directly on the page URL
-          if (!abs.searchParams.has('id') && inspectionId) {
-            abs.searchParams.set('id', String(inspectionId));
-          }
-        }
-        target = abs.toString();
-      } catch {
-        // fallback — leave as provided
-      }
-
-      const printUrl = `${origin}/api/pdf/print`;
-      const pr = await fetch(printUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: target, filename: suggestedFilename, data: data || {} })
-      });
-      if (!pr.ok) {
-        const t = await pr.text().catch(() => '');
-        const err = new Error(`[render_pdf] Printer failed: ${pr.status} ${t}`);
-        err.step = 'render_pdf'; err.status = pr.status; err.details = t;
-        throw err;
-      }
-      const ab = await pr.arrayBuffer();
-      pdfBuffer = Buffer.from(ab);
-    }
 
     const file_url = await uploadPdfToFleetio(pdfBuffer, suggestedFilename);
     await fleetioV2(`/work_orders/${workOrderId}`, {
@@ -544,7 +495,6 @@ export default async function handler(req, res) {
       work_order_number: workOrderNumber,
       work_order_url,
       attached_document_url: file_url,
-      vehicle_number: vehicleNumber,
       current_meter: currentMeter
     });
   } catch (err) {
