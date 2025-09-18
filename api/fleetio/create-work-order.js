@@ -1,7 +1,7 @@
 // /api/fleetio/create-work-order.js
-// Creates a Fleetio Work Order in "Open", maps Date/Odometer, attaches the on-screen PDF,
-// adds the "Schedule 4 Inspection (& EEPOC FMCSA 396.3)" line item,
-// and is safe if 'pg' isn't installed (DB idempotency optional).
+// Creates a Fleetio Work Order ("Open"), attaches the PDF, and sets Start/Complete Odometer.
+// Primary path: use v2 starting/ending meter_entry_attributes on WO create.
+// Fallback path (on meter validation error): create WO without meters, then add v1 /meter_entries.
 
 export const config = { runtime: 'nodejs' };
 
@@ -75,6 +75,11 @@ const defaultHeaders = {
 };
 
 function normalize(s) { return String(s || '').trim().toLowerCase(); }
+function sanitizeWorkOrderNumber(n) {
+  if (n == null) return null;
+  const s = String(n).trim();
+  return s.startsWith('#') ? s.slice(1) : s;
+}
 
 function toIsoDate(dateLike) {
   if (!dateLike) return new Date().toISOString().slice(0, 10);
@@ -90,27 +95,23 @@ function toIsoDate(dateLike) {
   if (Number.isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
   return d.toISOString().slice(0, 10);
 }
-
 function toInspectionDateTime(dateOnlyLike) {
   // 15:00Z avoids previous-day rollover in America/Toronto
   const d = String(toIsoDate(dateOnlyLike));
   const ts = new Date(`${d}T15:00:00Z`);
   return ts.toISOString();
 }
-
 function numOrNull(v) {
   if (v === null || v === undefined || v === '') return null;
   const cleaned = String(v).replace(/,/g, '').trim();
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
 }
-
 function deriveOrigin(req) {
   const proto = req.headers['x-forwarded-proto'] || 'https';
   const host = req.headers['x-forwarded-host'] || req.headers['host'];
   return `${proto}://${host}`;
 }
-
 function isPdf(buf) {
   if (!buf || typeof buf.slice !== 'function') return false;
   try { return buf.slice(0, 5).toString('ascii') === '%PDF-'; } catch { return false; }
@@ -128,7 +129,6 @@ async function fleetioV2(path, init = {}, step = 'fleetioV2') {
   const ct = res.headers.get('content-type') || '';
   return ct.includes('application/json') ? res.json() : res.text();
 }
-
 async function fleetioV1(path, init = {}, step = 'fleetioV1') {
   const res = await fetch(`${BASE_V1}${path}`, { ...init, headers: { ...(init.headers||{}), ...defaultHeaders } });
   if (!res.ok) {
@@ -207,9 +207,7 @@ async function listAllVehicles() {
   }
   return all;
 }
-
 function vehicleLabel(v) { return v?.name || v?.vehicle_number || v?.external_id || v?.label || `Vehicle ${v?.id}`; }
-
 function bestVehicleMatch(vehicles, unitNumber) {
   const t = normalize(unitNumber);
   if (!t) return null;
@@ -237,12 +235,6 @@ async function getOpenStatusId() {
     throw err;
   }
   return open.id;
-}
-
-function sanitizeWorkOrderNumber(n) {
-  if (n == null) return null;
-  const s = String(n).trim();
-  return s.startsWith('#') ? s.slice(1) : s;
 }
 
 // ---------- Handler ----------
@@ -277,7 +269,7 @@ export default async function handler(req, res) {
         ? `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${sanitizeWorkOrderNumber(existing.work_order_number)}/edit`
         : `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${existing.work_order_id}/edit`;
 
-      // Reattach PDF if valid PDF bytes were sent
+      // Reattach PDF if valid bytes were sent
       let raw = pdfBase64, pdfBuffer = null;
       if (raw && typeof raw === 'string') {
         const idx = raw.indexOf(',');
@@ -295,7 +287,7 @@ export default async function handler(req, res) {
         ok: true,
         reused: true,
         work_order_id: existing.work_order_id,
-        work_order_number: sanitizeWorkOrderNumber(existing.work_order_number),
+        work_order_number: existing.work_order_number ? sanitizeWorkOrderNumber(existing.work_order_number) : null,
         work_order_url
       });
     }
@@ -320,19 +312,46 @@ export default async function handler(req, res) {
     // 2) Resolve "Open" status
     const work_order_status_id = await getOpenStatusId();
 
-    // 3) Create Work Order (v2) — issued/started at = Date Inspected (15:00Z)
+    // 3) Build WO payload
     const issued_at  = toInspectionDateTime(inspectionDate || new Date());
     const started_at = issued_at;
 
-    const woPayload = { vehicle_id: finalVehicleId, work_order_status_id, issued_at, started_at };
+    const basePayload = {
+      vehicle_id: finalVehicleId,
+      work_order_status_id,
+      issued_at,
+      started_at
+    };
 
-    // Best-effort idempotency at Fleetio
+    // If odometer provided, prefer v2 embedded meter entries
+    const withMetersPayload = (odometer != null)
+      ? {
+          ...basePayload,
+          starting_meter_entry_attributes: { value: odometer },
+          ending_meter_entry_attributes:   { value: odometer }
+        }
+      : basePayload;
+
     const idempotencyKey = `inspection:${inspectionId}`;
-    const createdWO = await fleetioV2('/work_orders', {
-      method: 'POST',
-      headers: { 'Idempotency-Key': idempotencyKey },
-      body: JSON.stringify(woPayload)
-    }, 'create_work_order');
+
+    // 3a) Try creating WO WITH embedded meter attributes
+    let createdWO, meterAttrFailed = false;
+    try {
+      createdWO = await fleetioV2('/work_orders', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(withMetersPayload)
+      }, 'create_work_order_with_meters');
+    } catch (e) {
+      // If validation error (422) and we tried meters, retry without meters
+      meterAttrFailed = (odometer != null) && (e?.status === 422);
+      if (!meterAttrFailed) throw e;
+      createdWO = await fleetioV2('/work_orders', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(basePayload)
+      }, 'create_work_order_without_meters');
+    }
 
     const workOrderId = createdWO?.id;
     if (!workOrderId) {
@@ -352,7 +371,52 @@ export default async function handler(req, res) {
 
     await saveWO(inspectionId, workOrderId, workOrderNumber);
 
-    // 4) PDF: prefer client-provided base64; verify bytes are PDF; else fall back to print with ?id=
+    // 3b) If embedded meter entries failed or weren't provided, create v1 meter entries & link
+    let startMeterId = null, endMeterId = null;
+    if (odometer != null && meterAttrFailed) {
+      const dateOnly = toIsoDate(inspectionDate || new Date());
+
+      async function createMeter(category, dateOnly) {
+        const body = {
+          vehicle_id: finalVehicleId,
+          value: odometer,
+          date: dateOnly,
+          category,
+          meterable_type: 'WorkOrder',
+          meterable_id: workOrderId
+        };
+        try {
+          return await fleetioV1('/meter_entries', { method: 'POST', body: JSON.stringify(body) }, `create_${category}_meter`);
+        } catch (e) {
+          // If sequence/date error (often 422), retry with "today"
+          if (e?.status === 422) {
+            const today = new Date().toISOString().slice(0,10);
+            const body2 = { ...body, date: today };
+            return await fleetioV1('/meter_entries', { method: 'POST', body: JSON.stringify(body2) }, `create_${category}_meter_retry`);
+          }
+          throw e;
+        }
+      }
+
+      const start = await createMeter('starting', dateOnly);
+      startMeterId = start?.id || null;
+
+      const end   = await createMeter('ending',   dateOnly);
+      endMeterId = end?.id || null;
+
+      // Best-effort: explicitly link on the WO (if supported)
+      try {
+        const patch = {};
+        if (startMeterId) patch.starting_meter_entry_id = startMeterId;
+        if (endMeterId)   patch.ending_meter_entry_id   = endMeterId;
+        if (!endMeterId && startMeterId) patch.ending_meter_same_as_start = true;
+        if (Object.keys(patch).length) {
+          await fleetioV2(`/work_orders/${workOrderId}`, { method: 'PATCH', body: JSON.stringify(patch) }, 'link_meters_to_wo');
+        }
+      } catch {}
+    }
+
+    // 4) PDF: prefer client-provided base64; verify real PDF; else render via print with ?id=
     let pdfBuffer = null;
     let raw = pdfBase64;
     if (raw && typeof raw === 'string') {
@@ -392,7 +456,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({ documents_attributes: [ { name: safeFilename, file_url } ] })
     }, 'attach_document');
 
-    // 5) Service Task line item
+    // 5) Add Service Task line item
     const taskName = serviceTaskName || 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
     async function findOrCreateServiceTaskId(name) {
       const PER_PAGE = 100;
@@ -426,58 +490,12 @@ export default async function handler(req, res) {
       })
     }, 'create_line_item');
 
-    // 6) Start/End Meter Entries tied to the Work Order
-    let startMeterId = null, endMeterId = null;
-    if (odometer != null) {
-      // First try with the inspected date; if Fleetio rejects due to sequence, retry with "today"
-      async function createMeter(category, dateOnly) {
-        const body = {
-          vehicle_id: finalVehicleId,
-          value: odometer,
-          date: dateOnly,
-          category,
-          meterable_type: 'WorkOrder',
-          meterable_id: workOrderId
-        };
-        try {
-          return await fleetioV1('/meter_entries', { method: 'POST', body: JSON.stringify(body) }, `create_${category}_meter`);
-        } catch (e) {
-          // If sequence/date error (often 422), retry with today's date
-          if (e?.status === 422) {
-            const today = new Date().toISOString().slice(0,10);
-            const body2 = { ...body, date: today };
-            return await fleetioV1('/meter_entries', { method: 'POST', body: JSON.stringify(body2) }, `create_${category}_meter_retry`);
-          }
-          throw e;
-        }
-      }
-
-      const dateOnly = toIsoDate(inspectionDate || new Date());
-      const start = await createMeter('starting', dateOnly);
-      startMeterId = start?.id || null;
-
-      const end   = await createMeter('ending',   dateOnly);
-      endMeterId = end?.id || null;
-
-      // Best-effort: explicitly link on the WO (if supported)
-      try {
-        const patch = {};
-        if (startMeterId) patch.starting_meter_entry_id = startMeterId;
-        if (endMeterId)   patch.ending_meter_entry_id   = endMeterId;
-        if (!endMeterId && startMeterId) patch.ending_meter_same_as_start = true;
-        if (Object.keys(patch).length) {
-          await fleetioV2(`/work_orders/${workOrderId}`, { method: 'PATCH', body: JSON.stringify(patch) }, 'link_meters_to_wo');
-        }
-      } catch {}
-    }
-
     return res.status(200).json({
       ok: true,
       work_order_id: workOrderId,
       work_order_number: workOrderNumber,
       work_order_url,
-      attached_document_url: file_url,
-      meters: { startMeterId, endMeterId }
+      attached_document_url: file_url
     });
   } catch (err) {
     console.error('Fleetio WO Error:', {
