@@ -1,6 +1,12 @@
 // /api/fleetio/create-work-order.js
-// CLEAN RESET (patched): fixes .find() on /work_order_statuses by normalizing response to array.
-
+// DEBUG RESET: minimal server with robust PDF handling (pdfBase64 OR server-fetched pdfUrl),
+// exact vehicle match by name, meters, Open status, document attach, and optional idempotency.
+//
+// Env:
+//   - FLEETIO_API_TOKEN (required)
+//   - FLEETIO_ACCOUNT_TOKEN (required) e.g., 80ce8e499c
+//   - DATABASE_URL (optional Neon; enables idempotency table fleetio_work_orders)
+//   - INSPECTIONS_TABLE (optional; defaults schedule4_inspections for button lock mirror)
 export const config = { runtime: 'nodejs' };
 
 const BASE_V1 = 'https://secure.fleetio.com/api';
@@ -41,21 +47,29 @@ async function initDb() {
       )
     `);
     return pgPool;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 async function getExistingWO(inspectionId) {
-  const pool = await initDb(); if (!pool) return null;
+  const pool = await initDb();
+  if (!pool) return null;
   const { rows } = await pool.query('SELECT work_order_id, work_order_number FROM fleetio_work_orders WHERE inspection_id = $1', [inspectionId]);
   return rows[0] || null;
 }
 async function saveWO(inspectionId, workOrderId, workOrderNumber) {
-  const pool = await initDb(); if (!pool) return null;
-  await pool.query('INSERT INTO fleetio_work_orders (inspection_id, work_order_id, work_order_number) VALUES ($1,$2,$3) ON CONFLICT (inspection_id) DO NOTHING', [inspectionId, workOrderId, workOrderNumber]);
+  const pool = await initDb();
+  if (!pool) return null;
+  await pool.query(
+    'INSERT INTO fleetio_work_orders (inspection_id, work_order_id, work_order_number) VALUES ($1,$2,$3) ON CONFLICT (inspection_id) DO NOTHING',
+    [inspectionId, workOrderId, workOrderNumber]
+  );
 }
 async function upsertInspectionWO(inspectionId, workOrderId, workOrderNumber) {
   try {
     const table = process.env.INSPECTIONS_TABLE || 'schedule4_inspections';
-    const pool = await initDb(); if (!pool) return;
+    const pool = await initDb();
+    if (!pool) return;
     await pool.query(
       `INSERT INTO ${table} (inspection_id, internal_work_order_number, fleetio_work_order_id)
        VALUES ($1,$2,$3)
@@ -93,14 +107,7 @@ function toIsoDate(dateLike){ if(!dateLike) return new Date().toISOString().slic
 function toDateTime(dateOnly){ const d=String(toIsoDate(dateOnly)); return new Date(`${d}T15:00:00Z`).toISOString(); }
 function sanitizeNumber(n){ if(n==null) return null; const s=String(n).trim(); return s.startsWith('#')?s.slice(1):s; }
 function isPdf(buf){ try { return buf && buf.slice(0,5).toString('ascii')==='%PDF-'; } catch { return false; } }
-
-// ---------- utility ----------
-function asArray(maybe){ 
-  if(Array.isArray(maybe)) return maybe; 
-  if(maybe?.data && Array.isArray(maybe.data)) return maybe.data; 
-  if(maybe?.records && Array.isArray(maybe.records)) return maybe.records; 
-  return []; 
-}
+function asArray(maybe){ if(Array.isArray(maybe)) return maybe; if(maybe?.data && Array.isArray(maybe.data)) return maybe.data; if(maybe?.records && Array.isArray(maybe.records)) return maybe.records; return []; }
 
 // ---------- vehicles ----------
 async function listVehicles(){ return asArray(await fleetio('/vehicles', {}, 'vehicles')); }
@@ -159,22 +166,35 @@ export default async function handler(req, res){
       if (raw.startsWith('data:') && idx !== -1) raw = raw.slice(idx+1);
       try { pdfBuffer = Buffer.from(raw, 'base64'); } catch {}
     }
+    // If base64 missing/invalid, allow server-fetch of pdfUrl (same-origin) with cookies
     if((!pdfBuffer || !isPdf(pdfBuffer)) && pdfUrl){
-      const origin = (req.headers['x-forwarded-proto']||'https') + '://' + (req.headers['x-forwarded-host'] || req.headers['host']);
+      const proto = req.headers['x-forwarded-proto'] || 'https';
+      const host  = req.headers['x-forwarded-host'] || req.headers['host'];
+      const origin = `${proto}://${host}`;
       const abs = new URL(pdfUrl, origin).toString();
-      const resp = await fetch(abs);
+
+      const headers = { 'Accept': 'application/pdf,*/*' };
+      // Forward cookies (auth), language, UA if present
+      if (req.headers.cookie) headers['cookie'] = req.headers.cookie;
+      if (req.headers['accept-language']) headers['accept-language'] = req.headers['accept-language'];
+      if (req.headers['user-agent']) headers['user-agent'] = req.headers['user-agent'];
+
+      const resp = await fetch(abs, { headers });
       if (resp.ok) {
         const ab = await resp.arrayBuffer(); const b = Buffer.from(ab);
         if (isPdf(b)) pdfBuffer = b;
+      } else {
+        const t = await resp.text().catch(()=>'');
+        return res.status(400).json({ error:`Could not fetch pdfUrl: ${resp.status}`, details: t.slice(0,300) });
       }
     }
-    if(!pdfBuffer || !isPdf(pdfBuffer)) return res.status(400).json({ error:'pdfBase64 is required and must be a valid PDF' });
+    if(!pdfBuffer || !isPdf(pdfBuffer)) return res.status(400).json({ error:'Could not obtain a real PDF to attach. Provide pdfBase64 or pdfUrl to the actual file.' });
 
     // Create WO
     const inspectionDate = data.inspectionDate || data.dateInspected || null;
     const odometerFromForm = numOrNull(data.odometer);
     const statuses = asArray(await fleetio('/work_order_statuses', {}, 'wo_status'));
-    const open = statuses.find(s => normalize(s?.name) === 'open') || statuses.find(s=> s?.is_default);
+    const open = statuses.find(s => normalize(s?.name) === 'open') || statuses.find(s => s?.is_default);
     const work_order_status_id = open?.id;
     if(!work_order_status_id) return res.status(400).json({ error:'Could not resolve Open status' });
 
@@ -214,7 +234,7 @@ export default async function handler(req, res){
     }
 
     // attach pdf
-    const filenameSafe = filename || `Schedule4_${toIsoDate(inspectionDate || new Date())}.pdf`;
+    const filenameSafe = filename || `Schedule4_${toIsoDate(inspectionDate || new Date())}.pdf";
     const file_url = await uploadPdf(pdfBuffer, filenameSafe);
     await fleetioV2(`/work_orders/${workOrderId}`, {
       method:'PATCH',
