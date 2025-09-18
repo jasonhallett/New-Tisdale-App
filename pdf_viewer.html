@@ -10,6 +10,23 @@
     body { margin:0; background:#0b0b0c; }
     .toolbar { position:sticky; top:0; z-index:50; }
   </style>
+
+<script>
+(function(){
+  const _create = URL.createObjectURL;
+  URL.createObjectURL = function(obj){
+    try {
+      if (obj instanceof Blob && obj.type === 'application/pdf') {
+        // Keep a reference so Fleetio integration can read exact bytes if PDF.js path isn't available
+        window.__lastPdfBlob = obj;
+      }
+    } catch(e){}
+    return _create.apply(this, arguments);
+  };
+})();
+</script>
+
+
 </head>
 <body class="text-white">
   <!-- Toolbar -->

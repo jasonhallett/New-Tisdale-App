@@ -1,12 +1,9 @@
 // /js/fleetio-integration.js
-// Solid client for creating a Fleetio Work Order:
+// Minimal client for creating a Fleetio WO with robust PDF capture.
 //
-// - NUKES duplicate handlers by cloning the button (removes all other listeners & inline onclick)
-// - WILL NOT POST unless BOTH Unit # and a real PDF (base64 from PDF.js) are ready
-// - Waits for PDF.js to initialize (short retries) and extracts exact bytes (no blob: fetches)
-// - If Unit # is missing, prompts once and persists to sessionStorage for the tab
-//
-// Server endpoint assumed: /api/fleetio/create-work-order
+// Changes in this patch:
+// - Adds fallback to a captured PDF Blob (window.__lastPdfBlob) if PDF.js data path isn't available
+// - Keeps the same single-listener, preflight checks, and base64-only POST
 
 (function () {
   const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
@@ -59,38 +56,48 @@
     return json;
   }
 
-  async function waitForPdfDoc(win, maxMs=6000) {
+  async function waitForPdfDoc(win, maxMs=5000) {
     const start = Date.now();
     while (Date.now()-start < maxMs) {
       try {
         const app = win.PDFViewerApplication;
-        if (app?.initialized) {
-          // PDF.js >=2.10 exposes initializedPromise; still, try direct access first
-          const doc = app.pdfDocument || app._pdfDocument || app.pdfViewer?._pdfDocument;
-          if (doc && typeof doc.getData === 'function') return doc;
-        }
+        if (app?.pdfDocument && typeof app.pdfDocument.getData === 'function') return app.pdfDocument;
       } catch {}
       await sleep(150);
     }
     return null;
   }
 
-  async function getPdfBase64FromAnyViewer() {
-    // 1) This window
-    let doc = await waitForPdfDoc(window, 6000);
+  async function getPdfBase64FromPDFJS() {
+    // Try current window
+    let doc = await waitForPdfDoc(window, 5000);
     if (doc) {
       const data = await doc.getData(); return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data));
     }
-    // 2) Any same-origin iframe
+    // Try any same-origin iframe
     const frames = Array.from(document.querySelectorAll('iframe'));
     for (const f of frames) {
       try {
         if (!f.contentWindow) continue;
-        const d2 = await waitForPdfDoc(f.contentWindow, 4000);
+        const d2 = await waitForPdfDoc(f.contentWindow, 3500);
         if (d2) { const data2 = await d2.getData(); return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data2)); }
       } catch {}
     }
-    // 3) Last-ditch: if ?src is same-origin non-blob, fetch it and convert
+    return null;
+  }
+
+  async function getPdfBase64FromCapturedBlob() {
+    try {
+      const b = window.__lastPdfBlob;
+      if (b && b.type === 'application/pdf') {
+        const ab = await b.arrayBuffer();
+        return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(ab));
+      }
+    } catch {}
+    return null;
+  }
+
+  async function getPdfBase64FallbackFromSrc() {
     try {
       const src = getQuery().get('src');
       if (src && !src.startsWith('blob:')) {
@@ -105,6 +112,13 @@
       }
     } catch {}
     return null;
+  }
+
+  async function ensurePdfBase64() {
+    // Order: PDF.js → captured Blob → same-origin ?src fetch
+    return await getPdfBase64FromPDFJS()
+        || await getPdfBase64FromCapturedBlob()
+        || await getPdfBase64FallbackFromSrc();
   }
 
   async function promptForUnit() {
@@ -131,10 +145,7 @@
   }
 
   async function handleClick(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
     const btn = this;
     if (btn.dataset.busy === '1') return;
     btn.dataset.busy = '1'; btn.disabled = true;
@@ -142,7 +153,7 @@
     try {
       const ctx = getContext();
 
-      // Ensure Unit #
+      if (!ctx.inspectionId) { alertBox('Missing Inspection ID. Reopen this inspection and try again.'); return; }
       if (!ctx.unitNumber) {
         try {
           const typed = await promptForUnit();
@@ -152,19 +163,13 @@
             base.unitNumber = typed; sessionStorage.setItem('schedule4Data', JSON.stringify(base));
           } catch {}
         } catch (err) {
-          if (err.message !== 'cancelled') alertBox('Unit # is required.');
-          return; // DO NOT POST
+          if (err.message !== 'cancelled') alertBox('Unit # is required.'); return;
         }
       }
 
-      // Ensure PDF base64 (no blob fetches)
-      const pdfBase64 = await getPdfBase64FromAnyViewer();
-      if (!pdfBase64) {
-        alertBox('Could not read the open PDF from the viewer. Please confirm this is the PDF viewer page and try again.');
-        return; // DO NOT POST
-      }
+      const pdfBase64 = await ensurePdfBase64();
+      if (!pdfBase64) { alertBox('Could not read the open PDF from the viewer.'); return; }
 
-      // Build payload ONLY now (guards against accidental POSTs)
       const dateStr = ctx.inspectionDate || new Date().toISOString().slice(0,10);
       const safeUnit = ctx.unitNumber.replace(/[^\w\-]+/g, '_');
       const filename = `Schedule-4_Inspection_${safeUnit}_${dateStr}.pdf`;
@@ -177,10 +182,9 @@
         pdfBase64
       };
 
-      const res = await postJson('/api/fleetio/create-work-order', payload);
+      let res = await postJson('/api/fleetio/create-work-order', payload);
 
       if (res?.code === 'vehicle_not_found') {
-        // only then show picker
         const id = await new Promise((resolve, reject) => {
           const overlay = document.createElement('div');
           overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
@@ -199,15 +203,7 @@
           modal.querySelector('#fleetioCancel').onclick = () => { document.body.removeChild(overlay); reject(new Error('cancelled')); };
           modal.querySelector('#fleetioOK').onclick = () => { const sel = modal.querySelector('#fleetioVehicleSelect'); const id = sel.value; document.body.removeChild(overlay); resolve(id); };
         });
-
-        const res2 = await postJson('/api/fleetio/create-work-order', { ...payload, vehicleId: id });
-        if (res2?.ok) {
-          window.open(res2.work_order_url, '_blank');
-          alertBox('Fleetio Work Order created and PDF attached.');
-          return;
-        }
-        alertBox('Fleetio error: ' + JSON.stringify(res2 || {}, null, 2));
-        return;
+        res = await postJson('/api/fleetio/create-work-order', { ...payload, vehicleId: id });
       }
 
       if (res?.ok) {
@@ -236,12 +232,8 @@
   window.addEventListener('DOMContentLoaded', () => {
     let btn = document.querySelector('#btnFleetio, [data-action="fleetio"], .btn-fleetio');
     if (!btn) return;
-
-    // Strip ALL existing handlers (including inline) by cloning node
-    btn = replaceWithClone(btn);
+    btn = replaceWithClone(btn); // remove all existing handlers (incl. inline)
     btn.removeAttribute('onclick');
-
-    // Bind our single handler
     btn.addEventListener('click', handleClick, { once: false });
   });
 })();
