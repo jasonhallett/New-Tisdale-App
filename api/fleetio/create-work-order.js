@@ -1,5 +1,5 @@
 // /api/fleetio/create-work-order.js
-// SIMPLE VERSION:
+// SIMPLE VERSION (fixed): robust vehicles loader normalizes API shape.
 // - Exact vehicle lookup by Unit# == Fleetio vehicle `name` via GET /api/vehicles
 // - Uses that vehicle's `id` and `primary_meter_value`
 // - Creates WO (Open), attaches the EXACT PDF (no re-render), sets meter entries
@@ -7,7 +7,7 @@
 
 export const config = { runtime: 'nodejs' };
 
-const BASE_V1 = 'https://secure.fleetio.com/api';
+const BASE_V1 = 'https://secure.fleetio.com/api';   // per your working call
 const BASE_V2 = 'https://secure.fleetio.com/api/v2';
 const FLEETIO_UPLOAD_ENDPOINT = 'https://lmuavc3zg4.execute-api.us-east-1.amazonaws.com/prod/uploads';
 
@@ -87,7 +87,6 @@ async function upsertInspectionWO(inspectionId, workOrderId, workOrderNumber) {
 
 // ---------- HTTP helpers ----------
 async function fleetio(path, init = {}, step = 'fleetio') {
-  // For v1 list (no /v1 here intentionally—your working endpoint is /api/vehicles)
   const res = await fetch(`${BASE_V1}${path}`, { ...init, headers: { ...(init.headers||{}), ...defaultHeaders } });
   if (!res.ok) {
     const body = await res.text().catch(()=>'');
@@ -119,11 +118,20 @@ function toInspectionDateTime(dateOnlyLike) {
 function sanitizeWorkOrderNumber(n){ if (n == null) return null; const s=String(n).trim(); return s.startsWith('#')?s.slice(1):s; }
 function isPdf(buf) { try { return buf && buf.slice(0,5).toString('ascii') === '%PDF-'; } catch { return false; } }
 
-// ---------- Simple vehicle lookup via /api/vehicles ----------
+// ---------- Vehicles loader (normalized to array) ----------
+function asArray(maybe) {
+  if (Array.isArray(maybe)) return maybe;
+  if (maybe && Array.isArray(maybe.data)) return maybe.data;
+  if (maybe && Array.isArray(maybe.records)) return maybe.records;
+  // last resort: if object with numeric keys, use Object.values
+  if (maybe && typeof maybe === 'object') return Object.values(maybe);
+  return [];
+}
 async function getAllVehiclesSimple() {
-  // The endpoint you provided returns an array of vehicles.
-  // If your account is large, you may need pagination; this keeps it simple per your sample.
-  return await fleetio('/vehicles', {}, 'list_vehicles_simple');
+  // Your working endpoint:
+  //   GET https://secure.fleetio.com/api/vehicles
+  const raw = await fleetio('/vehicles', {}, 'list_vehicles_simple');
+  return asArray(raw);
 }
 function findVehicleByExactName(vehicles, unitName) {
   const target = normalize(unitName);
@@ -131,7 +139,8 @@ function findVehicleByExactName(vehicles, unitName) {
   return vehicles.find(v => normalize(v?.name) === target) || null;
 }
 
-// ---------- PDF upload (no changes to your working behavior) ----------
+// ---------- PDF upload (unchanged) ----------
+const FLEETIO_UPLOAD_URL = FLEETIO_UPLOAD_ENDPOINT;
 async function uploadPdfToFleetio(pdfBuffer, filename) {
   const policyResp = await fleetio('/uploads/policies', {
     method: 'POST',
@@ -143,7 +152,7 @@ async function uploadPdfToFleetio(pdfBuffer, filename) {
     err.step = 'upload_pdf'; err.status = 500; err.details = JSON.stringify(policyResp).slice(0, 500);
     throw err;
   }
-  const url = new URL(FLEETIO_UPLOAD_ENDPOINT);
+  const url = new URL(FLEETIO_UPLOAD_URL);
   url.searchParams.set('policy', policy);
   url.searchParams.set('signature', signature);
   url.searchParams.set('path', path);
@@ -175,7 +184,6 @@ export default async function handler(req, res) {
       unitNumber,
       vehicleId: vehicleIdFromBody,
       serviceTaskName,
-      // IMPORTANT: do not change the working PDF behavior—accept either base64 or url
       pdfBase64,
       pdfUrl
     } = req.body || {};
@@ -203,8 +211,7 @@ export default async function handler(req, res) {
     let currentMeterFromVehicle = null;
 
     if (!finalVehicleId) {
-      const vehicles = await getAllVehiclesSimple(); // array like the sample you posted
-      // exact name match only (your Unit # is in `name`)
+      const vehicles = await getAllVehiclesSimple(); // <- now always an array
       vehicle = findVehicleByExactName(vehicles, unitNumber);
       if (vehicle?.id) {
         finalVehicleId = vehicle.id;
@@ -213,13 +220,13 @@ export default async function handler(req, res) {
     }
 
     if (!finalVehicleId) {
-      // no guess; ask the user via client modal
       const vehicles = await getAllVehiclesSimple();
+      // choices safely map over array
       const choices = vehicles.map(v => ({ id: v.id, label: v.name || `Vehicle ${v.id}` }));
       return res.status(404).json({ code: 'vehicle_not_found', choices });
     }
 
-    // ----- PDF: use provided base64 or fetch via url (no re-render)
+    // ----- PDF: accept base64 or fetch via url (no re-render)
     let pdfBuffer = null;
     if (typeof pdfBase64 === 'string' && pdfBase64.length > 20) {
       let raw = pdfBase64;
@@ -266,10 +273,9 @@ export default async function handler(req, res) {
     await saveWO(inspectionId, workOrderId, workOrderNumber);
     await upsertInspectionWO(inspectionId, workOrderId, workOrderNumber);
 
-    // ----- Meter entries (use your form ODO if present; otherwise use Fleetio's current)
+    // ----- Meter entries (use your form ODO if present; otherwise Fleetio's current)
     const odometer = odometerFromForm ?? currentMeterFromVehicle ?? null;
     if (odometer != null) {
-      // Keep your current “void if higher than Fleetio” behavior simple:
       const current = currentMeterFromVehicle;
       const markVoid = (current != null) ? (odometer > current) : false;
 
