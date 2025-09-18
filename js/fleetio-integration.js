@@ -1,13 +1,19 @@
 // /js/fleetio-integration.js
-// Minimal, robust client for creating the Fleetio WO:
-// - Always extracts the PDF bytes from PDF.js (base64) to avoid blob: fetch failures
-// - Sends unitNumber only if present; otherwise stops early with a friendly alert (no surprise 404 picker)
+// Minimal, robust client for creating a Fleetio WO:
+//
+// - If Unit # is missing, prompt ONCE for it before posting
+// - Always tries to pull PDF bytes from any PDF.js viewer (window OR any iframe)
+//   with short retries (no dependence on fragile blob: URLs)
 // - Ensures only one click handler runs (removes inline onclick if present)
+// - Posts exactly once with pdfBase64 (no server-side re-render)
+//
+// Assumes your server route is /api/fleetio/create-work-order
 
 (function () {
   function $(sel) { return document.querySelector(sel); }
   function getQuery() { try { return new URL(window.location.href).searchParams; } catch { return new URLSearchParams(); } }
   function parseNumber(n) { if (n==null) return null; const s=String(n).replace(/,/g,'').trim(); if(!s) return null; const x=Number(s); return Number.isFinite(x)?x:null; }
+  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 
   function uiAlert(msg) { try { alert(msg); } catch {} }
 
@@ -15,7 +21,7 @@
     const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const ct = r.headers.get('content-type')||''; const json = ct.includes('application/json')? await r.json():null;
     if (!r.ok) {
-      if (r.status===404 && json?.code==='vehicle_not_found') return json; // allow caller to handle picker
+      if (r.status===404 && json?.code==='vehicle_not_found') return json; // let caller show vehicle picker
       throw new Error(json?.error || `HTTP ${r.status}`);
     }
     return json;
@@ -54,28 +60,79 @@
     return btoa(out);
   }
 
-  async function getPdfBase64FromViewer() {
-    // Prefer the current window's PDF.js (pdf_viewer.html typically hosts it)
+  async function getPdfFromViewerOnce(win) {
     try {
-      const app = window.PDFViewerApplication;
+      const app = win.PDFViewerApplication;
       if (app && app.pdfDocument && typeof app.pdfDocument.getData === 'function') {
         const data = await app.pdfDocument.getData(); // Uint8Array
         return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data));
       }
     } catch {}
+    return null;
+  }
 
-    // If for some reason the viewer is inside an iframe on this page, try there (same-origin only)
+  async function getPdfBase64WithRetries() {
+    // try current window, then scan all iframes (same-origin), with short retries
+    const attempts = 8;
+    for (let i = 0; i < attempts; i++) {
+      // current window first
+      let b64 = await getPdfFromViewerOnce(window);
+      if (b64) return b64;
+
+      // scan iframes
+      const frames = Array.from(document.querySelectorAll('iframe'));
+      for (const f of frames) {
+        try {
+          if (!f.contentWindow) continue;
+          b64 = await getPdfFromViewerOnce(f.contentWindow);
+          if (b64) return b64;
+        } catch {/* cross-origin or sandboxed */}
+      }
+
+      // small backoff before next try (PDF.js might still be initializing)
+      await sleep(200);
+    }
+
+    // last-ditch: if ?src is a non-blob URL on same origin, fetch and convert
     try {
-      const frame = document.getElementById('pdfFrame') || document.querySelector('iframe');
-      if (frame && frame.contentWindow) {
-        const app2 = frame.contentWindow.PDFViewerApplication;
-        if (app2 && app2.pdfDocument && typeof app2.pdfDocument.getData === 'function') {
-          const data2 = await app2.pdfDocument.getData();
-          return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data2));
+      const src = getQuery().get('src');
+      if (src && !src.startsWith('blob:')) {
+        const abs = new URL(src, window.location.origin).toString();
+        if (abs.startsWith(window.location.origin)) {
+          const resp = await fetch(abs, { credentials: 'include' });
+          if (resp.ok) {
+            const ab = await resp.arrayBuffer();
+            return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(ab));
+          }
         }
       }
     } catch {}
-    return null; // we will not fall back to blob: urls; they’re unreliable here
+
+    return null;
+  }
+
+  async function promptForUnitNumber() {
+    return await new Promise((resolve, reject) => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+      const modal = document.createElement('div');
+      modal.style.cssText = 'background:#111;border:1px solid #333;padding:16px;border-radius:10px;min-width:320px;color:#fff;font:14px system-ui';
+      modal.innerHTML = `
+        <div style="font-weight:600;margin-bottom:8px">Enter Unit # (must match Fleetio "name")</div>
+        <input id="unitInput" style="width:100%;background:#0b0b0c;border:1px solid #333;color:#fff;padding:8px;border-radius:8px;margin-bottom:12px" placeholder="e.g., AAN Coach or 255" />
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="unitCancel" style="padding:8px 12px;background:#333;border-radius:8px">Cancel</button>
+          <button id="unitOK" style="padding:8px 12px;background:#22c55e;color:#000;border-radius:8px">Use</button>
+        </div>`;
+      overlay.appendChild(modal); document.body.appendChild(overlay);
+      modal.querySelector('#unitCancel').onclick = () => { document.body.removeChild(overlay); reject(new Error('cancelled')); };
+      modal.querySelector('#unitOK').onclick = () => {
+        const val = modal.querySelector('#unitInput').value.trim();
+        document.body.removeChild(overlay);
+        if (!val) reject(new Error('empty'));
+        else resolve(val);
+      };
+    });
   }
 
   async function onFleetioClick(e) {
@@ -94,15 +151,29 @@
         uiAlert('Missing Inspection ID. Please reopen this inspection from the list and try again.');
         return;
       }
+
+      // If unit is missing, prompt once (simple, per your request)
       if (!ctx.unitNumber) {
-        uiAlert('Missing Unit #. Please ensure the inspection has a Unit # before sending to Fleetio.');
-        return;
+        try {
+          const typed = await promptForUnitNumber();
+          ctx.unitNumber = typed;
+          // persist for this tab so subsequent clicks don’t ask again
+          try {
+            const raw = sessionStorage.getItem('schedule4Data');
+            const base = raw ? JSON.parse(raw) : {};
+            base.unitNumber = typed;
+            sessionStorage.setItem('schedule4Data', JSON.stringify(base));
+          } catch {}
+        } catch (e) {
+          if (e.message !== 'cancelled') uiAlert('Unit # is required.');
+          return;
+        }
       }
 
       // Always pull exact bytes from PDF.js (avoid blob: fetches)
-      const pdfBase64 = await getPdfBase64FromViewer();
+      const pdfBase64 = await getPdfBase64WithRetries();
       if (!pdfBase64) {
-        uiAlert('Unable to read the open PDF from the viewer. Please ensure this page is the PDF viewer (PDF.js) and try again.');
+        uiAlert('Unable to read the open PDF from the viewer. Please ensure this is the PDF viewer (PDF.js) and try again.');
         return;
       }
 
@@ -115,12 +186,12 @@
         unitNumber: ctx.unitNumber,
         data: { inspectionDate: ctx.inspectionDate, odometer: ctx.odometer },
         filename,
-        pdfBase64 // <- we send base64 only; no pdfUrl to avoid blob issues
+        pdfBase64 // no pdfUrl -> avoids blob issues entirely
       };
 
       let res = await postJson('/api/fleetio/create-work-order', payload);
 
-      // If the server explicitly says it cannot find the vehicle, show picker
+      // If server couldn’t find the vehicle, show picker with choices
       if (res?.code === 'vehicle_not_found') {
         const id = await new Promise((resolve, reject) => {
           const overlay = document.createElement('div');
@@ -138,10 +209,7 @@
             </div>`;
           overlay.appendChild(modal); document.body.appendChild(overlay);
           modal.querySelector('#fleetioCancel').onclick = () => { document.body.removeChild(overlay); reject(new Error('cancelled')); };
-          modal.querySelector('#fleetioOK').onclick = () => {
-            const sel = modal.querySelector('#fleetioVehicleSelect'); const id = sel.value;
-            document.body.removeChild(overlay); resolve(id);
-          };
+          modal.querySelector('#fleetioOK').onclick = () => { const sel = modal.querySelector('#fleetioVehicleSelect'); const id = sel.value; document.body.removeChild(overlay); resolve(id); };
         });
 
         res = await postJson('/api/fleetio/create-work-order', { ...payload, vehicleId: id });
