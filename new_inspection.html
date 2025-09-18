@@ -789,6 +789,8 @@
         });
 
         // Unit #
+        const unitSelect = document.getElementById('unit-number');
+        const unitOtherInput = document.getElementById('unit-number-other');
         const unitValid = (unitSelect.value && unitSelect.value!=='other') || (!!unitOtherInput.value && !unitOtherInput.classList.contains('hidden'));
         if (!unitValid) errors.push('Unit # is required.');
 
@@ -884,7 +886,7 @@
             body: JSON.stringify({ payload })
           });
           if (!resp.ok) {
-            const text = await resp.text().catch(()=>'');
+            const text = await resp.text().catch(()=> '');
             throw new Error(`Save failed (${resp.status}) ${text}`);
           }
         } catch (err) {
@@ -1282,5 +1284,177 @@ insp.addEventListener('blur', function(){
 <!-- ================================ -->
 
 <script defer src="/js/submit-flow.js"></script>
+
+<!-- ======================= -->
+<!-- ADDED: viewer helpers   -->
+<!-- ======================= -->
+<script id="viewer-context-helpers">
+  (function () {
+    function toISODate(d) {
+      if (!d) return new Date().toISOString().slice(0,10);
+      const dt = new Date(d);
+      return Number.isNaN(dt.getTime()) ? new Date().toISOString().slice(0,10) : dt.toISOString().slice(0,10);
+    }
+    function numOrNull(n){ if(n==null) return null; const v=Number(String(n).replace(/,/g,'').trim()); return Number.isFinite(v)?v:null; }
+    function safeUnit(u){ return String(u||'Unit').replace(/[^\w\-]+/g,'_'); }
+
+    // Save context for viewer/Fleetio button
+    window.__setSchedule4ViewerContext = function ({ inspectionId, unitNumber, inspectionDate, odometer }) {
+      const payload = {
+        inspectionId: String(inspectionId||'').trim(),
+        unitNumber:   String(unitNumber||'').trim(),
+        inspectionDate: toISODate(inspectionDate),
+        odometer:     numOrNull(odometer)
+      };
+      try { sessionStorage.setItem('schedule4Data', JSON.stringify(payload)); } catch {}
+      return payload;
+    };
+
+    // Build pdf_viewer URL with all params
+    window.__buildPdfViewerUrl = function ({ inspectionId, unitNumber, inspectionDate, odometer, filename, src }) {
+      const fname = filename || `Schedule-4_Inspection_${safeUnit(unitNumber)}_${toISODate(inspectionDate)}.pdf`;
+      const qs = new URLSearchParams({
+        id: inspectionId || '',
+        unit: unitNumber || '',
+        odometer: odometer != null ? String(odometer) : '',
+        date: toISODate(inspectionDate),
+        filename: fname,
+        src: src || ''
+      });
+      return `/pdf_viewer.html?${qs.toString()}`;
+    };
+
+    // Public launcher — default opens in new tab; flip newTab=false to use same tab later
+    window.launchSchedule4Viewer = function ({
+      inspectionId, unitNumber, inspectionDate, odometer, pdfSrc, filename, newTab = true
+    }) {
+      const payload = window.__setSchedule4ViewerContext({ inspectionId, unitNumber, inspectionDate, odometer });
+      const href = window.__buildPdfViewerUrl({
+        inspectionId: payload.inspectionId,
+        unitNumber:   payload.unitNumber,
+        inspectionDate: payload.inspectionDate,
+        odometer:     payload.odometer,
+        filename,
+        src: pdfSrc
+      });
+      if (newTab) {
+        return window.open(href, '_blank', 'noopener,noreferrer');
+      } else {
+        window.location.assign(href);
+        return null;
+      }
+    };
+  })();
+</script>
+
+<!-- =============================================== -->
+<!-- ADDED: viewer intercept (no UI/behavior changes) -->
+<!-- =============================================== -->
+<script id="viewer-intercept">
+  (function() {
+    const OPEN_IN_NEW_TAB = true; // <— change to false later to open in same tab
+
+    function getEl(id){ return document.getElementById(id); }
+    function cleanNum(v){ if(v==null) return null; const n = Number(String(v).replace(/,/g,'')); return Number.isFinite(n)?n:null; }
+
+    function collectContext() {
+      // Unit # display value (same logic you use elsewhere)
+      const unitSel = getEl('unit-number');
+      const unitOther = getEl('unit-number-other');
+      const unitNumber = (unitSel && unitSel.value && unitSel.value!=='other')
+        ? (unitSel.options[unitSel.selectedIndex]?.textContent || '')
+        : (!unitOther?.classList.contains('hidden') ? (unitOther?.value || '') : '');
+
+      const odometer = cleanNum(getEl('odometer')?.value);
+      const inspectionDate = getEl('inspection-date')?.value || '';
+      return { unitNumber, odometer, inspectionDate };
+    }
+
+    function extractInspectionIdFromUrl(url) {
+      try {
+        const u = new URL(url, window.location.origin);
+        const id = u.searchParams.get('id'); // direct ?id= on pdf_viewer
+        if (id) return id;
+        const src = u.searchParams.get('src');
+        if (src) {
+          const s = new URL(src, window.location.origin);
+          return s.searchParams.get('id') || null;
+        }
+      } catch {}
+      return null;
+    }
+
+    function interceptHref(href) {
+      // Only touch pdf_viewer.html navigations
+      if (!href || href.indexOf('/pdf_viewer.html') === -1) return null;
+
+      const { unitNumber, odometer, inspectionDate } = collectContext();
+      const inspectionId = extractInspectionIdFromUrl(href) || (window.__lastInspectionId || '');
+
+      // If original href already had a src, keep it; otherwise leave empty (viewer will find the PDF on its own page)
+      let originalSrc = '';
+      try {
+        const u = new URL(href, window.location.origin);
+        originalSrc = u.searchParams.get('src') || '';
+      } catch {}
+
+      // Use filename if present on original href
+      let originalFilename = '';
+      try {
+        const u = new URL(href, window.location.origin);
+        originalFilename = u.searchParams.get('filename') || '';
+      } catch {}
+
+      const win = window.launchSchedule4Viewer({
+        inspectionId,
+        unitNumber,
+        inspectionDate,
+        odometer,
+        pdfSrc: originalSrc,
+        filename: originalFilename || undefined,
+        newTab: OPEN_IN_NEW_TAB
+      });
+
+      return win || true; // indicate we handled navigation
+    }
+
+    // Patch window.open
+    (function patchOpen(){
+      const _open = window.open;
+      window.open = function(url, target, features){
+        try {
+          const handled = interceptHref(url);
+          if (handled) return handled === true ? null : handled;
+        } catch {}
+        return _open.apply(window, arguments);
+      };
+    })();
+
+    // Intercept anchor clicks to pdf_viewer.html
+    document.addEventListener('click', function(e){
+      const a = e.target.closest && e.target.closest('a[href]');
+      if (!a) return;
+      const href = a.getAttribute('href') || '';
+      if (href.indexOf('/pdf_viewer.html') === -1) return;
+      const handled = interceptHref(href);
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    }, true);
+
+    // If your save/print code stores the inspection id globally, capture it
+    // (harmless if undefined; we only use it if present)
+    try {
+      const _setId = (id)=> { window.__lastInspectionId = id; };
+      window.addEventListener('message', function(ev){
+        if (!ev || !ev.data) return;
+        if (ev.data && ev.data.schedule4InspectionId) _setId(ev.data.schedule4InspectionId);
+      });
+    } catch {}
+  })();
+</script>
+
 </body>
 </html>

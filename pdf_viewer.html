@@ -2,665 +2,90 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>TBL Internal App - Schedule 4 Inspection</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inspection PDF Viewer</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
-    body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
-    .form-container {
-      max-width: 900px; margin: 2rem auto; padding: 2rem; background-color: #ffffff;
-      border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -2px rgba(0,0,0,.05);
-    }
-    .section-header { font-size: 1.25rem; font-weight: 600; color: #1f2937; margin-bottom: 1rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
-    .form-group label { font-weight: 500; color: #374151; }
-    .form-group input[type="text"],
-    .form-group input[type="date"],
-    .form-group input[type="number"],
-    .form-group textarea,
-    .form-group select {
-      width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #d1d5db; margin-top: 0.25rem;
-      transition: all 0.2s ease-in-out; background-color: white;
-    }
-    .form-group input[type="text"]:focus,
-    .form-group input[type="date"]:focus,
-    .form-group input[type="number"]:focus,
-    .form-group textarea:focus,
-    .form-group select:focus {
-      border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2); outline: none;
-    }
-    .form-group input[readonly]{ background-color:#e5e7eb; cursor:not-allowed; }
-
-    .checkbox-container { display:grid; grid-template-columns:repeat(1,minmax(0,1fr)); gap:1.25rem; }
-    @media (min-width:640px){ .checkbox-container{ grid-template-columns:repeat(1,minmax(0,1fr)); } }
-    .checkbox-item{ display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
-    .option-boxes{ display:flex; gap:0.25rem; }
-    .option-box{
-      display:inline-flex; justify-content:center; align-items:center; height:1.5rem; width:2.5rem;
-      border:1px solid #d1d5db; border-radius:4px; background-color:#fff; cursor:pointer;
-      font-weight:700; font-size:0.875rem; color:#4b5563; user-select:none; transition:all .15s ease-in-out;
-    }
-    .option-box.ok.selected       { background-color:#dcfce7; color:#166534; border-color:#86efac; }
-    .option-box.repaired.selected { background-color:#fee2e2; color:#991b1b; border-color:#fecaca; }
-    .option-box.na.selected       { background-color:#e5e7eb; color:#4b5563; border-color:#d1d5db; }
-
-    .grid-3 { display:grid; grid-template-columns:repeat(1,minmax(0,1fr)); gap:1rem; }
-    @media (min-width:640px){ .grid-3{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
-
-    #signatureCanvas {
-      border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair;
-      width:400px; height:100px;
-    }
-    .footer-note{ font-size:0.875rem; color:#6b7280; margin-top:1rem; }
+    html, body { height:100%; }
+    body { margin:0; background:#0b0b0c; }
+    .toolbar { position:sticky; top:0; z-index:50; }
   </style>
 
-  <style id="single-page-fix">
-    body::before, body::after, html::before, html::after,
-    #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
-    .page-number, .pageNumber, [data-page-number] { display: none !important; }
-
-    @media print {
-      .page, #page { page-break-after: auto !important; break-after: auto !important; }
-      .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
-    }
-  </style>
-</head>
-<body class="bg-gray-100 p-4 sm:p-8">
-  <div class="form-container">
-    <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center sm:text-left">Schedule 4 Motor Coach Under-Vehicle Inspection Report</h1>
-
-    <form id="inspectionForm" action="#" data-inspection-form>
-
-      <div id="message-box" class="mb-4 text-center text-red-600 font-bold hidden"></div>
-
-      <!-- General Information -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <div class="form-group">
-          <label for="carrier" class="block text-sm">Carrier</label>
-          <input type="text" id="carrier" name="carrier" class="rounded-md">
-        </div>
-        <div class="form-group">
-          <label for="address" class="block text-sm">Address of the location where the inspection is conducted</label>
-          <input type="text" id="address" name="address" class="rounded-md">
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="form-group" id="unit-number-wrapper">
-          <label for="unit-number" class="block text-sm">Unit #</label>
-          <select id="unit-number" name="unit-number" class="rounded-md">
-            <option value="">Select a vehicle…</option>
-          </select>
-          <input type="text" id="unit-number-other" name="unit-number-other" class="rounded-md mt-2 hidden" placeholder="Enter Unit #"/>
-        </div>
-        <div class="form-group">
-          <label for="license-plate" class="block text-sm">Licence Plate</label>
-          <input type="text" id="license-plate" name="license-plate" class="rounded-md">
-        </div>
-        <div class="form-group">
-          <label for="odometer" class="block text-sm">Odometer (KM)</label>
-          <input type="text" id="odometer" name="odometer" class="rounded-md" inputmode="numeric">
-        </div>
-        <div class="form-group">
-          <label for="inspection-date" class="block text-sm">Date Inspected</label>
-          <input type="date" id="inspection-date" name="inspection-date" class="rounded-md">
-        </div>
-      </div>
-
-      <div class="mb-6">
-        <p class="text-sm text-gray-500 italic">An under-vehicle inspection is valid until the 31st day after it is conducted or until the motor coach has been driven 12,000 kilometres, whichever occurs last.</p>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-          <div class="form-group">
-            <label for="expiry-date" class="block text-sm">Date Expires</label>
-            <input type="date" id="expiry-date" name="expiry-date" class="rounded-md" readonly>
-          </div>
-          <div class="form-group">
-            <label for="expiry-odometer" class="block text-sm">Odometer Expiration</label>
-            <input type="text" id="expiry-odometer" name="expiry-odometer" class="rounded-md" readonly>
-          </div>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
-        <!-- LEFT COLUMN -->
-        <div>
-          <!-- Section 1: Air Brake System with Disc Brakes toggle in header -->
-          <div class="mb-8">
-            <div class="flex items-center justify-between">
-              <h2 class="section-header w-full">1. Air Brake System</h2>
-              <label class="ml-4 inline-flex items-center gap-2 text-sm text-gray-700 select-none">
-                <input type="checkbox" id="disc-brakes" class="h-4 w-4 text-indigo-600 rounded">
-                <span>Disc Brakes</span>
-              </label>
-            </div>
-
-            <div class="checkbox-container">
-              <div class="checkbox-item">
-                <label class="text-sm">Audible air leak</label>
-                <div class="option-boxes" data-name="Audible air leak">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-
-              <div class="checkbox-item">
-                <label class="text-sm">Brake pushrod stroke is at or beyond the adjustment limit</label>
-                <div class="option-boxes" data-name="Brake pushrod stroke is at or beyond the adjustment limit">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-            </div>
-
-            <h3 class="font-bold mt-4 mb-2 text-gray-800">Brake Pushrod Stroke Measurements</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <div class="form-group">
-                <label for="r-steer" class="block text-sm">R Steer</label>
-                <input type="text" id="r-steer" class="rounded-md">
-              </div>
-              <div class="form-group">
-                <label for="r-drive" class="block text-sm">R Drive</label>
-                <input type="text" id="r-drive" class="rounded-md">
-              </div>
-              <div class="form-group">
-                <label for="r-tag" class="block text-sm">R Tag</label>
-                <input type="text" id="r-tag" class="rounded-md">
-              </div>
-              <div class="form-group">
-                <label for="l-steer" class="block text-sm">L Steer</label>
-                <input type="text" id="l-steer" class="rounded-md">
-              </div>
-              <div class="form-group">
-                <label for="l-drive" class="block text-sm">L Drive</label>
-                <input type="text" id="l-drive" class="rounded-md">
-              </div>
-              <div class="form-group">
-                <label for="l-tag" class="block text-sm">L Tag</label>
-                <input type="text" id="l-tag" class="rounded-md">
-              </div>
-            </div>
-
-            <div class="checkbox-container mt-4">
-              <div class="checkbox-item">
-                <label class="text-sm">Clearance between disc brake pads and rotor exceeds manufacturer's specified limit</label>
-                <div class="option-boxes" data-name="Clearance between disc brake pads and rotor exceeds manufacturer's specified limit">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Wedge brake shoe movement exceeds manufacturer's specified limit</label>
-                <div class="option-boxes" data-name="Wedge brake shoe movement exceeds manufacturer's specified limit">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Excessive discharge of fluids from air reservoir</label>
-                <div class="option-boxes" data-name="Excessive discharge of fluids from air reservoir">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Air compressor, mounts or attachments damaged or defective</label>
-                <div class="option-boxes" data-name="Air compressor, mounts or attachments damaged or defective">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Compressor drive belt loose or damaged</label>
-                <div class="option-boxes" data-name="Compressor drive belt loose or damaged">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Air line or fitting damaged or insecure</label>
-                <div class="option-boxes" data-name="Air line or fitting damaged or insecure">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Air tank defective, damaged or insecure</label>
-                <div class="option-boxes" data-name="Air tank defective, damaged or insecure">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Air tank drain or moisture ejector device inoperative</label>
-                <div class="option-boxes" data-name="Air tank drain or moisture ejector device inoperative">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Brake chamber, brake linkage or other brake component is defective, damaged or insecure</label>
-                <div class="option-boxes" data-name="Brake chamber, brake linkage or other brake component is defective, damaged or insecure">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Spring brake is broken or malfunctions</label>
-                <div class="option-boxes" data-name="Spring brake is broken or malfunctions">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Inoperative service, parking or emergency brake</label>
-                <div class="option-boxes" data-name="Inoperative service, parking or emergency brake">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section 2: Exhaust System -->
-          <div class="mb-8">
-            <h2 class="section-header">2. Exhaust System</h2>
-            <div class="checkbox-container">
-              <div class="checkbox-item">
-                <label class="text-sm">Exhaust leak</label>
-                <div class="option-boxes" data-name="Exhaust leak">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Exhaust system component insecure, damaged or perforated</label>
-                <div class="option-boxes" data-name="Exhaust system component insecure, damaged or perforated">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section 3: Frame &&/or Underbody -->
-          <div class="mb-8">
-            <h2 class="section-header">3. Frame &&/or Underbody</h2>
-            <div class="checkbox-container">
-              <div class="checkbox-item">
-                <label class="text-sm">Any frame member or fastener is damaged, cracked or insecure</label>
-                <div class="option-boxes" data-name="Any frame member or fastener is damaged, cracked or insecure">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Any component mount is damaged or insecure</label>
-                <div class="option-boxes" data-name="Any component mount is damaged or insecure">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- RIGHT COLUMN -->
-        <div>
-          <!-- Section 4: Fuel System -->
-          <div class="mb-8">
-            <h2 class="section-header">4. Fuel System</h2>
-            <div class="checkbox-container">
-              <div class="checkbox-item">
-                <label class="text-sm">Fuel leak</label>
-                <div class="option-boxes" data-name="Fuel leak">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Insecure fuel tanks, fuel tank mounts or guards</label>
-                <div class="option-boxes" data-name="Insecure fuel tanks, fuel tank mounts or guards">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Fuel line or fitting damaged or insecure</label>
-                <div class="option-boxes" data-name="Fuel line or fitting damaged or insecure">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section 5: Steering -->
-          <div class="mb-8">
-            <h2 class="section-header">5. Steering</h2>
-            <div class="checkbox-container">
-              <div class="checkbox-item">
-                <label class="text-sm">Steering linkage is damaged or insecure</label>
-                <div class="option-boxes" data-name="Steering linkage is damaged or insecure">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Power steering fluid is leaking, contaminated or low</label>
-                <div class="option-boxes" data-name="Power steering fluid is leaking, contaminated or low">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section 6: Suspension System -->
-          <div class="mb-8">
-            <h2 class="section-header">6. Suspension System</h2>
-            <div class="checkbox-container">
-              <div class="checkbox-item">
-                <label class="text-sm">Air leak or malfunction of air suspension system or component</label>
-                <div class="option-boxes" data-name="Air leak or malfunction of air suspension system or component">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Damage or deterioration of any suspension component</label>
-                <div class="option-boxes" data-name="Damage or deterioration of any suspension component">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section 7: Tires -->
-          <div class="mb-8">
-            <h2 class="section-header">7. Tires</h2>
-            <div class="checkbox-container">
-              <div class="checkbox-item">
-                <label class="text-sm">Tire inflation less than required</label>
-                <div class="option-boxes" data-name="Tire inflation less than required">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Tire treads worn to wear limits</label>
-                <div class="option-boxes" data-name="Tire treads worn to wear limits">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Damage to tread or sidewall of tire</label>
-                <div class="option-boxes" data-name="Damage to tread or sidewall of tire">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Retread or rebuilt tire is used on front axle</label>
-                <div class="option-boxes" data-name="Retread or rebuilt tire is used on front axle">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Section 8: Wheels && Fasteners -->
-          <div class="mb-8">
-            <h2 class="section-header">8. Wheels && Fasteners</h2>
-            <div class="checkbox-container">
-              <div class="checkbox-item">
-                <label class="text-sm">Loose, missing, damaged or ineffective wheel fastener</label>
-                <div class="option-boxes" data-name="Loose, missing, damaged or ineffective wheel fastener">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="checkbox-item">
-                <label class="text-sm">Damaged wheel or wheel component</label>
-                <div class="option-boxes" data-name="Damaged wheel or wheel component">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- FMCSA -->
-          <div class="mb-8">
-            <h2 class="section-header">For buses travelling to USA, per FMCSA Regulations, Part 396.3</h2>
-            <div class="checkbox-container">
-              <div class="checkbox-item">
-                <label class="text-sm">All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally</label>
-                <div class="option-boxes" data-name="All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally">
-                  <span class="option-box ok" data-value="ok">✓</span>
-                  <span class="option-box repaired" data-value="repaired">R</span>
-                  <span class="option-box na" data-value="na">N/A</span>
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="tire-size" class="block text-sm">Tire size:</label>
-                <input type="text" id="tire-size" class="rounded-md">
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Repairs -->
-      <div class="mb-8">
-        <h2 class="section-header">Repairs</h2>
-        <div class="form-group">
-          <label for="repairs-notes" class="block text-sm">Notes on Repairs Made</label>
-          <textarea id="repairs-notes" rows="4" class="rounded-md"></textarea>
-        </div>
-      </div>
-
-      <!-- Declaration + Signature -->
-      <div class="mb-8">
-        <h2 class="section-header">Declaration</h2>
-        <div class="mt-2 mb-4">
-          <button type="button" id="autoSignBtn" class="inline-flex items-center px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">Click to Declare &amp; Sign</button>
-        </div>
-
-        <div class="mb-4">
-          <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" id="declaration-checkbox" class="mt-1 h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500 transition"/>
-            <span>I declare that the vehicle shown above has been inspected in accordance with this Regulation && that at the end of the inspection, there are no defects listed in Schedule 4. O. Reg. 199/07, s. 12 (1); O. Reg. 242/14, s. 6 (1-3); O. Reg. 256/15, s. 5 (1).</span>
-          </label>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="form-group">
-            <label for="inspector-name" class="block text-sm">Name of the person who conducted the inspection (Printed)</label>
-            <input type="text" id="inspector-name" class="rounded-md">
-          </div>
-          <div class="form-group">
-            <label class="block text-sm">Signature of the person who conducted the inspection</label>
-            <canvas id="signatureCanvas" width="400" height="100" class="mx-auto block"></canvas>
-            <button type="button" id="clearSignatureBtn" class="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition">Clear Signature</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="flex flex-col sm:flex-row justify-end gap-4">
-        <button type="submit" class="px-6 py-3 bg-indigo-600 text-white font-medium rounded-md shadow-lg hover:bg-indigo-700 transition">
-          Submit & Generate PDF
-        </button>
-        <button type="reset" class="px-6 py-3 bg-gray-200 text-gray-800 font-medium rounded-md shadow-lg hover:bg-gray-300 transition">
-          Reset
-        </button>
-
-        <!-- NEW: one-click to save → render → open viewer with context -->
-        <button type="button" id="btnViewPDF" class="px-6 py-3 bg-emerald-600 text-white font-medium rounded-md shadow-lg hover:bg-emerald-700 transition">
-          Generate PDF & Open Viewer
-        </button>
-      </div>
-    </form>
-
-    <div class="footer-note flex justify-center mt-6 gap-6">
-      <p><strong>✓</strong> = Found Okay</p>
-      <p><strong>R</strong> = Repaired</p>
-      <p><strong>N/A</strong> = Not Applicable</p>
-    </div>
-  </div>
-
-  <!-- Samsara Odometer Modal -->
-  <!-- ... (unchanged modal and the big script block you posted stay as-is) ... -->
-  <!-- KEEP ALL YOUR EXISTING SCRIPTS BELOW (unchanged) -->
-  <!-- (I did not remove any of your logic; I only add the new viewer launcher at the end.) -->
-
-  <!-- … all your existing <script> blocks from the original file remain here … -->
-
-  <!-- keep your existing submit-flow -->
-  <script defer src="/js/submit-flow.js"></script>
-
-  <!-- === ADD: viewer launcher (inline “open-pdf-viewer.js”) === -->
+  <!-- Keep: capture PDF blobs created on this page (best-effort) -->
   <script>
-  (function () {
-    function toISODate(d) {
-      if (!d) return new Date().toISOString().slice(0,10);
-      const dt = new Date(d);
-      return Number.isNaN(dt.getTime()) ? new Date().toISOString().slice(0,10) : dt.toISOString().slice(0,10);
-    }
-    function sanitizeUnit(u){ return String(u||'Unit').replace(/[^\w\-]+/g,'_'); }
-    function numOrNull(n){ if(n==null) return null; const v=Number(String(n).replace(/,/g,'').trim()); return Number.isFinite(v)?v:null; }
-
-    async function openPdfViewerForInspection(opts){
-      const inspectionId   = String(opts?.inspectionId||'').trim();
-      const unitNumber     = String(opts?.unitNumber||'').trim();
-      const inspectionDate = toISODate(opts?.inspectionDate);
-      const odometer       = numOrNull(opts?.odometer);
-      const pdfUrl         = opts?.pdfUrl || '';
-      if (!inspectionId){ alert('Missing inspectionId'); return; }
-      if (!pdfUrl){ alert('Missing pdfUrl'); return; }
-
-      const filename = `Schedule-4_Inspection_${sanitizeUnit(unitNumber||'Unit')}_${inspectionDate}.pdf`;
-      // persist for viewer/fleetio
-      try { sessionStorage.setItem('schedule4Data', JSON.stringify({ inspectionId, unitNumber, inspectionDate, odometer })); } catch {}
-      const params = new URLSearchParams({
-        id: inspectionId,
-        unit: unitNumber,
-        odometer: odometer!=null?String(odometer):'',
-        date: inspectionDate,
-        filename,
-        src: pdfUrl  // let the viewer load same-origin URL; Fleetio flow can still pull bytes or pass pdfUrl to server
-      });
-      const viewerUrl = `/pdf_viewer.html?${params.toString()}`;
-      window.open(viewerUrl, '_blank', 'noopener,noreferrer');
-    }
-
-    // Helper to read the current form state and return minimal payload
-    function collectFormPayload(){
-      const get = id => document.getElementById(id);
-      const unitSel = get('unit-number');
-      const unitOther = get('unit-number-other');
-      const unitNumber = (unitSel && unitSel.value && unitSel.value!=='other')
-        ? (unitSel.options[unitSel.selectedIndex]?.textContent || '')
-        : (unitOther?.classList.contains('hidden') ? '' : (unitOther?.value || ''));
-
-      return {
-        unitNumber: (unitNumber||'').trim(),
-        licensePlate: get('license-plate')?.value || '',
-        odometer: (get('odometer')?.value || '').replace(/,/g,''),
-        inspectionDate: get('inspection-date')?.value || '',
-        address: get('address')?.value || '',
-        carrierName: get('carrier')?.value || '',
-        inspectorName: get('inspector-name')?.value || ''
-      };
-    }
-
-    // Click: save → print → open viewer
-    document.addEventListener('DOMContentLoaded', function(){
-      const btn = document.getElementById('btnViewPDF');
-      if (!btn) return;
-
-      btn.addEventListener('click', async function(){
-        btn.disabled = true;
-
-        try {
-          // Build the same minimal payload the form Submit uses (no need to revalidate here)
-          const p = collectFormPayload();
-
-          // Save to DB (create or update), expect { id } back
-          const saveRes = await fetch('/api/inspections', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ payload: p })
-          });
-          const saveJson = await saveRes.json().catch(()=> ({}));
-          if (!saveRes.ok || !saveJson?.id) throw new Error('Save failed — no id');
-
-          const inspectionId = String(saveJson.id);
-
-          // Ask server to render PDF (puppeteer) for /output.html?id=...
-          const printRes = await fetch('/api/pdf/print', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ id: inspectionId, url: `/output.html?id=${encodeURIComponent(inspectionId)}` })
-          });
-          if (!printRes.ok) {
-            const t = await printRes.text().catch(()=> '');
-            throw new Error('Print failed: ' + t);
-          }
-
-          // Open the viewer with a fetchable URL — this avoids any PDF.js timing issues
-          const pdfUrl = `/output.html?id=${encodeURIComponent(inspectionId)}`;
-          await openPdfViewerForInspection({
-            inspectionId,
-            unitNumber: p.unitNumber,
-            inspectionDate: p.inspectionDate,
-            odometer: p.odometer,
-            pdfUrl
-          });
-        } catch (err) {
-          console.error(err);
-          alert('Could not generate/open PDF: ' + (err?.message || err));
-        } finally {
-          btn.disabled = false;
+  (function(){
+    const _create = URL.createObjectURL;
+    URL.createObjectURL = function(obj){
+      try {
+        if (obj instanceof Blob && obj.type === 'application/pdf') {
+          window.__lastPdfBlob = obj;
         }
-      });
-    });
+      } catch(e){}
+      return _create.apply(this, arguments);
+    };
   })();
   </script>
-  <!-- === END viewer launcher === -->
+</head>
+<body class="text-white">
+  <!-- Toolbar -->
+  <header class="toolbar w-full bg-black/60 backdrop-blur supports-[backdrop-filter]:bg-black/40 border-b border-white/10">
+    <div class="max-w-screen-xl mx-auto px-4 py-2 flex items-center gap-2">
+      <a href="/" class="text-sm text-white/70 hover:text-white">← Back</a>
+      <div class="ml-auto flex items-center gap-2">
+        <button id="btnPrint" class="px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm">Download PDF</button>
+        <button id="btnFleetio" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">Create Fleetio Work Order</button>
+        <button id="btnClose" class="px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm">Close</button>
+      </div>
+    </div>
+  </header>
 
+  <!-- Viewer -->
+  <main class="h-[calc(100%-56px)]">
+    <iframe id="pdfFrame" class="w-full h-full bg-neutral-900" title="PDF Preview"></iframe>
+  </main>
+
+  <script>
+    // minimal loader for the iframe using ?src and ?filename
+    (function(){
+      const params = new URLSearchParams(location.search);
+      const src = params.get('src') || '';
+      const filename = params.get('filename') || '';
+      const frame = document.getElementById('pdfFrame');
+      if (src) frame.src = src;
+
+      document.getElementById('btnPrint').addEventListener('click', async () => {
+        try {
+          const currentSrc = src || frame?.src || '';
+          const dlName = filename || 'schedule4.pdf';
+          if (!currentSrc) return alert('No PDF loaded.');
+
+          if (currentSrc.startsWith('blob:') || currentSrc.startsWith('data:application/pdf')) {
+            const a = document.createElement('a');
+            a.href = currentSrc; a.download = dlName;
+            document.body.appendChild(a); a.click(); a.remove();
+            return;
+          }
+          const resp = await fetch(currentSrc, { credentials: 'include' });
+          if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = dlName;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          alert('Failed to save PDF: ' + (e?.message || e));
+        }
+      });
+
+      document.getElementById('btnClose').addEventListener('click', () => window.close());
+    })();
+  </script>
+
+
+
+
+  <!-- Single, authoritative Fleetio handler -->
+  <script src="/js/fleetio.js"></script>
 </body>
 </html>
