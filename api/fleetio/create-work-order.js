@@ -1,4 +1,8 @@
 // /api/fleetio/create-work-order.js
+// Creates a Fleetio Work Order in "Open", maps Date/Odometer, attaches the on-screen PDF,
+// adds the "Schedule 4 Inspection (& EEPOC FMCSA 396.3)" line item,
+// and is safe if 'pg' isn't installed (DB idempotency optional).
+
 export const config = { runtime: 'nodejs' };
 
 const BASE_V2 = 'https://secure.fleetio.com/api/v2';
@@ -14,14 +18,13 @@ function requiredEnv(name) {
 const API_TOKEN = requiredEnv('FLEETIO_API_TOKEN');
 const ACCOUNT_TOKEN = requiredEnv('FLEETIO_ACCOUNT_TOKEN');
 
-// -------- optional Neon DB (idempotency) with SAFE dynamic import --------
+// ---------- Optional Neon DB for idempotency (safe if 'pg' missing) ----------
 let pgPool = null;
 async function initDb() {
   try {
     const url = process.env.DATABASE_URL;
     if (!url) return null;
     if (pgPool) return pgPool;
-    // Dynamic import guarded so project doesn't need 'pg' installed
     let Pool;
     try {
       ({ Pool } = await import('pg'));
@@ -30,12 +33,14 @@ async function initDb() {
       return null;
     }
     pgPool = new Pool({ connectionString: url, max: 1, ssl: { rejectUnauthorized: false } });
-    await pgPool.query(`CREATE TABLE IF NOT EXISTS fleetio_work_orders (
-      inspection_id TEXT PRIMARY KEY,
-      work_order_id BIGINT NOT NULL,
-      work_order_number TEXT,
-      created_at TIMESTAMPTZ DEFAULT now()
-    )`);
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS fleetio_work_orders (
+        inspection_id TEXT PRIMARY KEY,
+        work_order_id BIGINT NOT NULL,
+        work_order_number TEXT,
+        created_at TIMESTAMPTZ DEFAULT now()
+      )
+    `);
     return pgPool;
   } catch {
     return null;
@@ -61,7 +66,7 @@ async function saveWO(inspectionId, workOrderId, workOrderNumber) {
   );
 }
 
-// -------- helpers --------
+// ---------- Helpers ----------
 const defaultHeaders = {
   Accept: 'application/json',
   'Content-Type': 'application/json',
@@ -76,7 +81,7 @@ function toIsoDate(dateLike) {
   if (typeof dateLike === 'string') {
     const m = dateLike.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) {
-      const [ , mm, dd, yyyy ] = m;
+      const [, mm, dd, yyyy] = m;
       const dt = new Date(`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}T00:00:00Z`);
       return dt.toISOString().slice(0, 10);
     }
@@ -87,7 +92,7 @@ function toIsoDate(dateLike) {
 }
 
 function toInspectionDateTime(dateOnlyLike) {
-  // Use 15:00Z to avoid previous-day local rollover in America/Toronto
+  // 15:00Z avoids previous-day rollover in America/Toronto
   const d = String(toIsoDate(dateOnlyLike));
   const ts = new Date(`${d}T15:00:00Z`);
   return ts.toISOString();
@@ -106,12 +111,14 @@ function deriveOrigin(req) {
   return `${proto}://${host}`;
 }
 
-// -------- Fleetio HTTP --------
+function isPdf(buf) {
+  if (!buf || typeof buf.slice !== 'function') return false;
+  try { return buf.slice(0, 5).toString('ascii') === '%PDF-'; } catch { return false; }
+}
+
+// ---------- Fleetio HTTP ----------
 async function fleetioV2(path, init = {}, step = 'fleetioV2') {
-  const res = await fetch(`${BASE_V2}${path}`, {
-    ...init,
-    headers: { ...(init.headers || {}), ...defaultHeaders }
-  });
+  const res = await fetch(`${BASE_V2}${path}`, { ...init, headers: { ...(init.headers||{}), ...defaultHeaders } });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     const err = new Error(`[${step}] Fleetio V2 ${init.method || 'GET'} ${path} failed: ${res.status} ${body}`);
@@ -123,10 +130,7 @@ async function fleetioV2(path, init = {}, step = 'fleetioV2') {
 }
 
 async function fleetioV1(path, init = {}, step = 'fleetioV1') {
-  const res = await fetch(`${BASE_V1}${path}`, {
-    ...init,
-    headers: { ...(init.headers || {}), ...defaultHeaders }
-  });
+  const res = await fetch(`${BASE_V1}${path}`, { ...init, headers: { ...(init.headers||{}), ...defaultHeaders } });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     const err = new Error(`[${step}] Fleetio V1 ${init.method || 'GET'} ${path} failed: ${res.status} ${body}`);
@@ -137,14 +141,11 @@ async function fleetioV1(path, init = {}, step = 'fleetioV1') {
   return ct.includes('application/json') ? res.json() : res.text();
 }
 
-// -------- Upload to Fleetio-managed storage --------
+// ---------- Upload to Fleetio-managed storage ----------
 async function uploadPdfToFleetio(pdfBuffer, filename) {
   const policyResp = await fleetioV1('/uploads/policies', {
     method: 'POST',
-    body: JSON.stringify({
-      filename: filename || 'schedule4.pdf',
-      file_content_type: 'application/pdf'
-    })
+    body: JSON.stringify({ filename: filename || 'schedule4.pdf', file_content_type: 'application/pdf' })
   }, 'get_upload_policy');
 
   const { policy, signature, path } = policyResp || {};
@@ -177,7 +178,7 @@ async function uploadPdfToFleetio(pdfBuffer, filename) {
   return fileUrl;
 }
 
-// -------- Lookups --------
+// ---------- Lookups ----------
 async function listAllVehicles() {
   const all = [];
   const PER_PAGE = 100;
@@ -186,7 +187,7 @@ async function listAllVehicles() {
     const params = new URLSearchParams({ per_page: String(PER_PAGE) });
     if (cursor) params.set('start_cursor', cursor);
     const out = await fleetioV1(`/vehicles?${params.toString()}`, {}, 'list_vehicles');
-    let records = Array.isArray(out) ? out : (out?.records || out?.data || []);
+    const records = Array.isArray(out) ? out : (out?.records || out?.data || []);
     const next = out?.next_cursor || null;
     if (records?.length) all.push(...records);
     if (!next) break;
@@ -244,7 +245,7 @@ function sanitizeWorkOrderNumber(n) {
   return s.startsWith('#') ? s.slice(1) : s;
 }
 
-// -------- Handler --------
+// ---------- Handler ----------
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -255,7 +256,7 @@ export default async function handler(req, res) {
     const {
       inspectionId,
       filename,
-      reportUrl,
+      reportUrl,           // viewer URL (server will inject ?id= if missing)
       data = {},
       unitNumber,
       vehicleId: vehicleIdFromBody,
@@ -264,26 +265,26 @@ export default async function handler(req, res) {
     } = req.body || {};
 
     if (!inspectionId) return res.status(400).json({ error: 'inspectionId is required' });
-    const safeFilename = filename || `inspection_${inspectionId}.pdf`;
-    const inspectionDate = data.inspectionDate || data.dateInspected || data.date_inspected || null;
-    const odometer = numOrNull(data.odometer ?? data.odometerStart ?? data.startOdometer);
 
-    // ---- idempotency: reuse existing WO if we've already made one for this inspection ----
+    const safeFilename   = filename || `inspection_${inspectionId}.pdf`;
+    const inspectionDate = data.inspectionDate || data.dateInspected || data.date_inspected || null;
+    const odometer       = numOrNull(data.odometer ?? data.odometerStart ?? data.startOdometer);
+
+    // ---- Reuse existing WO for this inspection (idempotency) ----
     const existing = await getExistingWO(inspectionId);
     if (existing?.work_order_id) {
       const work_order_url = existing.work_order_number
         ? `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${sanitizeWorkOrderNumber(existing.work_order_number)}/edit`
         : `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${existing.work_order_id}/edit`;
 
-      // Optionally still attach (non-fatal if skipped)
-      let pdfBuffer = null;
-      let raw = pdfBase64;
+      // Reattach PDF if valid PDF bytes were sent
+      let raw = pdfBase64, pdfBuffer = null;
       if (raw && typeof raw === 'string') {
         const idx = raw.indexOf(',');
         if (raw.startsWith('data:') && idx !== -1) raw = raw.slice(idx + 1);
-        pdfBuffer = Buffer.from(raw, 'base64');
+        try { pdfBuffer = Buffer.from(raw, 'base64'); } catch {}
       }
-      if (pdfBuffer) {
+      if (pdfBuffer && isPdf(pdfBuffer)) {
         const file_url = await uploadPdfToFleetio(pdfBuffer, safeFilename);
         await fleetioV2(`/work_orders/${existing.work_order_id}`, {
           method: 'PATCH',
@@ -319,17 +320,13 @@ export default async function handler(req, res) {
     // 2) Resolve "Open" status
     const work_order_status_id = await getOpenStatusId();
 
-    // 3) Create Work Order (v2) — issued/started at = Date Inspected (shifted to 15:00Z to avoid tz rollbacks)
-    const issued_at = toInspectionDateTime(inspectionDate || new Date());
+    // 3) Create Work Order (v2) — issued/started at = Date Inspected (15:00Z)
+    const issued_at  = toInspectionDateTime(inspectionDate || new Date());
     const started_at = issued_at;
 
-    const woPayload = {
-      vehicle_id: finalVehicleId,
-      work_order_status_id,
-      issued_at,
-      started_at
-    };
+    const woPayload = { vehicle_id: finalVehicleId, work_order_status_id, issued_at, started_at };
 
+    // Best-effort idempotency at Fleetio
     const idempotencyKey = `inspection:${inspectionId}`;
     const createdWO = await fleetioV2('/work_orders', {
       method: 'POST',
@@ -353,25 +350,20 @@ export default async function handler(req, res) {
       ? `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${workOrderNumber}/edit`
       : `https://secure.fleetio.com/${ACCOUNT_TOKEN}/work_orders/${workOrderId}/edit`;
 
-    // Persist mapping to avoid duplicates on retries (only if DB is available)
     await saveWO(inspectionId, workOrderId, workOrderNumber);
 
-    // 4) PDF: prefer client-provided base64. Fallback to print endpoint.
+    // 4) PDF: prefer client-provided base64; verify bytes are PDF; else fall back to print with ?id=
     let pdfBuffer = null;
     let raw = pdfBase64;
     if (raw && typeof raw === 'string') {
       const idx = raw.indexOf(',');
       if (raw.startsWith('data:') && idx !== -1) raw = raw.slice(idx + 1);
       try { pdfBuffer = Buffer.from(raw, 'base64'); } catch {}
+      if (pdfBuffer && !isPdf(pdfBuffer)) pdfBuffer = null; // invalid capture → fall back
     }
     if (!pdfBuffer) {
-      if (!reportUrl) {
-        const err = new Error('[render_pdf] reportUrl required when pdfBase64 is not provided');
-        err.step = 'render_pdf_missing'; err.status = 400;
-        throw err;
-      }
       const origin = deriveOrigin(req);
-      let absolute = reportUrl;
+      let absolute = reportUrl || req.headers.referer || '/';
       if (!/^https?:\/\//i.test(absolute)) absolute = `${origin}${absolute.startsWith('/') ? '' : '/'}${absolute}`;
       try {
         const u = new URL(absolute);
@@ -400,7 +392,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({ documents_attributes: [ { name: safeFilename, file_url } ] })
     }, 'attach_document');
 
-    // 5) Add Service Task line item
+    // 5) Service Task line item
     const taskName = serviceTaskName || 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
     async function findOrCreateServiceTaskId(name) {
       const PER_PAGE = 100;
@@ -434,36 +426,49 @@ export default async function handler(req, res) {
       })
     }, 'create_line_item');
 
-    // 6) Create starting & ending Meter Entries and (best-effort) link them on the WO
+    // 6) Start/End Meter Entries tied to the Work Order
     let startMeterId = null, endMeterId = null;
     if (odometer != null) {
+      // First try with the inspected date; if Fleetio rejects due to sequence, retry with "today"
+      async function createMeter(category, dateOnly) {
+        const body = {
+          vehicle_id: finalVehicleId,
+          value: odometer,
+          date: dateOnly,
+          category,
+          meterable_type: 'WorkOrder',
+          meterable_id: workOrderId
+        };
+        try {
+          return await fleetioV1('/meter_entries', { method: 'POST', body: JSON.stringify(body) }, `create_${category}_meter`);
+        } catch (e) {
+          // If sequence/date error (often 422), retry with today's date
+          if (e?.status === 422) {
+            const today = new Date().toISOString().slice(0,10);
+            const body2 = { ...body, date: today };
+            return await fleetioV1('/meter_entries', { method: 'POST', body: JSON.stringify(body2) }, `create_${category}_meter_retry`);
+          }
+          throw e;
+        }
+      }
+
       const dateOnly = toIsoDate(inspectionDate || new Date());
-      const base = {
-        vehicle_id: finalVehicleId,
-        value: odometer,
-        date: dateOnly,
-        meter_type: 'primary' // ensure odometer vs hours
-      };
-      const startBody = { ...base, category: 'starting', meterable_type: 'WorkOrder', meterable_id: workOrderId };
-      const start = await fleetioV1('/meter_entries', { method: 'POST', body: JSON.stringify(startBody) }, 'create_start_meter');
+      const start = await createMeter('starting', dateOnly);
       startMeterId = start?.id || null;
 
-      const endBody = { ...base, category: 'ending', meterable_type: 'WorkOrder', meterable_id: workOrderId };
-      const end = await fleetioV1('/meter_entries', { method: 'POST', body: JSON.stringify(endBody) }, 'create_end_meter');
+      const end   = await createMeter('ending',   dateOnly);
       endMeterId = end?.id || null;
 
-      // Best-effort: explicitly point WO at these meter entries (if supported)
+      // Best-effort: explicitly link on the WO (if supported)
       try {
         const patch = {};
         if (startMeterId) patch.starting_meter_entry_id = startMeterId;
-        if (endMeterId) patch.ending_meter_entry_id = endMeterId;
+        if (endMeterId)   patch.ending_meter_entry_id   = endMeterId;
+        if (!endMeterId && startMeterId) patch.ending_meter_same_as_start = true;
         if (Object.keys(patch).length) {
           await fleetioV2(`/work_orders/${workOrderId}`, { method: 'PATCH', body: JSON.stringify(patch) }, 'link_meters_to_wo');
         }
-      } catch (e) {
-        // non-fatal if not supported in your account/version
-        console.warn('link_meters_to_wo failed (non-fatal):', e?.status, e?.message);
-      }
+      } catch {}
     }
 
     return res.status(200).json({

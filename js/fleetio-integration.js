@@ -1,4 +1,8 @@
 // /js/fleetio-integration.js
+// Finds the displayed PDF, captures it (base64) when possible,
+// and always sends the current page URL so the server can force ?id=<inspectionId>
+// to generate a correct PDF if capture fails.
+
 (function () {
   function $(sel) { return document.querySelector(sel); }
   function getQuery() { const u = new URL(window.location.href); return u.searchParams; }
@@ -11,22 +15,33 @@
   }
 
   async function findPdfSrc() {
-    const iframe = document.querySelector('iframe[src$=".pdf"], iframe[type="application/pdf"], iframe.pdf, #pdfFrame, .pdf-iframe');
-    const embed = document.querySelector('embed[type="application/pdf"], embed[src$=".pdf"]');
+    // Embedded candidates
+    const iframe = document.querySelector('iframe[src$=".pdf"], iframe[type="application/pdf"], #pdfFrame, .pdf-iframe');
+    const embed  = document.querySelector('embed[type="application/pdf"], embed[src$=".pdf"]');
     const objectEl = document.querySelector('object[type="application/pdf"], object[data$=".pdf"]');
     const candidates = [];
     if (iframe && iframe.src) candidates.push(iframe.src);
     if (embed && embed.src) candidates.push(embed.src);
     if (objectEl && objectEl.data) candidates.push(objectEl.data);
+
+    // Or your viewer passed ?src=...
     const q = getQuery();
     const srcParam = q.get('src'); if (srcParam) candidates.push(srcParam);
-    for (const src of candidates) { if (src && (/^blob:|^data:application\/pdf|\.pdf(\?|$)|^https?:/i.test(src))) return src; }
+
+    for (const src of candidates) {
+      if (!src) continue;
+      if (/^data:application\/pdf/i.test(src)) return src;
+      if (/^blob:/i.test(src)) return src;
+      if (/\.pdf(\?|$)/i.test(src)) return src;
+      if (/\/api\/pdf\/print/i.test(src)) return src; // server can render
+    }
     return null;
   }
 
   async function fetchPdfBase64(src) {
     if (!src) throw new Error('No PDF src');
     if (src.startsWith('data:application/pdf')) return src;
+    // blob: and same-origin URLs should fetch
     const resp = await fetch(src);
     if (!resp.ok) throw new Error(`Failed to fetch PDF: ${resp.status}`);
     const ab = await resp.arrayBuffer();
@@ -43,6 +58,18 @@
     return Number.isFinite(x) ? x : null;
   }
 
+  function findUnitFromDom() {
+    const el = document.querySelector('#unitNumber, [data-unit], [data-unit-number]');
+    if (el) {
+      const v = el.getAttribute('data-unit') || el.getAttribute('data-unit-number') || el.value || el.textContent;
+      if (v) return v.trim();
+    }
+    const text = document.body?.innerText || '';
+    const m = text.match(/Unit\s*#?\s*[:\-]?\s*([A-Za-z0-9\-]+)/i);
+    if (m) return m[1];
+    return null;
+  }
+
   function getContext() {
     const q = getQuery();
     const ctx = {
@@ -51,6 +78,7 @@
       unitNumber: q.get('unit') || q.get('vehicle') || q.get('unit_number') || null,
       odometer: parseNumber(q.get('odo') || q.get('odometer'))
     };
+    if (!ctx.unitNumber) ctx.unitNumber = findUnitFromDom();
     if (window.TBL && typeof window.TBL === 'object') {
       ctx.inspectionId = ctx.inspectionId || window.TBL.inspectionId || null;
       ctx.inspectionDate = ctx.inspectionDate || window.TBL.inspectionDate || null;
@@ -64,11 +92,17 @@
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const ct = r.headers.get('content-type') || '';
     const json = ct.includes('application/json') ? await r.json() : { ok: r.ok, text: await r.text() };
-    if (!r.ok) { const err = new Error(json?.error || `HTTP ${r.status}`); err.step = json?.step; err.details = json?.details; err.payload = json; throw err; }
+    if (!r.ok) {
+      const err = new Error(json?.error || `HTTP ${r.status}`);
+      err.step = json?.step; err.details = json?.details; err.payload = json; throw err;
+    }
     return json;
   }
 
-  function ensure(val, label) { if (val == null || val === '') throw new Error(`${label} is required`); return val; }
+  function ensure(val, label) {
+    if (val == null || val === '') throw new Error(`${label} is required`);
+    return val;
+  }
 
   function showVehiclePicker(choices) {
     return new Promise((resolve, reject) => {
@@ -111,12 +145,25 @@
       const inspectionDate = ctx.inspectionDate || new Date().toISOString().slice(0,10);
       const odometer = ctx.odometer;
 
+      // Try to capture the exact PDF currently shown
       const src = await findPdfSrc();
-      if (!src) throw new Error('Could not locate the rendered PDF in this viewer.');
-      const pdfDataUrl = await fetchPdfBase64(src);
+      let pdfDataUrl = null;
+      if (src) {
+        try { pdfDataUrl = await fetchPdfBase64(src); }
+        catch (e) { console.warn('PDF capture failed; server will render from URL:', e); }
+      }
+
       const filename = guessFilename(unitNumber, inspectionDate);
 
-      const payload = { inspectionId, unitNumber, data: { inspectionDate, odometer }, filename, pdfBase64: pdfDataUrl };
+      // Always pass current page URL so server can force ?id= and render if capture is invalid/missing
+      const payload = {
+        inspectionId,
+        unitNumber,
+        data: { inspectionDate, odometer },
+        filename,
+        pdfBase64: pdfDataUrl || null,
+        reportUrl: window.location.href
+      };
 
       const res = await postJson('/api/fleetio/create-work-order', payload);
       if (res?.ok) {
