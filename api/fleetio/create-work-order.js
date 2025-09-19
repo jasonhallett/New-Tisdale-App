@@ -240,21 +240,38 @@ export default async function handler(req, res){
     }
 
     // === Add Service Task line item ===
-    try {
-      const SERVICE_TASK_NAME = 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
-      const taskId = await findServiceTaskIdByName(SERVICE_TASK_NAME);
-      if (taskId) {
-        const liRes = await addServiceTaskLineItem(workOrderId, taskId, SERVICE_TASK_NAME);
-        if (!liRes.ok) {
-          const t = await liRes.text().catch(()=> '');
-          warnList.push({ code:'add_line_item_failed', details: `HTTP ${liRes.status} ${t.slice(0,180)}` });
-        }
-      } else {
-        warnList.push({ code:'service_task_not_found', details: `Service Task "${SERVICE_TASK_NAME}" not found in Fleetio` });
+    const taskName = serviceTaskName || 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
+    // Try to find/create Service Task
+    async function findOrCreateServiceTaskId(name) {
+      const PER_PAGE = 100;
+      let cursor = null, found = null;
+      for (let i = 0; i < 50 && !found; i++) {
+        const params = new URLSearchParams({ per_page: String(PER_PAGE) });
+        if (cursor) params.set('start_cursor', cursor);
+        const out = await fleetioV1(`/service_tasks?${params.toString()}`, {}, 'list_service_tasks');
+        const items = Array.isArray(out) ? out : (out?.records || out?.data || []);
+        found = items.find(t => normalize(t?.name) === normalize(name)) || null;
+        cursor = out?.next_cursor || null;
+        if (!cursor) break;
       }
-    } catch (err) {
-      warnList.push({ code:'add_line_item_exception', details: String(err?.message || err) });
+      if (found?.id) return found.id;
+      const created = await fleetioV1('/service_tasks', { method: 'POST', body: JSON.stringify({ name }) }, 'create_service_task');
+      if (!created?.id) {
+        const err = new Error('[create_service_task] Service Task creation failed');
+        err.step = 'create_service_task'; err.status = 500;
+        throw err;
+      }
+      return created.id;
     }
+    const serviceTaskId = await findOrCreateServiceTaskId(taskName);
+    await fleetioV2(`/work_orders/${workOrderId}/work_order_line_items`, {
+      method: 'POST',
+      body: JSON.stringify({
+        type: 'WorkOrderServiceTaskLineItem',
+        item_type: 'ServiceTask',
+        item_id: serviceTaskId
+      })
+    }, 'create_line_item');
     // === end Service Task line item ===
 
     // Attach PDF (unchanged)
