@@ -3,8 +3,7 @@
   "functions": {
     "api/pdf/print.js": {
       "memory": 1024,
-      "maxDuration": 60,
-      "regions": ["cle1"]
+      "maxDuration": 60
     }
   },
   "routes": [
