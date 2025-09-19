@@ -5,30 +5,31 @@
   <title>Add / Manage Users</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- No color styling. Keep it neutral/minimal to match new_inspection.html -->
+  <link rel="stylesheet" href="./css/tisdale-theme.css" />
   <style>
     :root { --gap: 12px; }
-    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    body { margin: 0; font-family: var(--font-sans); background: var(--bg); color: var(--text); }
     .container { max-width: 960px; margin: 0 auto; padding: 16px; }
     h1, h2, h3 { margin: 0 0 8px; }
     p { margin: 0 0 12px; }
-    fieldset { border: 1px solid #ccc; border-radius: 6px; padding: 12px; margin: 0 0 16px; }
-    legend { padding: 0 6px; }
+    fieldset { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin: 0 0 16px; background: var(--bg-elev); }
+    legend { padding: 0 6px; color: var(--muted); }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
     .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--gap); }
     .row-1 { display: grid; grid-template-columns: 1fr; gap: var(--gap); }
-    label { display: block; margin-bottom: 4px; font-size: 14px; }
+    label { display: block; margin-bottom: 4px; font-size: 14px; color: var(--muted); }
     input[type="text"], input[type="email"], input[type="tel"], input[type="password"], select, textarea {
-      width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #bbb; border-radius: 4px; font-size: 14px;
+      width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; background: var(--ink); color: var(--text);
     }
     .roles { display: flex; flex-wrap: wrap; gap: 12px; }
     .role { display: inline-flex; align-items: center; gap: 6px; }
     .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    button { padding: 8px 14px; border: 1px solid #bbb; background: #f6f6f6; border-radius: 4px; cursor: pointer; }
+    button { padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border)); background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 88%, white 8%), var(--primary)); color: var(--primary-ink); border-radius: var(--radius-sm); cursor: pointer; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
     .hidden { display: none; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
-    .divider { height: 1px; background: #e5e5e5; margin: 16px 0; }
-    .note { font-size: 12px; opacity: 0.9; }
+    .divider { height: 1px; background: var(--border); margin: 16px 0; }
+    .note { font-size: 12px; opacity: 0.9; color: var(--muted); }
     .status { font-size: 13px; }
   </style>
 </head>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tisdale Employee App</title>
+  <title>Tisdale</title>
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,22 +16,16 @@
     <aside class="sidebar">
       <div class="brand">
         <picture>
-          <source srcset="./assets/tisdale-logo-dark.svg" media="(prefers-color-scheme: dark)">
-          <img src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines">
+          <source srcset="./tisdale-logo-dark.svg" media="(prefers-color-scheme: dark)">
+          <img src="./tisdale-logo-light.svg" alt="Tisdale Bus Lines">
         </picture>
-        <div class="brand-title small-muted">Tisdale Employee App</div>
       </div>
       <nav class="nav" id="nav">
         <a class="active" href="#schedule4s" data-href="schedule4s.html">🧾 <span>Schedule 4s</span></a>
-        <!-- Future items can be added here -->
       </nav>
     </aside>
 
     <header class="topbar">
-      <div class="title-wrap">
-        <div class="app-title">Tisdale Employee App</div>
-        <div class="page-title" id="pageTitle">Schedule 4s</div>
-      </div>
       <div class="top-actions">
         <button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button>
       </div>
@@ -44,7 +38,6 @@
 
   <script>
     const frame = document.getElementById('contentFrame');
-    const pageTitle = document.getElementById('pageTitle');
     frame.src = 'schedule4s.html';
 
     document.getElementById('nav').addEventListener('click', (e) => {
@@ -54,12 +47,11 @@
       document.querySelectorAll('.nav a').forEach(x => x.classList.remove('active'));
       a.classList.add('active');
       frame.src = a.dataset.href;
-      pageTitle.textContent = a.textContent.trim();
     });
 
     document.getElementById('logoutBtn').addEventListener('click', async () => {
       try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {}
-      window.location.href = '/';
+      window.location.href = '/logout.html';
     });
   </script>
 </body>
