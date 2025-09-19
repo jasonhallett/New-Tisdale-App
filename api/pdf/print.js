@@ -47,7 +47,7 @@ export default async function handler(req, res) {
   let browser;
   try {
     // ✅ IMPORTANT: executablePath is an async function — CALL it.
-    const executablePath = await chromium.executablePath;
+    const executablePath = await chromium.executablePath();
     // If your version of chrome-aws-lambda requires calling as a function, use:
     // const executablePath = await chromium.executablePath();
     // (Most versions require the parentheses. If you still get "expected string, got object",
