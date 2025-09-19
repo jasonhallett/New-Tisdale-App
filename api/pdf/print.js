@@ -24,7 +24,9 @@ export default async function handler(req, res) {
 
   // Parse body
   let body = {};
-  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); } catch {}
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+  } catch {}
 
   const filename = body.filename || 'Schedule-4_Inspection.pdf';
 
@@ -35,13 +37,21 @@ export default async function handler(req, res) {
 
   const targetPath = body.path || (body.id ? `/output.html?id=${encodeURIComponent(body.id)}` : '/output.html');
   let targetUrl;
-  try { targetUrl = new URL(targetPath, baseUrl).toString(); }
-  catch { targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`; }
+  try {
+    targetUrl = new URL(targetPath, baseUrl).toString();
+  } catch {
+    targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`;
+  }
 
   // Launch Chromium from chrome-aws-lambda (has libnss3 et al.)
   let browser;
   try {
+    // ✅ IMPORTANT: executablePath is an async function — CALL it.
     const executablePath = await chromium.executablePath;
+    // If your version of chrome-aws-lambda requires calling as a function, use:
+    // const executablePath = await chromium.executablePath();
+    // (Most versions require the parentheses. If you still get "expected string, got object",
+    //  switch to the line above with parentheses.)
     browser = await playwright.chromium.launch({
       args: chromium.args,
       executablePath,
