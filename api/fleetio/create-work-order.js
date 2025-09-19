@@ -59,54 +59,43 @@ function buildSet(assignments){
 }
 
 // UPDATE by id first (recordId), then by inspection_id (inspectionId). No inserts.
-// UPDATE by primary key first using (recordId ?? inspectionId), then legacy inspection_id.
-// No inserts. Best-effort if DB/env missing.
 async function updateExistingInspection({ recordId, inspectionId, woId, woNumber, docName, docUrl }){
   const pool = await getPool();
-  if (!pool) return { ok:false, reason:'no_db' };
+  if(!pool) return { ok:false, reason:'no_db' };
 
-  // Build SET clause
   const sets = [
     ['internal_work_order_number', '$2'],
     ['fleetio_work_order_id',      '$3'],
   ];
-  const params = [null, woNumber ?? null, woId ?? null];
+  const params = [null, woNumber || null, woId || null];
 
   let pIndex = 4;
-  if (docName !== undefined) { sets.push(['fleetio_document_name', `$${pIndex++}`]); params.push(docName ?? null); }
-  if (docUrl  !== undefined) { sets.push(['fleetio_document_url',  `$${pIndex++}`]); params.push(docUrl  ?? null); }
-  sets.push(['updated_at', 'now()']);
-
+  if (docName !== undefined){ sets.push(['fleetio_document_name', `$${pIndex++}`]); params.push(docName || null); }
+  if (docUrl  !== undefined){ sets.push(['fleetio_document_url',  `$${pIndex++}`]); params.push(docUrl  || null); }
+  sets.push(['updated_at','now()']);
   const setSql = buildSet(sets);
 
-  // ✅ Primary path: WHERE id = $1 using recordId OR inspectionId
-  const candidateId = (recordId ?? inspectionId) ?? null;
-  if (candidateId) {
-    params[0] = candidateId;
+  // Try WHERE id = $1 if recordId provided
+  if (recordId != null && recordId !== '') {
+    params[0] = recordId;
     const sql1 = `UPDATE schedule4_inspections SET ${setSql} WHERE id = $1`;
     try {
       const r1 = await pool.query(sql1, params);
-      if (r1.rowCount > 0) {
-        return { ok:true, by:'id', rowCount:r1.rowCount };
-      }
+      if (r1.rowCount > 0) return { ok:true, by:'id', rowCount:r1.rowCount };
     } catch (e) {
-      return { ok:false, reason:'error_id', error:String(e?.message || e) };
+      return { ok:false, reason:'error_id', error:String(e?.message||e) };
     }
   }
 
-  // 🧯 Optional legacy fallback: WHERE inspection_id = $1 (only if your table has this)
-  if (inspectionId != null && inspectionId !== '') {
-    params[0] = inspectionId;
-    const sql2 = `UPDATE schedule4_inspections SET ${setSql} WHERE inspection_id = $1`;
-    try {
-      const r2 = await pool.query(sql2, params);
-      return { ok:r2.rowCount > 0, by:(r2.rowCount > 0 ? 'inspection_id' : 'none'), rowCount:r2.rowCount };
-    } catch (e) {
-      return { ok:false, reason:'error_inspection_id', error:String(e?.message || e) };
-    }
+  // Fallback WHERE inspection_id = $1
+  params[0] = inspectionId ?? null;
+  const sql2 = `UPDATE schedule4_inspections SET ${setSql} WHERE inspection_id = $1`;
+  try {
+    const r2 = await pool.query(sql2, params);
+    return { ok:r2.rowCount>0, by: r2.rowCount>0 ? 'inspection_id' : 'none', rowCount:r2.rowCount };
+  } catch (e) {
+    return { ok:false, reason:'error_inspection_id', error:String(e?.message||e) };
   }
-
-  return { ok:false, reason:'no_match' };
 }
 
 /* =======================
