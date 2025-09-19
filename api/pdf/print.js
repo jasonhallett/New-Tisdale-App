@@ -4,9 +4,7 @@
 import pw from 'playwright-aws-lambda';
 
 export const config = {
-  runtime: 'nodejs',
-  memory: 1024,
-  maxDuration: 60
+  runtime: 'nodejs'
 };
 
 function json(res, status, obj) {
@@ -77,8 +75,8 @@ export default async function handler(req, res) {
 
     const pdfBuffer = await page.pdf({
       format: 'Letter',
-      printBackground: True,
-      preferCSSPageSize: True,
+      printBackground: true,
+      preferCSSPageSize: true,
       margin: { top: '0in', right: '0in', bottom: '0in', left: '0in' }
     });
 
