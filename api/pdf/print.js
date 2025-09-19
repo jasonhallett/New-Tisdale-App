@@ -4,8 +4,15 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
-// Force a Node serverless runtime (NOT Edge).
-export const config = { runtime: 'nodejs20.x' };
+// Force a Node serverless runtime (NOT Edge). Use 'nodejs' on Vercel (maps to Node 20).
+export const config = {
+  runtime: 'nodejs',
+  // These keys are supported by Vercel for Node functions; if your project prefers
+  // setting them in vercel.json under "functions", you can move them there instead.
+  regions: ['cle1'],
+  memory: 1024,       // MB
+  maxDuration: 60     // seconds
+};
 
 function json(res, status, obj) {
   res.status(status);
@@ -20,7 +27,7 @@ async function launchBrowser() {
     defaultViewport: chromium.defaultViewport,
     executablePath,
     headless: chromium.headless,
-    ignoreHTTPSErrors: true,
+    ignoreHTTPSErrors: true
   });
 }
 
@@ -57,7 +64,7 @@ export default async function handler(req, res) {
     return json(res, 500, {
       step: 'launch',
       error: 'Chromium failed to start',
-      details: err?.message,
+      details: err?.message
     });
   }
 
@@ -75,7 +82,6 @@ export default async function handler(req, res) {
     try {
       await page.goto(targetUrl, { waitUntil: ['load', 'domcontentloaded', 'networkidle0'], timeout: 60000 });
     } catch (err) {
-      // Grab some diagnostics if navigation failed (e.g., auth redirect or 4xx)
       let statusCode = null;
       try {
         const resp = await page.mainFrame().response();
@@ -87,7 +93,7 @@ export default async function handler(req, res) {
         targetUrl,
         statusCode,
         error: 'Navigation to output.html failed',
-        details: err?.message,
+        details: err?.message
       });
     }
 
@@ -109,7 +115,7 @@ export default async function handler(req, res) {
       format: 'Letter',
       printBackground: true,
       preferCSSPageSize: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 }
     });
 
     res.status(200);
@@ -124,7 +130,7 @@ export default async function handler(req, res) {
       step: 'render',
       targetUrl,
       error: 'PDF render failed',
-      details: err?.message,
+      details: err?.message
     });
   } finally {
     try { await browser?.close(); } catch {}
