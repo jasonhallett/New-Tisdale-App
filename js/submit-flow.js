@@ -1,16 +1,15 @@
-/* submit-flow.js — POST-only + auto-retry create on 404 + DB-only render + server PDF (with fallback)
+/* submit-flow.js — POST-only + auto-retry create on 404 + DB-only render + server PDF
  * - Always POST /api/inspections (server handles create or update if id is present)
  * - If POST returns 404 "Inspection not found" while updating, clear the stale id and POST again to create
  * - Builds canonical payload + flat column map (aligned to DB) to reduce NULLs
  * - Explicitly sets odometer_source (manual/gps) so DB won't show 'unknown' when user typed it
- * - Tries PDF via /api/pdf/print (server puppeteer); if it fails, still opens viewer with all context (no src)
+ * - Generates PDF via /api/pdf/print (server puppeteer), using /output.html?id=...
  */
 (function () {
   const CONFIG = {
     saveBase: "/api/inspections",
     printEndpoint: "/api/pdf/print",
-    // CHANGE: /api/pdf/print needs an ABSOLUTE URL, not a relative path
-    reportUrl: (id) => `https://app.tisdale.coach/output.html?id=${encodeURIComponent(id)}`,
+    reportPath: (id) => `/output.html?id=${encodeURIComponent(id)}`,
     filenameFrom: (payload) => {
       const unit = (payload.unitNumber || "Unit").toString().replace(/[^\w\-]+/g, "_");
       const d = payload.inspectionDate || new Date().toISOString().slice(0,10);
@@ -145,8 +144,6 @@
   function rememberInspectionId(id) {
     try { sessionStorage.setItem("__inspectionId", id); } catch(_){}
     const hidden = byId("inspection-id"); if (hidden) hidden.value = id;
-    // also expose for viewer/fleetio
-    window.__lastInspectionDbId = id;
   }
 
   // Build canonical payload + flat column map (aligned to DB)
@@ -245,30 +242,15 @@
   }
 
   // ---- Print via server (Puppeteer) ----
-  // CHANGE: accept { url } and send { url } to the API
-  async function requestServerPdf({ filename, url }) {
+  async function requestServerPdf({ filename, path }) {
     const res = await fetch(CONFIG.printEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ filename, url })
+      body: JSON.stringify({ filename, path })
     });
     if (!res.ok) throw new Error(`PDF generation failed (${res.status}) ${await res.text().catch(()=> "")}`);
     return await res.blob();
-  }
-
-  function buildViewerUrl({ id, filename, objectUrl, payload }) {
-    // Carry all the context the viewer & Fleetio need
-    const qs = new URLSearchParams({
-      id: id || '',
-      recordId: id || '',                           // so API updates by primary key
-      filename: filename || '',
-      src: objectUrl || '',                         // may be empty on fallback
-      unit: payload.unitNumber || '',
-      date: payload.inspectionDate || '',
-      odometer: payload.odometer || ''
-    });
-    return `/pdf_viewer.html?${qs.toString()}`;
   }
 
   function install() {
@@ -285,31 +267,19 @@
         Progress.show("Saving...");
         const { payload, columns } = makePayloadAndColumns();
 
-        // 1) Save/Update DB
         const id = await saveInspection(payload, columns);
         rememberInspectionId(id);
 
-        // 2) Try server-side PDF
-        const filename = CONFIG.filenameFrom(payload);
-        const url = CONFIG.reportUrl(id);   // CHANGE: absolute URL for the print route
-        let objectUrl = null;
-
         Progress.update("Generating PDF...");
-        try {
-          const pdfBlob = await requestServerPdf({ filename, url }); // CHANGE: send url
-          objectUrl = URL.createObjectURL(pdfBlob);
-        } catch (err) {
-          console.warn("Server PDF failed, continuing with viewer fallback:", err);
-          // no objectUrl — viewer will still open and Fleetio attach will work via its own logic
-        }
+        const filename = CONFIG.filenameFrom(payload);
+        const path = CONFIG.reportPath(id);
+        const pdfBlob = await requestServerPdf({ filename, path });
 
-        // 3) Always open the viewer, even if server PDF failed
         Progress.update("Opening PDF...");
-        const viewerUrl = buildViewerUrl({ id, filename, objectUrl, payload });
+        const objectUrl = URL.createObjectURL(pdfBlob);
+        const viewerUrl = `/pdf_viewer.html?src=${encodeURIComponent(objectUrl)}&filename=${encodeURIComponent(filename)}&id=${encodeURIComponent(id)}`;
         window.open(viewerUrl, "_blank", "noopener");
-
-        // release object URL later if we created one
-        if (objectUrl) setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch {} }, 10 * 60 * 1000);
+        setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch {} }, 10 * 60 * 1000);
 
         Progress.hide();
       } catch (err) {

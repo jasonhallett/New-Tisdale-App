@@ -1310,31 +1310,20 @@ insp.addEventListener('blur', function(){
     function numOrNull(n){ if(n==null) return null; const v=Number(String(n).replace(/,/g,'').trim()); return Number.isFinite(v)?v:null; }
     function safeUnit(u){ return String(u||'Unit').replace(/[^\w\-]+/g,'_'); }
 
-    function inferRecordId(){
-      // Prefer hidden field; fall back to session set by your submit flow
-      var hidden = document.querySelector('#inspection-id, input[name="inspection_id"], input[name="id"]');
-      var v = hidden && hidden.value ? hidden.value : null;
-      if (!v){
-        try { v = sessionStorage.getItem('__inspectionId') || null; } catch(_) {}
-      }
-      return v;
-    }
-
-    // Save context for viewer/Fleetio button (NOW includes recordId)
-    window.__setSchedule4ViewerContext = function ({ inspectionId, unitNumber, inspectionDate, odometer, recordId }) {
+    // Save context for viewer/Fleetio button
+    window.__setSchedule4ViewerContext = function ({ inspectionId, unitNumber, inspectionDate, odometer }) {
       const payload = {
         inspectionId: String(inspectionId||'').trim(),
         unitNumber:   String(unitNumber||'').trim(),
         inspectionDate: toISODate(inspectionDate),
-        odometer:     numOrNull(odometer),
-        recordId:     recordId || inferRecordId() || ''
+        odometer:     numOrNull(odometer)
       };
       try { sessionStorage.setItem('schedule4Data', JSON.stringify(payload)); } catch {}
       return payload;
     };
 
-    // Build pdf_viewer URL with all params (NOW includes recordId)
-    window.__buildPdfViewerUrl = function ({ inspectionId, unitNumber, inspectionDate, odometer, filename, src, recordId }) {
+    // Build pdf_viewer URL with all params
+    window.__buildPdfViewerUrl = function ({ inspectionId, unitNumber, inspectionDate, odometer, filename, src }) {
       const fname = filename || `Schedule-4_Inspection_${safeUnit(unitNumber)}_${toISODate(inspectionDate)}.pdf`;
       const qs = new URLSearchParams({
         id: inspectionId || '',
@@ -1342,23 +1331,21 @@ insp.addEventListener('blur', function(){
         odometer: odometer != null ? String(odometer) : '',
         date: toISODate(inspectionDate),
         filename: fname,
-        src: src || '',
-        recordId: recordId || inferRecordId() || ''  // <--- NEW
+        src: src || ''
       });
       return `/pdf_viewer.html?${qs.toString()}`;
     };
 
     // Public launcher — default opens in new tab; flip newTab=false to use same tab later
     window.launchSchedule4Viewer = function ({
-      inspectionId, unitNumber, inspectionDate, odometer, pdfSrc, filename, newTab = true, recordId
+      inspectionId, unitNumber, inspectionDate, odometer, pdfSrc, filename, newTab = true
     }) {
-      const payload = window.__setSchedule4ViewerContext({ inspectionId, unitNumber, inspectionDate, odometer, recordId });
+      const payload = window.__setSchedule4ViewerContext({ inspectionId, unitNumber, inspectionDate, odometer });
       const href = window.__buildPdfViewerUrl({
         inspectionId: payload.inspectionId,
         unitNumber:   payload.unitNumber,
         inspectionDate: payload.inspectionDate,
         odometer:     payload.odometer,
-        recordId:     payload.recordId,        // <--- NEW
         filename,
         src: pdfSrc
       });
@@ -1381,14 +1368,6 @@ insp.addEventListener('blur', function(){
 
     function getEl(id){ return document.getElementById(id); }
     function cleanNum(v){ if(v==null) return null; const n = Number(String(v).replace(/,/g,'')); return Number.isFinite(n)?n:null; }
-    function inferRecordId(){
-      var hidden = document.querySelector('#inspection-id, input[name="inspection_id"], input[name="id"]');
-      var v = hidden && hidden.value ? hidden.value : null;
-      if (!v){
-        try { v = sessionStorage.getItem('__inspectionId') || null; } catch(_) {}
-      }
-      return v;
-    }
 
     function collectContext() {
       // Unit # display value (same logic you use elsewhere)
@@ -1400,8 +1379,7 @@ insp.addEventListener('blur', function(){
 
       const odometer = cleanNum(getEl('odometer')?.value);
       const inspectionDate = getEl('inspection-date')?.value || '';
-      const recordId = inferRecordId();
-      return { unitNumber, odometer, inspectionDate, recordId };
+      return { unitNumber, odometer, inspectionDate };
     }
 
     function extractInspectionIdFromUrl(url) {
@@ -1422,7 +1400,7 @@ insp.addEventListener('blur', function(){
       // Only touch pdf_viewer.html navigations
       if (!href || href.indexOf('/pdf_viewer.html') === -1) return null;
 
-      const { unitNumber, odometer, inspectionDate, recordId } = collectContext();
+      const { unitNumber, odometer, inspectionDate } = collectContext();
       const inspectionId = extractInspectionIdFromUrl(href) || (window.__lastInspectionId || '');
 
       // If original href already had a src, keep it; otherwise leave empty (viewer will find the PDF on its own page)
@@ -1444,7 +1422,6 @@ insp.addEventListener('blur', function(){
         unitNumber,
         inspectionDate,
         odometer,
-        recordId,                 // <--- NEW
         pdfSrc: originalSrc,
         filename: originalFilename || undefined,
         newTab: OPEN_IN_NEW_TAB
@@ -1480,6 +1457,7 @@ insp.addEventListener('blur', function(){
     }, true);
 
     // If your save/print code stores the inspection id globally, capture it
+    // (harmless if undefined; we only use it if present)
     try {
       const _setId = (id)=> { window.__lastInspectionId = id; };
       window.addEventListener('message', function(ev){
