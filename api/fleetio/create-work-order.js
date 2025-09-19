@@ -240,7 +240,7 @@ export default async function handler(req, res){
     }
 
     // === Add Service Task line item ===
-    const taskName = serviceTaskName || 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
+    const taskName = "Schedule 4 Inspection (& EEPOC FMCSA 396.3)";
     // Try to find/create Service Task
     async function findOrCreateServiceTaskId(name) {
       const PER_PAGE = 100;
