@@ -2,9 +2,11 @@
   "name": "schedule-4-inspections",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "postinstall": "puppeteer browsers install chrome"
+    "postinstall": "PUPPETEER_CACHE_DIR=.cache npx puppeteer browsers install chrome"
   },
   "dependencies": {
     "@neondatabase/serverless": "0.9.0",

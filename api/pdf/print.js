@@ -1,5 +1,6 @@
 // /api/pdf/print
-// PDF render using full 'puppeteer' (bundles its own Chromium during install), ideal for Vercel Node functions.
+// PDF render using full 'puppeteer' with an explicit executablePath.
+// Browser is downloaded at build time into a repo-local .cache by package.json postinstall.
 
 import puppeteer from 'puppeteer';
 
@@ -37,8 +38,12 @@ export default async function handler(req, res) {
 
   let browser;
   try {
+    // Resolve the Chrome that Puppeteer downloaded during build
+    const executablePath = await puppeteer.executablePath('chrome');
+    if (!executablePath) throw new Error('puppeteer.executablePath("chrome") returned empty');
     browser = await puppeteer.launch({
       headless: 'new',
+      executablePath,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -66,10 +71,7 @@ export default async function handler(req, res) {
       await page.goto(targetUrl, { waitUntil: ['load', 'domcontentloaded', 'networkidle0'], timeout: 60000 });
     } catch (err) {
       let statusCode = null;
-      try {
-        const resp = await page.mainFrame().response();
-        statusCode = resp ? resp.status() : null;
-      } catch {}
+      try { const resp = await page.mainFrame().response(); statusCode = resp ? resp.status() : null; } catch {}
       console.error('[print] GOTO FAILED:', targetUrl, err);
       return json(res, 500, { step: 'goto', targetUrl, statusCode, error: 'Navigation failed', details: err?.message });
     }
