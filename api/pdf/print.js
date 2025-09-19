@@ -1,8 +1,9 @@
 // /api/pdf/print
 // PDF render using full 'puppeteer' with an explicit executablePath.
-// Browser is downloaded at build time into a repo-local .cache by package.json postinstall.
+// We force Puppeteer's cache to a repo-local absolute path so the browser ships with the build.
 
 import puppeteer from 'puppeteer';
+import path from 'path';
 
 export const config = {
   runtime: 'nodejs',
@@ -22,6 +23,11 @@ export default async function handler(req, res) {
     return json(res, 405, { error: 'Use POST' });
   }
 
+  // Ensure Puppeteer looks for its browser in the bundled cache directory
+  const repoCache = path.join(process.cwd(), '.cache');
+  if (!process.env.PUPPETEER_CACHE_DIR) process.env.PUPPETEER_CACHE_DIR = repoCache;
+  if (!process.env.PUPPETEER_BROWSERS_PATH) process.env.PUPPETEER_BROWSERS_PATH = repoCache;
+
   let body = {};
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); } catch {}
 
@@ -38,9 +44,8 @@ export default async function handler(req, res) {
 
   let browser;
   try {
-    // Resolve the Chrome that Puppeteer downloaded during build
     const executablePath = await puppeteer.executablePath('chrome');
-    if (!executablePath) throw new Error('puppeteer.executablePath("chrome") returned empty');
+    if (!executablePath) throw new Error('puppeteer.executablePath("chrome") returned empty; browser not installed in .cache');
     browser = await puppeteer.launch({
       headless: 'new',
       executablePath,
