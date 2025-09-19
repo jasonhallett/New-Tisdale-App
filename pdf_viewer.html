@@ -27,7 +27,7 @@
   })();
   </script>
 </head>
-<body class="text-white">
+<body>
   <!-- Toolbar -->
   <header class="toolbar w-full" style="background: var(--bg-elev); border-bottom: 1px solid var(--border); backdrop-filter: saturate(140%) blur(6px);">
     <div class="max-w-screen-xl mx-auto px-4 py-2 flex items-center gap-2">
@@ -45,26 +45,77 @@
   </main>
 
   <script>
-    // minimal loader for the iframe using ?src and ?filename
     (function(){
       const params = new URLSearchParams(location.search);
-      const src = params.get('src') || '';
-      const filename = params.get('filename') || '';
-      const frame = document.getElementById('pdfFrame');
-      if (src) frame.src = src;
+      const id       = params.get('id') || '';
+      const srcParam = params.get('src') || '';
+      const filename = params.get('filename') || 'schedule4.pdf';
 
+      const frame = document.getElementById('pdfFrame');
+
+      async function fetchAndRenderFromServer() {
+        if (!id) {
+          console.error('No inspection id provided; cannot generate PDF.');
+          alert('Unable to load PDF (missing inspection id).');
+          return;
+        }
+        try {
+          // Generate server-side from the canonical output page
+          const path = `/output.html?id=${encodeURIComponent(id)}`;
+          const resp = await fetch('/api/pdf/print', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ filename, path })
+          });
+          if (!resp.ok) {
+            const msg = await resp.text().catch(()=> '');
+            throw new Error(`PDF generation failed (${resp.status}) ${msg}`);
+          }
+          const blob = await resp.blob();
+          const url  = URL.createObjectURL(blob);
+          frame.src = url;
+          // keep a reference for Download
+          window.__currentPdfUrl = url;
+        } catch (e) {
+          console.error(e);
+          alert('Unable to generate PDF. ' + (e && e.message ? e.message : ''));
+        }
+      }
+
+      async function tryUseSrcOrFallback() {
+        // If we got a blob/data URI from THIS page (rare), use it. If it's a blob: from
+        // the previous page (after navigation), it won't be readable here — so fall back.
+        if (srcParam) {
+          // If src is blob: or empty data, fall back to server generation.
+          if (srcParam.startsWith('blob:')) {
+            // blob from previous page context — not usable here
+            return fetchAndRenderFromServer();
+          }
+          // For normal URLs we can set directly
+          frame.src = srcParam;
+          window.__currentPdfUrl = srcParam;
+          return;
+        }
+        // No src provided: generate server-side from id
+        return fetchAndRenderFromServer();
+      }
+
+      // Wire buttons
       document.getElementById('btnPrint').addEventListener('click', async () => {
         try {
-          const currentSrc = src || frame?.src || '';
+          const currentSrc = window.__currentPdfUrl || frame?.src || '';
           const dlName = filename || 'schedule4.pdf';
           if (!currentSrc) return alert('No PDF loaded.');
 
+          // If the iframe has a blob/data URL we can trigger download directly
           if (currentSrc.startsWith('blob:') || currentSrc.startsWith('data:application/pdf')) {
             const a = document.createElement('a');
             a.href = currentSrc; a.download = dlName;
             document.body.appendChild(a); a.click(); a.remove();
             return;
           }
+          // Otherwise, fetch and save (handles /api/pdf stream paths)
           const resp = await fetch(currentSrc, { credentials: 'include' });
           if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
           const blob = await resp.blob();
@@ -78,12 +129,23 @@
         }
       });
 
-      document.getElementById('btnClose').addEventListener('click', () => window.close());
+      // If opened in same tab, window.close() typically won't work; as a fallback,
+      // navigate back to the list when close fails.
+      document.getElementById('btnClose').addEventListener('click', () => {
+        const closed = window.close();
+        // Some browsers return undefined; add a soft fallback
+        setTimeout(() => {
+          if (!document.hidden) {
+            // go somewhere safe in-app
+            window.location.href = '/schedule4s.html';
+          }
+        }, 50);
+      });
+
+      // Kick it off
+      tryUseSrcOrFallback();
     })();
   </script>
-
-
-
 
   <!-- Single, authoritative Fleetio handler -->
   <script src="/js/fleetio.js"></script>
