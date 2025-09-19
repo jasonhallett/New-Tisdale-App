@@ -1,10 +1,13 @@
 // /api/pdf/print
-// Server-side PDF render using Playwright AWS Lambda bundle (ships Chromium with NSS libs).
+// Server-side PDF render using chrome-aws-lambda (bundled Chromium) + playwright-core on Vercel Node functions.
 
-import pw from 'playwright-aws-lambda';
+import chromium from 'chrome-aws-lambda';
+import playwright from 'playwright-core';
 
 export const config = {
-  runtime: 'nodejs'
+  runtime: 'nodejs',
+  memory: 1024,
+  maxDuration: 60
 };
 
 function json(res, status, obj) {
@@ -19,22 +22,31 @@ export default async function handler(req, res) {
     return json(res, 405, { error: 'Use POST' });
   }
 
+  // Parse body
   let body = {};
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); } catch {}
 
   const filename = body.filename || 'Schedule-4_Inspection.pdf';
+
+  // Build absolute URL for output.html
   const baseUrl =
     (process.env.APP_BASE_URL && process.env.APP_BASE_URL.trim()) ||
     `https://${(req.headers.host || 'app.tisdale.coach').replace(/\/+$/, '')}`;
 
   const targetPath = body.path || (body.id ? `/output.html?id=${encodeURIComponent(body.id)}` : '/output.html');
   let targetUrl;
-  try { targetUrl = new URL(targetPath, baseUrl).toString(); } catch { targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`; }
+  try { targetUrl = new URL(targetPath, baseUrl).toString(); }
+  catch { targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`; }
 
+  // Launch Chromium from chrome-aws-lambda (has libnss3 et al.)
   let browser;
   try {
-    // Launch Chromium bundled by playwright-aws-lambda (includes libnss3 et al.)
-    browser = await pw.launchChromium({ headless: true, args: ['--no-sandbox','--disable-dev-shm-usage'] });
+    const executablePath = await chromium.executablePath;
+    browser = await playwright.chromium.launch({
+      args: chromium.args,
+      executablePath,
+      headless: chromium.headless
+    });
   } catch (err) {
     console.error('[print] LAUNCH FAILED:', err);
     return json(res, 500, { step: 'launch', error: 'Chromium failed to start', details: err?.message });
@@ -43,15 +55,18 @@ export default async function handler(req, res) {
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.emulateMedia({ media: 'print' });
 
-    // Pass through pre-render data
+    // Print CSS
+    try { await page.emulateMedia({ media: 'print' }); } catch {}
+
+    // Inject session data for the renderer if provided
     try {
       await page.addInitScript((data) => {
         try { sessionStorage.setItem('schedule4Data', JSON.stringify(data || {})); } catch {}
       }, body.data || {});
     } catch {}
 
+    // Navigate
     try {
       await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 60000 });
     } catch (err) {
@@ -59,13 +74,13 @@ export default async function handler(req, res) {
       return json(res, 500, { step: 'goto', targetUrl, error: 'Navigation failed', details: err?.message });
     }
 
-    // Wait minimal shell
+    // Minimal readiness
     try { await page.waitForSelector('#page, #root, body', { timeout: 8000 }); } catch {}
 
-    // Fonts
+    // Fonts settle
     try { await page.evaluate(() => (document.fonts && document.fonts.ready) ? document.fonts.ready : null); } catch {}
 
-    // Signature image completeness
+    // Signature load
     try {
       await page.waitForFunction(() => {
         const img = document.getElementById('signatureImg');
