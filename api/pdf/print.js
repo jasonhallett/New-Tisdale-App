@@ -1,8 +1,8 @@
 // /api/pdf/print
-// Server-side PDF render using chrome-aws-lambda (bundled Chromium) + playwright-core on Vercel Node functions.
+// Server-side PDF render using chrome-aws-lambda (bundled Chromium) + puppeteer-core on Vercel Node functions.
 
 import chromium from 'chrome-aws-lambda';
-import playwright from 'playwright-core';
+import puppeteer from 'puppeteer-core';
 
 export const config = {
   runtime: 'nodejs',
@@ -24,9 +24,7 @@ export default async function handler(req, res) {
 
   // Parse body
   let body = {};
-  try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-  } catch {}
+  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); } catch {}
 
   const filename = body.filename || 'Schedule-4_Inspection.pdf';
 
@@ -37,21 +35,22 @@ export default async function handler(req, res) {
 
   const targetPath = body.path || (body.id ? `/output.html?id=${encodeURIComponent(body.id)}` : '/output.html');
   let targetUrl;
-  try {
-    targetUrl = new URL(targetPath, baseUrl).toString();
-  } catch {
-    targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`;
-  }
+  try { targetUrl = new URL(targetPath, baseUrl).toString(); }
+  catch { targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`; }
 
-  // Launch Chromium from chrome-aws-lambda (has libnss3 et al.)
+  // Launch Chromium from chrome-aws-lambda (includes libnss3)
   let browser;
   try {
-    // ✅ IMPORTANT: on chrome-aws-lambda v10, executablePath is a Promise (no parentheses).
-    const executablePath = await chromium.executablePath; // <-- NO ()
-    browser = await playwright.chromium.launch({
+    const executablePath = await chromium.executablePath; // async property on v10
+    if (!executablePath || typeof executablePath !== 'string') {
+      throw new Error('chrome-aws-lambda returned invalid executablePath');
+    }
+    browser = await puppeteer.launch({
       args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
       executablePath,
-      headless: chromium.headless
+      headless: true,
+      ignoreHTTPSErrors: true
     });
   } catch (err) {
     console.error('[print] LAUNCH FAILED:', err);
@@ -59,22 +58,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
-    // Print CSS
-    try { await page.emulateMedia({ media: 'print' }); } catch {}
+    const page = await browser.newPage();
+    await page.emulateMediaType('print');
 
     // Inject session data for the renderer if provided
     try {
-      await page.addInitScript((data) => {
+      await page.evaluateOnNewDocument((data) => {
         try { sessionStorage.setItem('schedule4Data', JSON.stringify(data || {})); } catch {}
       }, body.data || {});
     } catch {}
 
     // Navigate
     try {
-      await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 60000 });
+      await page.goto(targetUrl, { waitUntil: ['load', 'domcontentloaded', 'networkidle0'], timeout: 60000 });
     } catch (err) {
       console.error('[print] GOTO FAILED:', targetUrl, err);
       return json(res, 500, { step: 'goto', targetUrl, error: 'Navigation failed', details: err?.message });
@@ -98,7 +94,7 @@ export default async function handler(req, res) {
       format: 'Letter',
       printBackground: true,
       preferCSSPageSize: true,
-      margin: { top: '0in', right: '0in', bottom: '0in', left: '0in' }
+      margin: { top: 0, right: 0, bottom: 0, left: 0 }
     });
 
     res.status(200);
