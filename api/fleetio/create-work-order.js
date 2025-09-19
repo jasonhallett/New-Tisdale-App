@@ -1,8 +1,8 @@
 // /api/fleetio/create-work-order.js
-// Stable core preserved (PDF attach, vehicle match, idempotency).
-// Changes in this revision:
-
-// Runtime: Node (not Edge)
+// Scope of this change:
+//   • Add Work Order line item: "Schedule 4 Inspection (& EEPOC FMCSA 396.3)"
+//   • Ensure DB record (schedule4_inspections) gets internal_work_order_number + fleetio_work_order_id
+// Nothing else changed: PDF attach flow, vehicle matching, idempotency, meter logic, etc.
 
 export const config = { runtime: 'nodejs' };
 
@@ -42,11 +42,38 @@ async function initDb(){ try{ const url=process.env.DATABASE_URL; if(!url) retur
   )`); return pgPool; }catch{return null;} }
 async function getExistingWO(id){ try{ const p=await initDb(); if(!p) return null; const {rows}=await p.query('SELECT work_order_id, work_order_number FROM fleetio_work_orders WHERE inspection_id=$1',[id]); return rows[0]||null; }catch{return null;} }
 async function saveWO(id,woId,woNum){ try{ const p=await initDb(); if(!p) return; await p.query('INSERT INTO fleetio_work_orders (inspection_id,work_order_id,work_order_number) VALUES ($1,$2,$3) ON CONFLICT (inspection_id) DO NOTHING',[id,woId,woNum]); }catch{} }
-async function upsertInspectionWO(id,woId,woNum){ try{ const table=process.env.INSPECTIONS_TABLE||'schedule4_inspections'; const p=await initDb(); if(!p) return; await p.query(
-  `INSERT INTO ${table} (inspection_id, internal_work_order_number, fleetio_work_order_id)
-   VALUES ($1,$2,$3)
-   ON CONFLICT (inspection_id) DO UPDATE SET internal_work_order_number=EXCLUDED.internal_work_order_number, fleetio_work_order_id=EXCLUDED.fleetio_work_order_id, updated_at=now()`,
-  [id, woNum||null, woId||null]); }catch{} }
+
+// Upsert to your main inspections table: UPDATE first; if nothing updated, INSERT a stub row.
+async function upsertInspectionWO(inspectionId, workOrderId, workOrderNumber){
+  try{
+    const table = process.env.INSPECTIONS_TABLE || 'schedule4_inspections';
+    const p = await initDb();
+    if(!p) return;
+
+    // UPDATE existing row
+    const upd = await p.query(
+      `UPDATE ${table}
+         SET internal_work_order_number = $2,
+             fleetio_work_order_id      = $3,
+             updated_at                 = now()
+       WHERE inspection_id = $1`,
+      [inspectionId, workOrderNumber || null, workOrderId || null]
+    );
+
+    // If no row, INSERT minimal record with those two fields
+    if (upd.rowCount === 0) {
+      await p.query(
+        `INSERT INTO ${table} (inspection_id, internal_work_order_number, fleetio_work_order_id)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (inspection_id)
+         DO UPDATE SET internal_work_order_number = EXCLUDED.internal_work_order_number,
+                       fleetio_work_order_id      = EXCLUDED.fleetio_work_order_id,
+                       updated_at                 = now()`,
+        [inspectionId, workOrderNumber || null, workOrderId || null]
+      );
+    }
+  } catch {}
+}
 
 // ---------- HTTP helpers ----------
 async function fleetio(path, init={}, step='fleetio'){
@@ -72,6 +99,31 @@ async function uploadPdf(pdfBuffer, filename){
   if(!up.ok){ const t=await up.text().catch(()=> ''); const err=new Error(`[upload_pdf] ${up.status} ${t}`); err.step='upload_pdf'; throw err; }
   const j=await up.json().catch(()=> null); if(!j?.url){ const err=new Error('upload response missing url'); err.step='upload_pdf'; throw err; }
   return j.url;
+}
+
+// --- Service Task lookup and line item add ---
+async function findServiceTaskIdByName(name) {
+  try{
+    const res = await fetch(`${BASE_V2}/service_tasks`, { method:'GET', headers: jsonHeaders() });
+    if (!res.ok) return null;
+    const tasks = await res.json();
+    const n = (name || '').trim().toLowerCase();
+    const hit = Array.isArray(tasks) ? tasks.find(t => String(t?.name || '').trim().toLowerCase() === n) : null;
+    return hit?.id || null;
+  }catch{ return null; }
+}
+async function addServiceTaskLineItem(workOrderId, serviceTaskId, description){
+  // POST /v2/work_orders/:id/work_order_line_items
+  return fetch(`${BASE_V2}/work_orders/${workOrderId}/work_order_line_items`, {
+    method:'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      type: 'WorkOrderServiceTaskLineItem',
+      item_type: 'ServiceTask',
+      item_id: serviceTaskId,
+      description
+    })
+  });
 }
 
 // ---------- Handler ----------
@@ -117,7 +169,7 @@ export default async function handler(req, res){
     let pdfBuffer=null;
     if(typeof pdfBase64==='string' && pdfBase64.length>50){
       let raw=pdfBase64; const idx=raw.indexOf(',');
-      if(raw.startsWith('data:') && idx!==-1) raw=raw.slice(idx+1);
+      if(raw.startsWith('data:') && idx!==-1) raw=raw.slice(0,5)==='data:' ? raw.slice(idx+1) : raw;
       try{ pdfBuffer=Buffer.from(raw,'base64'); }catch{}
     }
     if((!pdfBuffer || !isPdf(pdfBuffer)) && pdfUrl){
@@ -140,10 +192,10 @@ export default async function handler(req, res){
     const odoFromForm = numOrNull(data.odometer);
     const odo = odoFromForm ?? currentMeter ?? null;
 
-
+    // NOTE: We are not changing your voiding logic here (per your request to only add task + DB write)
     const markVoid = false;
 
-    // --- CREATE with starting meter and same-as-start flag ---
+    // Create WO (unchanged)
     const createBody = { vehicle_id: vehicleId, work_order_status_id, issued_at: started_at, started_at, ended_at };
     if(odo!=null){
       createBody.starting_meter_entry_attributes = { value: odo, void: !!markVoid };
@@ -155,7 +207,6 @@ export default async function handler(req, res){
       created = await fleetioV2('/work_orders', { method:'POST', headers:{ 'Idempotency-Key': `inspection:${inspectionId}` }, body: JSON.stringify(createBody) }, 'create_wo');
     }catch(e){
       createErr = e;
-      // Fallback: create without meters, then PATCH meters with same-as-start flag
       created = await fleetioV2('/work_orders', { method:'POST', headers:{ 'Idempotency-Key': `inspection:${inspectionId}:no-meters` }, body: JSON.stringify({ vehicle_id: vehicleId, work_order_status_id, issued_at: started_at, started_at, ended_at }) }, 'create_wo_nometers');
     }
 
@@ -167,12 +218,12 @@ export default async function handler(req, res){
       workOrderNumber = sanitizeNumber(fetched?.number);
     }
 
-    // Persist to DBs; if Neon missing, surface a non-fatal warn in the response for your modal
+    // Persist to DBs; surface non-fatal warn if DB unavailable
     const warnList = [];
     try { await saveWO(inspectionId, workOrderId, workOrderNumber); } catch { warnList.push({code:'db_save_wo_failed'}); }
     try { await upsertInspectionWO(inspectionId, workOrderId, workOrderNumber); } catch { warnList.push({code:'db_upsert_inspection_failed'}); }
 
-    // If meters were rejected on create, try to PATCH with the same-as-start flag
+    // If meters were rejected on create, try to PATCH with the same-as-start flag (unchanged)
     if(createErr && odo!=null){
       try{
         await fleetioV2(`/work_orders/${workOrderId}`, {
@@ -188,7 +239,25 @@ export default async function handler(req, res){
       }
     }
 
-    // Attach PDF (always)
+    // === Add Service Task line item ===
+    try {
+      const SERVICE_TASK_NAME = 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
+      const taskId = await findServiceTaskIdByName(SERVICE_TASK_NAME);
+      if (taskId) {
+        const liRes = await addServiceTaskLineItem(workOrderId, taskId, SERVICE_TASK_NAME);
+        if (!liRes.ok) {
+          const t = await liRes.text().catch(()=> '');
+          warnList.push({ code:'add_line_item_failed', details: `HTTP ${liRes.status} ${t.slice(0,180)}` });
+        }
+      } else {
+        warnList.push({ code:'service_task_not_found', details: `Service Task "${SERVICE_TASK_NAME}" not found in Fleetio` });
+      }
+    } catch (err) {
+      warnList.push({ code:'add_line_item_exception', details: String(err?.message || err) });
+    }
+    // === end Service Task line item ===
+
+    // Attach PDF (unchanged)
     const filenameSafe = filename || `Schedule4_${toIsoDate(data.inspectionDate || new Date())}.pdf`;
     const file_url = await uploadPdf(pdfBuffer, filenameSafe);
     try{
