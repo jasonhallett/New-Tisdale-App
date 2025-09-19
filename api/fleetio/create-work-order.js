@@ -1,10 +1,10 @@
 // /api/fleetio/create-work-order.js
-// Hardened: graceful env validation (400), rich error details (never raw 500 unless truly fatal),
-// optional Neon persistence, exact vehicle-by-name, meter entries (void if needed), PDF attach.
+// Fixes:
+//  - Do not return early on meter patch failure; still attach PDF
+//  - issued_at / started_at use current time (no 11:00am artifact)
+//  - include date on starting/ending meter entries to satisfy validation
 //
-// Also includes GET ?ping=1 to verify env/config quickly on Vercel.
-//
-// Runtime: Node (not Edge) because we use Buffer and optional 'pg'
+// Runtime: Node (not Edge)
 
 export const config = { runtime: 'nodejs' };
 
@@ -31,11 +31,6 @@ function toIsoDate(dateLike){
   if(!dateLike) return new Date().toISOString().slice(0,10);
   const d = new Date(dateLike);
   return Number.isNaN(d.getTime()) ? new Date().toISOString().slice(0,10) : d.toISOString().slice(0,10);
-}
-function toDateTime(dateOnly){
-  const d = String(toIsoDate(dateOnly));
-  // afternoon UTC to avoid TZ surprises in Fleetio UI
-  return new Date(`${d}T15:00:00Z`).toISOString();
 }
 function sanitizeNumber(n){
   if(n==null) return null;
@@ -65,7 +60,7 @@ function jsonHeaders(extra = {}) {
   };
 }
 
-// ---------- Optional Neon (idempotency / storage) ----------
+// ---------- Optional Neon ----------
 let pgPool = null;
 async function initDb() {
   try {
@@ -172,6 +167,7 @@ async function uploadPdf(pdfBuffer, filename){
   url.searchParams.set('policy', pol);
   url.searchParams.set('signature', signature);
   url.searchParams.set('path', path);
+  if (filename) url.searchParams.set('filename', filename);
 
   const up = await fetch(url.toString(), { method:'POST', headers:{'Content-Type':'application/pdf'}, body: pdfBuffer });
   if(!up.ok){
@@ -191,7 +187,7 @@ async function uploadPdf(pdfBuffer, filename){
 
 // ---------- Handler ----------
 export default async function handler(req, res){
-  // Health check to catch env mistakes without hitting full flow
+  // Health check
   if (req.method === 'GET' && (req.query?.ping || req.query?.health)) {
     const needApi = needEnv('FLEETIO_API_TOKEN');
     const needAcct= needEnv('FLEETIO_ACCOUNT_TOKEN');
@@ -205,7 +201,6 @@ export default async function handler(req, res){
     return res.status(405).json({ error:'Method not allowed' });
   }
 
-  // Validate env FIRST – return 400 with specifics (avoid 500 + Function Invocation Failed)
   const needApi = needEnv('FLEETIO_API_TOKEN');
   const needAcct= needEnv('FLEETIO_ACCOUNT_TOKEN');
   const missing = [needApi, needAcct].filter(x => !x.ok).map(x => x.name);
@@ -263,8 +258,6 @@ export default async function handler(req, res){
       if (raw.startsWith('data:') && idx !== -1) raw = raw.slice(idx+1);
       try { pdfBuffer = Buffer.from(raw, 'base64'); } catch {}
     }
-
-    // If base64 missing/invalid, try to fetch pdfUrl server-side (propagate cookies)
     if((!pdfBuffer || !isPdf(pdfBuffer)) && pdfUrl){
       const proto = req.headers['x-forwarded-proto'] || 'https';
       const host  = req.headers['x-forwarded-host'] || req.headers['host'];
@@ -295,9 +288,8 @@ export default async function handler(req, res){
     const work_order_status_id = open?.id;
     if(!work_order_status_id) return res.status(400).json({ error:'Could not resolve Open status', step:'wo_status' });
 
-    // Create work order
-    const inspectionDate = data.inspectionDate || data.dateInspected;
-    const issued_at  = toDateTime(inspectionDate || new Date());
+    // Create work order — use *current* time so UI shows true creation time (Fleetio renders in user's TZ)
+    const issued_at  = new Date().toISOString();
     const started_at = issued_at;
 
     const created = await fleetioV2('/work_orders', {
@@ -318,49 +310,50 @@ export default async function handler(req, res){
     await saveWO(inspectionId, workOrderId, workOrderNumber);
     await upsertInspectionWO(inspectionId, workOrderId, workOrderNumber);
 
-    // meters (from inspection or current)
+    // meters (from inspection or current) — include date to satisfy validation
+    const warnList = [];
     const odometerFromForm = numOrNull(data.odometer);
     const odo = odometerFromForm ?? currentMeter ?? null;
     if (odo != null) {
       const markVoid = (currentMeter != null) ? (odo > currentMeter) : false;
+      const dateOnly = toIsoDate(data.inspectionDate || data.dateInspected || new Date());
       try {
         await fleetioV2(`/work_orders/${workOrderId}`, {
           method:'PATCH',
           body: JSON.stringify({
-            starting_meter_entry_attributes: { value: odo, void: !!markVoid },
-            ending_meter_entry_attributes:   { value: odo, void: !!markVoid }
+            starting_meter_entry_attributes: { value: odo, void: !!markVoid, date: dateOnly },
+            ending_meter_entry_attributes:   { value: odo, void: !!markVoid, date: dateOnly }
           })
         }, 'patch_meters');
       } catch (e) {
-        // Return success but expose meter patch failure for your modal
-        return res.status(200).json({
-          ok:true,
-          work_order_id: workOrderId,
-          work_order_number: workOrderNumber,
-          work_order_url: `https://secure.fleetio.com/${getEnv('FLEETIO_ACCOUNT_TOKEN')}/work_orders/${workOrderNumber || workOrderId}/edit`,
-          warn: 'meter_patch_failed',
-          warn_details: e?.message || String(e)
-        });
+        warnList.push({ code: 'meter_patch_failed', details: e?.message || String(e) });
+        // do NOT return — continue to attach the PDF
       }
     }
 
-    // attach PDF
-    const filenameSafe = filename || `Schedule4_${toIsoDate(inspectionDate || new Date())}.pdf`;
+    // attach PDF (per docs: use documents_attributes with file_url)
+    // https://developer.fleetio.com/docs/overview/attaching-documents-and-images
+    const filenameSafe = filename || `Schedule4_${toIsoDate(data.inspectionDate || new Date())}.pdf`;
     const file_url = await uploadPdf(pdfBuffer, filenameSafe);
-    await fleetioV2(`/work_orders/${workOrderId}`, {
-      method:'PATCH',
-      body: JSON.stringify({ documents_attributes: [ { name: filenameSafe, file_url } ] })
-    }, 'attach_doc');
+    try {
+      await fleetioV2(`/work_orders/${workOrderId}`, {
+        method:'PATCH',
+        body: JSON.stringify({ documents_attributes: [ { name: filenameSafe, file_url } ] })
+      }, 'attach_doc');
+    } catch(e) {
+      warnList.push({ code: 'attach_doc_failed', details: e?.message || String(e) });
+    }
 
-    return res.status(200).json({
+    const response = {
       ok:true,
       work_order_id: workOrderId,
       work_order_number: workOrderNumber,
       work_order_url: `https://secure.fleetio.com/${getEnv('FLEETIO_ACCOUNT_TOKEN')}/work_orders/${workOrderNumber || workOrderId}/edit`
-    });
+    };
+    if (warnList.length) response.warn = warnList;
+    return res.status(200).json(response);
 
   } catch (err) {
-    // Never swallow; always return JSON with step + status
     console.error('create-work-order error:', {
       step: err.step || 'unknown',
       status: err.status || 500,
