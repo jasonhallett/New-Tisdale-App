@@ -82,8 +82,24 @@
     })();
   </script>
 
-
-
+  <!-- Bridge: ensure recordId flows to fleetio.js via sessionStorage.schedule4Data -->
+  <script>
+    (function(){
+      try {
+        const p = new URLSearchParams(location.search);
+        const recordId = p.get('recordId') || '';
+        if (recordId) {
+          // merge into existing schedule4Data without breaking other fields
+          let obj = {};
+          try { obj = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}') || {}; } catch(_){}
+          obj.recordId = recordId;
+          sessionStorage.setItem('schedule4Data', JSON.stringify(obj));
+          // also expose directly if your fleetio.js reads a global
+          window.__fleetioRecordId = recordId;
+        }
+      } catch(_){}
+    })();
+  </script>
 
   <!-- Single, authoritative Fleetio handler -->
   <script src="/js/fleetio.js"></script>
