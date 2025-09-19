@@ -394,3 +394,28 @@ input[type="checkbox"].switch:checked:after{ left: 22px; }
 /* ---------- Dialog (modal preview) ---------- */
 dialog{ border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-elev); color: var(--text); box-shadow: var(--shadow-md); }
 dialog::backdrop{ background: rgba(0,0,0,.4); }
+
+/* === Brand Logo (robust light/dark swap; no FOUC) === */
+.brand-logo{ width:100%; }
+.brand-logo img{ display:none; width:100%; height:auto; max-width:100%; }
+.logo-light, .logo-dark { display:none; } /* hide by default */
+@media (prefers-color-scheme: light){
+  .logo-light { display:block; }
+}
+@media (prefers-color-scheme: dark){
+  .logo-dark  { display:block; }
+}
+/* Optional cap without changing layout */
+.sidebar .brand { width:100%; }
+
+
+
+/* === Topbar Title === */
+.topbar{ gap:12px; }
+.page-title{
+  font-weight:700;
+  font-size: clamp(1rem, 0.9rem + .6vw, 1.35rem);
+  letter-spacing: 0.01em;
+}
+.topbar .spacer{ flex:1 1 auto; }
+

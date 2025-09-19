@@ -10,37 +10,17 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/tisdale-app.css" />
   <script defer src="auth-guard.js"></script>
-
-  <!-- Frame sizing so the inner page isn’t a tiny box -->
-  <style>
-    /* Ensure grid area can shrink/scroll properly */
-    .main { min-height: 0; }
-
-    /* Make iframe fill the available space (desktop & mobile) */
-    #contentFrame {
-      width: 100%;
-      height: calc(100vh - 56px); /* topbar row is 56px per the theme */
-      border: 0;
-      display: block;
-      background: transparent;
-    }
-
-    /* On very short viewports, allow a bit more room */
-    @media (max-height: 520px) {
-      #contentFrame { height: 80vh; }
-    }
-  </style>
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-logo">
-          <!-- Use your actual filenames so alt text doesn’t appear -->
-          <img class="logo-light" src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines (Light)" />
-          <img class="logo-dark"  src="./assets/tisdale-logo-dark.svg"  alt="Tisdale Bus Lines (Dark)"  />
-        </div>
-        <div class="brand-title small-muted">Tisdale Employee App</div>
+  <div class="brand-logo">
+    <img class="logo-light" src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines" />
+    <img class="logo-dark"  src="./assets/tisdale-logo-dark.svg"  alt="Tisdale Bus Lines" />
+  </div>
+</div>
+        
       </div>
       <nav class="nav" id="nav">
         <a class="active" href="#schedule4s" data-href="schedule4s.html">🧾 <span>Schedule 4s</span></a>
@@ -50,7 +30,7 @@
 
     <header class="topbar">
       <div class="title-wrap">
-        <div class="app-title">Tisdale Employee App</div>
+        
         <div class="page-title" id="pageTitle">Schedule 4s</div>
       </div>
       <div class="top-actions">
@@ -64,7 +44,8 @@
   </div>
 
   <script>
-    const frame = document.getElementById('contentFrame');
+    const frame = document.getElementById("contentFrame");
+const sanitizeTitle = (s) => s.replace(/^\W+/, "").trim();
     const pageTitle = document.getElementById('pageTitle');
     frame.src = 'schedule4s.html';
 
@@ -75,7 +56,7 @@
       document.querySelectorAll('.nav a').forEach(x => x.classList.remove('active'));
       a.classList.add('active');
       frame.src = a.dataset.href;
-      pageTitle.textContent = a.textContent.trim();
+      pageTitle.textContent = sanitizeTitle(a.textContent);
     });
 
     document.getElementById('logoutBtn').addEventListener('click', async () => {

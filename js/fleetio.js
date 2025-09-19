@@ -8,11 +8,11 @@
   function getQuery(){ try { return new URL(window.location.href).searchParams; } catch { return new URLSearchParams(); } }
   function parseNumber(n){ if(n==null) return null; const s=String(n).replace(/,/g,'').trim(); if(!s) return null; const x=Number(s); return Number.isFinite(x)?x:null; }
 
-  // ---------- Debug modal ----------
+  // ---------- Debug modal (removed; logs now go to console only) ----------
   function createDebugModal(){
-    // DEBUG MODAL DISABLED — using console logger only.
-    // If you want the visual modal back, restore the previous implementation.
-    function log(line){ try { console.log('[Fleetio]', line); } catch {} }
+    function log(line){
+      try { console.debug('[Fleetio]', line); } catch {}
+    }
     return { log, close: ()=>{} };
   }
 
@@ -66,117 +66,90 @@
     let json = null;
     try { json = JSON.parse(text); } catch {}
     if (!r.ok) {
-      const err = new Error(`HTTP ${r.status}`);
-      err.status = r.status; err.text = text; err.json = json;
-      throw err;
+      if (r.status===404 && json?.code==='vehicle_not_found') return json;
+      const msg = json?.error || `HTTP ${r.status}`;
+      throw new Error(`${msg} :: ${text}`);
     }
-    return json ?? {};
+    return json || {};
+  }
+
+  // ---------- PDF finders (client) ----------
+  async function tryPdfJsBytes(win){
+    try {
+      const app = win.PDFViewerApplication;
+      if (app && app.pdfDocument && typeof app.pdfDocument.getData === 'function') {
+        const data = await app.pdfDocument.getData();
+        return { pdfBase64: 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(data)), from: 'pdfjs' };
+      }
+    } catch {}
+    return null;
   }
 
   async function fetchToBase64(url){
-    try {
-      const res = await fetch(url);
-      const buf = await res.arrayBuffer();
-      const b64 = bytesToBase64(new Uint8Array(buf));
-      return `data:application/pdf;base64,${b64}`;
-    } catch (e) { return null; }
+    const resp = await fetch(url, { credentials: 'include' });
+    if (!resp.ok) return null;
+    const ab = await resp.arrayBuffer();
+    return 'data:application/pdf;base64,' + bytesToBase64(new Uint8Array(ab));
   }
 
   async function findPdf(log){
-    // 1) <embed> or <object>
-    const em = document.querySelector('embed[type="application/pdf"], object[type="application/pdf"]');
-    if (em) {
-      const src = em.getAttribute('src') || em.getAttribute('data') || '';
-      if (src.startsWith('data:application/pdf')) {
-        log('PDF source: <embed>/<object> data: URL -> base64');
-        return { pdfBase64: src, from: 'embed-dataurl' };
-      }
-      if (src.startsWith('blob:')) {
-        log('PDF source: <embed>/<object> blob: -> base64 via fetch');
-        const b64 = await fetchToBase64(src);
-        if (b64) return { pdfBase64: b64, from: 'embed-blob' };
-      }
+    // 1) PDF.js (this window)
+    let got = await tryPdfJsBytes(window);
+    if (got) { log('PDF source: pdfjs (window)'); return got; }
+
+    // 2) PDF.js (any same-origin iframe)
+    for (const f of Array.from(document.querySelectorAll('iframe'))) {
       try {
-        const abs = new URL(src, window.location.origin).toString();
-        if (abs.startsWith(window.location.origin)) {
-          log('PDF source: <embed>/<object> same-origin URL -> pdfUrl');
-          return { pdfUrl: abs, from: 'embed-url' };
-        }
+        if (!f.contentWindow) continue;
+        got = await tryPdfJsBytes(f.contentWindow);
+        if (got) { log('PDF source: pdfjs (iframe)'); return got; }
       } catch {}
     }
 
-    // 2) <iframe>
-    const ifr = document.querySelector('iframe[src*=".pdf"], iframe[src^="blob:"], iframe[src^="data:application/pdf"]');
-    if (ifr) {
-      const src = ifr.getAttribute('src') || '';
-      if (src.startsWith('data:application/pdf')) {
-        log('PDF source: <iframe> data: URL -> base64');
-        return { pdfBase64: src, from: 'iframe-dataurl' };
-      }
-      if (src.startsWith('blob:')) {
-        log('PDF source: <iframe> blob: -> base64 via fetch');
-        const b64 = await fetchToBase64(src);
-        if (b64) return { pdfBase64: b64, from: 'iframe-blob' };
-      }
-      try {
-        const abs = new URL(src, window.location.origin).toString();
-        if (abs.startsWith(window.location.origin)) {
-          log('PDF source: <iframe> same-origin URL -> pdfUrl');
-          return { pdfUrl: abs, from: 'iframe-url' };
-        }
-      } catch {}
-    }
-
-    // 3) <a download>
-    const link = document.querySelector('a[download][href*=".pdf"], a[download][href^="blob:"], a[download][href^="data:application/pdf"]');
-    if (link) {
-      const href = link.getAttribute('href') || '';
+    // 3) Download link
+    const a = document.querySelector('#btnDownload[href]');
+    if (a && a.getAttribute('href')) {
+      const href = a.getAttribute('href');
       if (href.startsWith('data:application/pdf')) {
-        log('PDF source: <a> data: URL -> base64');
-        return { pdfBase64: href, from: 'a-dataurl' };
+        log('PDF source: #btnDownload data: URL -> base64');
+        return { pdfBase64: href, from: 'download-dataurl' };
       }
       if (href.startsWith('blob:')) {
-        log('PDF source: <a> blob: -> base64 via fetch');
+        log('PDF source: #btnDownload blob: -> base64 via fetch');
         const b64 = await fetchToBase64(href);
-        if (b64) return { pdfBase64: b64, from: 'a-blob' };
+        if (b64) return { pdfBase64: b64, from: 'download-blob' };
       }
+      // same-origin https? send as pdfUrl
       try {
         const abs = new URL(href, window.location.origin).toString();
         if (abs.startsWith(window.location.origin)) {
-          log('PDF source: <a> same-origin URL -> pdfUrl');
-          return { pdfUrl: abs, from: 'a-url' };
+          log('PDF source: #btnDownload same-origin URL -> pdfUrl');
+          return { pdfUrl: abs, from: 'download-url' };
         }
       } catch {}
     }
 
-    // 4) if the viewer injected a data: URL into a frame (pdf_viewer.html)
-    try {
-      const f = document.querySelector('iframe');
-      if (f && f.contentWindow) {
-        // try to read an embedded data: URL
-        const doc = f.contentDocument || f.contentWindow.document;
-        const em2 = doc && doc.querySelector('embed[type="application/pdf"], object[type="application/pdf"]');
-        if (em2) {
-          const src = em2.getAttribute('src') || em2.getAttribute('data') || '';
-          if (src.startsWith('data:application/pdf')) {
-            log('PDF source: frame data: URL -> base64');
-            return { pdfBase64: src, from: 'frame-dataurl' };
-          }
-          if (src.startsWith('blob:')) {
-            log('PDF source: frame blob: -> base64 via fetch');
-            const b64 = await fetchToBase64(src);
-            if (b64) return { pdfBase64: b64, from: 'frame-blob' };
-          }
-          try {
-            const abs2 = new URL(src, window.location.origin).toString();
-            if (abs2.startsWith(window.location.origin)) {
-              log('PDF source: frame same-origin URL -> pdfUrl');
-              return { pdfUrl: abs2, from: 'frame-url' };
-            }
-          } catch {}
-        }
+    // 4) iframe/object/embed src
+    const frame = document.getElementById('pdfFrame') || document.querySelector('iframe,object,embed');
+    const src = frame?.src || frame?.getAttribute?.('src') || '';
+    if (src) {
+      if (src.startsWith('data:application/pdf')) {
+        log('PDF source: frame data: URL -> base64');
+        return { pdfBase64: src, from: 'frame-dataurl' };
       }
-    } catch {}
+      if (src.startsWith('blob:')) {
+        log('PDF source: frame blob: -> base64 via fetch');
+        const b64 = await fetchToBase64(src);
+        if (b64) return { pdfBase64: b64, from: 'frame-blob' };
+      }
+      try {
+        const abs2 = new URL(src, window.location.origin).toString();
+        if (abs2.startsWith(window.location.origin)) {
+          log('PDF source: frame same-origin URL -> pdfUrl');
+          return { pdfUrl: abs2, from: 'frame-url' };
+        }
+      } catch {}
+    }
 
     // 5) ?src= param
     const srcParam = getQuery().get('src');
@@ -191,15 +164,37 @@
         if (b64) return { pdfBase64: b64, from: 'src-blob' };
       }
       try {
-        const abs = new URL(srcParam, window.location.origin).toString();
-        if (abs.startsWith(window.location.origin)) {
+        const abs3 = new URL(srcParam, window.location.origin).toString();
+        if (abs3.startsWith(window.location.origin)) {
           log('PDF source: ?src same-origin URL -> pdfUrl');
-          return { pdfUrl: abs, from: 'src-url' };
+          return { pdfUrl: abs3, from: 'src-url' };
         }
       } catch {}
     }
 
     return null;
+  }
+
+  async function selectVehicleFromChoices(choices, log){
+    return await new Promise((resolve, reject) => {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1000000;display:flex;align-items:center;justify-content:center;';
+      const modal = document.createElement('div');
+      modal.style.cssText = 'background:#0b0b0c;color:#e5e7eb;border:1px solid #333;border-radius:12px;padding:16px;min-width:320px;max-width:90vw;';
+      modal.innerHTML = `
+        <div style="font-weight:600;margin-bottom:10px;">Select Fleetio Vehicle</div>
+        <select id="veh" style="width:100%;background:#111;border:1px solid #333;color:#e5e7eb;padding:8px;border-radius:8px;margin-bottom:12px;">
+          ${(choices||[]).map(c=>`<option value="${c.id}">${c.label}</option>`).join('')}
+        </select>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="cancel" style="padding:8px 12px;background:#333;border-radius:8px;border:1px solid #444;color:#ddd">Cancel</button>
+          <button id="ok" style="padding:8px 12px;background:#22c55e;color:#000;border-radius:8px;border:1px solid #16a34a">Use Vehicle</button>
+        </div>
+      `;
+      overlay.appendChild(modal); document.body.appendChild(overlay);
+      modal.querySelector('#cancel').onclick = ()=>{ document.body.removeChild(overlay); reject(new Error('cancelled')); };
+      modal.querySelector('#ok').onclick = ()=>{ const id = modal.querySelector('#veh').value; document.body.removeChild(overlay); resolve(id); };
+    });
   }
 
   async function onClick(e){
@@ -215,27 +210,18 @@
 
     try {
       const ctx = getCtx(log);
-      if (!ctx.inspectionId) { log('ERROR: Missing inspectionId in URL or session.'); throw new Error('Missing inspectionId'); }
+      if(!ctx.inspectionId){ log('ERROR: Missing inspectionId.'); return; }
 
-      // Unit
-      if (!ctx.unitNumber) {
-        log('Missing unit number; attempting to derive from filename or prompt user.');
-        if (ctx.filename) {
-          const u = deriveUnitFromFilename(ctx.filename);
-          if (u) { ctx.unitNumber = u; log(`Derived unit from filename: ${u}`); }
-        }
-        if (!ctx.unitNumber) {
-          const base = JSON.parse(sessionStorage.getItem('schedule4Data') || '{}');
-          const u2 = prompt('Enter Unit # (e.g., 350):', base.unitNumber || '');
-          if (!u2) { log('User cancelled entering unit number.'); return; }
-          ctx.unitNumber = u2;
-          try {
-            base.unitNumber = ctx.unitNumber; sessionStorage.setItem('schedule4Data', JSON.stringify(base));
-          } catch {}
-          log(`Unit number provided: ${ctx.unitNumber}`);
-        } else {
-          log(`Unit number ready: ${ctx.unitNumber}`);
-        }
+      if(!ctx.unitNumber){
+        const initial = deriveUnitFromFilename(ctx.filename) || '';
+        const typed = prompt('Enter Unit # (must equal Fleetio "name")', initial);
+        if (!typed || !typed.trim()) { log('ERROR: Unit # missing/cancelled.'); return; }
+        ctx.unitNumber = typed.trim();
+        try {
+          const raw = sessionStorage.getItem('schedule4Data'); const base = raw ? JSON.parse(raw) : {};
+          base.unitNumber = ctx.unitNumber; sessionStorage.setItem('schedule4Data', JSON.stringify(base));
+        } catch {}
+        log(`Unit number provided: ${ctx.unitNumber}`);
       } else {
         log(`Unit number ready: ${ctx.unitNumber}`);
       }
@@ -263,45 +249,29 @@
 
       log('POST /api/fleetio/create-work-order with payload keys: ' + Object.keys(payload).join(', '));
       let res = await postJson('/api/fleetio/create-work-order', payload);
+      log('Server response (1): ' + JSON.stringify(res));
 
-      // Handle create response
-      if (!res || !res.ok) {
-        log('ERROR: Fleetio route returned non-ok: ' + JSON.stringify(res));
-        alert('Fleetio error: Could not obtain a real PDF to attach. Provide pdfBase64 or pdfUrl to the actual file.');
+      if (res?.code === 'vehicle_not_found') {
+        log('Vehicle not found by exact name. Showing picker...');
+        const id = await selectVehicleFromChoices(res.choices || [], log);
+        log(`Vehicle selected: ${id}`);
+        res = await postJson('/api/fleetio/create-work-order', { ...payload, vehicleId: id });
+        log('Server response (2): ' + JSON.stringify(res));
+      }
+
+      if (res?.ok) {
+        const url = res.work_order_url;
+        log('SUCCESS. Opening Fleetio: ' + url);
+        window.open(url, '_blank');
+        log('=== Flow complete ===');
         return;
       }
 
-      // Belt & suspenders: if server didn’t persist (e.g., no_db), push minimal update via /api/inspections
-      if (!res.db_update || !res.db_update.ok) {
-        log('DB update from Fleetio route not ok (' + JSON.stringify(res.db_update) + '). Attempting client follow-up save.');
-        try {
-          await postJson('/api/inspections', {
-            id: payload.inspectionId,
-            internal_work_order_number: res.work_order_number,
-            fleetio_work_order_id: res.work_order_id
-          });
-          log('Client follow-up save to /api/inspections succeeded.');
-        } catch (e) {
-          log('Client follow-up save failed: ' + (e && e.message));
-        }
-      } else {
-        log('Server DB update succeeded: ' + JSON.stringify(res.db_update));
-      }
-
-      // Open Fleetio WO
-      if (res.url) {
-        log('Opening Fleetio Work Order URL: ' + res.url);
-        window.open(res.url, '_blank', 'noopener');
-      } else {
-        log('WARNING: create-work-order did not return a URL to open.');
-      }
+      log('ERROR: ' + JSON.stringify(res || {}, null, 2));
     } catch (err) {
       console.error(err);
-      alert('Fleetio error: ' + (err?.message || err));
+      try { log('EXCEPTION: ' + (err?.message || String(err))); } catch {}
     } finally {
-      try { await sleep(350); } catch {}
-      // close modal if it existed (no-op in logger mode)
-      try { (createDebugModal().close || (()=>{}))(); } catch {}
       btn.disabled = false; btn.dataset.busy='0';
     }
   }
