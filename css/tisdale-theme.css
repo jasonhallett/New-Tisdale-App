@@ -197,3 +197,6 @@ input[type="button"].btn {
 .toolbar{ display:flex; align-items:center; gap:12px; padding: 12px 12px 10px; }
 .container{ max-width: 1200px; margin: 0 auto; }
 .small-muted{ color: var(--muted); font-size:.85rem; }
+/* Readability utilities */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+.prose-tight  { line-height: 1.45; }
