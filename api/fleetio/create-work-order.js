@@ -1,8 +1,10 @@
 // /api/fleetio/create-work-order.js
-// KEEPING: working PDF logic & vehicle matching intact.
-// CHANGE: send starting/ending meter entries in the CREATE call with identical value+date,
-//         and also send ended_at = started_at. If create rejects meters, we fall back to a PATCH.
-//         We still never bail on PDF attach.
+// Stable core preserved (PDF attach, idempotency, vehicle match).
+// Change: use ending_meter_same_as_start: true instead of explicit ending meter entry.
+//         Send only starting_meter_entry_attributes (+ void if needed). Align started_at/ended_at.
+//         Fallback PATCH also uses ending_meter_same_as_start.
+//
+// Runtime: Node (not Edge)
 
 export const config = { runtime: 'nodejs' };
 
@@ -134,19 +136,18 @@ export default async function handler(req, res){
     const work_order_status_id = open?.id;
     if(!work_order_status_id) return res.status(400).json({ error:'Could not resolve Open status', step:'wo_status' });
 
-    // Time & meter inputs (same for start/end)
+    // Timestamps and meter values
     const started_at = new Date().toISOString();
     const ended_at   = started_at; // same instant
     const odoFromForm = numOrNull(data.odometer);
     const odo = odoFromForm ?? currentMeter ?? null;
-    const dayOnly = toIsoDate(data.inspectionDate || data.dateInspected || started_at);
     const markVoid = (currentMeter!=null) ? (odo!=null && odo > currentMeter) : false;
 
-    // --- CREATE with meter entries included ---
+    // --- CREATE with starting meter and "same as start" flag ---
     const createBody = { vehicle_id: vehicleId, work_order_status_id, issued_at: started_at, started_at, ended_at };
     if(odo!=null){
-      createBody.starting_meter_entry_attributes = { value: odo, void: !!markVoid, date: dayOnly };
-      createBody.ending_meter_entry_attributes   = { value: odo, void: !!markVoid, date: dayOnly };
+      createBody.starting_meter_entry_attributes = { value: odo, void: !!markVoid };
+      createBody.ending_meter_same_as_start = true; // <-- key bit
     }
 
     let created, createErr = null;
@@ -154,7 +155,7 @@ export default async function handler(req, res){
       created = await fleetioV2('/work_orders', { method:'POST', headers:{ 'Idempotency-Key': `inspection:${inspectionId}` }, body: JSON.stringify(createBody) }, 'create_wo');
     }catch(e){
       createErr = e;
-      // Fallback: create without meters, then PATCH meters (keeps WO + PDF working even if meters fail)
+      // Fallback: create without meters, then PATCH meters with same-as-start flag
       created = await fleetioV2('/work_orders', { method:'POST', headers:{ 'Idempotency-Key': `inspection:${inspectionId}:no-meters` }, body: JSON.stringify({ vehicle_id: vehicleId, work_order_status_id, issued_at: started_at, started_at, ended_at }) }, 'create_wo_nometers');
     }
 
@@ -170,36 +171,24 @@ export default async function handler(req, res){
     await upsertInspectionWO(inspectionId, workOrderId, workOrderNumber);
 
     const warnList = [];
-    // If we had to fallback, attempt a PATCH with same-day meters
+    // If meters were rejected on create, try to PATCH with the same-as-start flag
     if(createErr && odo!=null){
       try{
         await fleetioV2(`/work_orders/${workOrderId}`, {
           method:'PATCH',
           body: JSON.stringify({
             started_at, ended_at,
-            starting_meter_entry_attributes: { value: odo, void: !!markVoid, date: dayOnly },
-            ending_meter_entry_attributes:   { value: odo, void: !!markVoid, date: dayOnly }
+            starting_meter_entry_attributes: { value: odo, void: !!markVoid },
+            ending_meter_same_as_start: true
           })
         }, 'patch_meters_after_create');
       }catch(e2){
-        // As a last resort, retry with full ISO timestamps for date
-        try{
-          await fleetioV2(`/work_orders/${workOrderId}`, {
-            method:'PATCH',
-            body: JSON.stringify({
-              started_at, ended_at,
-              starting_meter_entry_attributes: { value: odo, void: !!markVoid, date: started_at },
-              ending_meter_entry_attributes:   { value: odo, void: !!markVoid, date: started_at }
-            })
-          }, 'patch_meters_retry_iso');
-        }catch(e3){
-          warnList.push({ code:'meter_patch_failed', details: e3?.message || String(e3) });
-        }
+        warnList.push({ code:'meter_patch_failed', details: e2?.message || String(e2) });
       }
     }
 
     // Attach PDF (always)
-    const filenameSafe = filename || `Schedule4_${dayOnly}.pdf`;
+    const filenameSafe = filename || `Schedule4_${toIsoDate(data.inspectionDate || new Date())}.pdf`;
     const file_url = await uploadPdf(pdfBuffer, filenameSafe);
     try{
       await fleetioV2(`/work_orders/${workOrderId}`, { method:'PATCH', body: JSON.stringify({ documents_attributes: [ { name: filenameSafe, file_url } ] }) }, 'attach_doc');
