@@ -1,9 +1,7 @@
 {
   "version": 2,
   "routes": [
-    {
-      "src": "/api/inspections",
-      "dest": "/api/inspections.js"
-    }
+    { "src": "/api/inspections", "dest": "/api/inspections.js" },
+    { "src": "/api/fleetio/create-work-order", "dest": "/api/fleetio/create-work-order.js" }
   ]
 }
