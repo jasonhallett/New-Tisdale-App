@@ -1,10 +1,16 @@
 {
+  "version": 2,
   "functions": {
     "api/pdf/print.js": {
-      "runtime": "nodejs20.x",
       "memory": 1024,
       "maxDuration": 60,
-      "architecture": "x64"
+      "regions": ["cle1"]
     }
-  }
+  },
+  "routes": [
+    {
+      "src": "/api/inspections",
+      "dest": "/api/inspections.js"
+    }
+  ]
 }
