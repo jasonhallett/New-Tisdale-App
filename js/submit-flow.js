@@ -9,7 +9,8 @@
   const CONFIG = {
     saveBase: "/api/inspections",
     printEndpoint: "/api/pdf/print",
-    reportPath: (id) => `/output.html?id=${encodeURIComponent(id)}`,
+    // CHANGE: /api/pdf/print needs an ABSOLUTE URL, not a relative path
+    reportUrl: (id) => `https://app.tisdale.coach/output.html?id=${encodeURIComponent(id)}`,
     filenameFrom: (payload) => {
       const unit = (payload.unitNumber || "Unit").toString().replace(/[^\w\-]+/g, "_");
       const d = payload.inspectionDate || new Date().toISOString().slice(0,10);
@@ -244,12 +245,13 @@
   }
 
   // ---- Print via server (Puppeteer) ----
-  async function requestServerPdf({ filename, path }) {
+  // CHANGE: accept { url } and send { url } to the API
+  async function requestServerPdf({ filename, url }) {
     const res = await fetch(CONFIG.printEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ filename, path })
+      body: JSON.stringify({ filename, url })
     });
     if (!res.ok) throw new Error(`PDF generation failed (${res.status}) ${await res.text().catch(()=> "")}`);
     return await res.blob();
@@ -289,12 +291,12 @@
 
         // 2) Try server-side PDF
         const filename = CONFIG.filenameFrom(payload);
-        const path = CONFIG.reportPath(id);
+        const url = CONFIG.reportUrl(id);   // CHANGE: absolute URL for the print route
         let objectUrl = null;
 
         Progress.update("Generating PDF...");
         try {
-          const pdfBlob = await requestServerPdf({ filename, path });
+          const pdfBlob = await requestServerPdf({ filename, url }); // CHANGE: send url
           objectUrl = URL.createObjectURL(pdfBlob);
         } catch (err) {
           console.warn("Server PDF failed, continuing with viewer fallback:", err);
