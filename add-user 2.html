@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Add / Manage Users</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- No color styling. Keep it neutral/minimal to match new_inspection.html -->
+  <style>
+    :root { --gap: 12px; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    .container { max-width: 960px; margin: 0 auto; padding: 16px; }
+    h1, h2, h3 { margin: 0 0 8px; }
+    p { margin: 0 0 12px; }
+    fieldset { border: 1px solid #ccc; border-radius: 6px; padding: 12px; margin: 0 0 16px; }
+    legend { padding: 0 6px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--gap); }
+    .row-1 { display: grid; grid-template-columns: 1fr; gap: var(--gap); }
+    label { display: block; margin-bottom: 4px; font-size: 14px; }
+    input[type="text"], input[type="email"], input[type="tel"], input[type="password"], select, textarea {
+      width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #bbb; border-radius: 4px; font-size: 14px;
+    }
+    .roles { display: flex; flex-wrap: wrap; gap: 12px; }
+    .role { display: inline-flex; align-items: center; gap: 6px; }
+    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    button { padding: 8px 14px; border: 1px solid #bbb; background: #f6f6f6; border-radius: 4px; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .hidden { display: none; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
+    .divider { height: 1px; background: #e5e5e5; margin: 16px 0; }
+    .note { font-size: 12px; opacity: 0.9; }
+    .status { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Add / Manage Users</h1>
+    <p class="note">Neutral UI. No colors. Matches the plain look/feel of <code>new_inspection.html</code>.</p>
+
+    <!-- Create / Add User -->
+    <fieldset>
+      <legend>Create User</legend>
+      <form id="createForm" class="row">
+        <div>
+          <label for="full_name">Full Name</label>
+          <input id="full_name" type="text" placeholder="Jane Doe" />
+        </div>
+        <div>
+          <label for="email">Email *</label>
+          <input id="email" type="email" required placeholder="jane@example.com" />
+        </div>
+        <div>
+          <label for="phone">Phone</label>
+          <input id="phone" type="tel" placeholder="+1 (555) 555-5555" />
+        </div>
+        <div>
+          <label for="is_active">Active</label>
+          <select id="is_active">
+            <option value="true" selected>Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        </div>
+        <div>
+          <label for="password">Set Password (optional)</label>
+          <input id="password" type="password" placeholder="••••••••" />
+          <div class="note">If provided, it will be hashed to PHC (<code>$scrypt$...</code>) and stored in <code>password_phc</code>.</div>
+        </div>
+        <div></div>
+      </form>
+
+      <div style="margin-top: 12px;">
+        <h3>Roles</h3>
+        <div id="rolesCreate" class="roles"></div>
+        <div class="note" style="margin-top: 4px;">Selecting <b>TECHNICIAN</b> reveals Technician fields.</div>
+      </div>
+
+      <div id="techCreate" class="hidden" style="margin-top: 12px;">
+        <h3>Technician Details</h3>
+        <div class="row">
+          <div>
+            <label for="sto">STO Registration #</label>
+            <input id="sto" type="text" placeholder="e.g., STO-123456" />
+          </div>
+          <div>
+            <label for="trade_codes">Trade Codes</label>
+            <input id="trade_codes" type="text" placeholder="Comma-separated e.g. 310T, 310S" />
+          </div>
+          <div>
+            <label for="default_carrier">Default Carrier (optional)</label>
+            <input id="default_carrier" type="text" />
+          </div>
+          <div>
+            <label for="default_station_address">Default Station Address (optional)</label>
+            <input id="default_station_address" type="text" />
+          </div>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top: 12px;">
+        <button id="btnCreate">Save User</button>
+        <span id="statusCreate" class="status"></span>
+      </div>
+    </fieldset>
+
+    <div class="divider"></div>
+
+    <!-- Update / Add Roles for Existing User -->
+    <fieldset>
+      <legend>Update Roles (Existing User)</legend>
+      <div class="row-3">
+        <div>
+          <label for="findEmail">User Email</label>
+          <input id="findEmail" type="email" placeholder="existing.user@example.com" />
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <button id="btnLoadUser" type="button">Load User</button>
+        </div>
+        <div>
+          <label>User ID (read-only)</label>
+          <input id="userId" type="text" readonly />
+        </div>
+      </div>
+
+      <div id="currentUserBlock" class="hidden" style="margin-top: 12px;">
+        <div>
+          <div><strong>Current Roles</strong></div>
+          <pre id="currentRoles" class="mono"></pre>
+        </div>
+
+        <div style="margin-top: 8px;">
+          <h3>Update Roles</h3>
+          <div id="rolesUpdate" class="roles"></div>
+          <div class="note" style="margin-top: 4px;">
+            <b>Replace Roles</b> overwrites whatever the user has now. <b>Add Selected</b> keeps existing roles and adds the new ones.
+          </div>
+        </div>
+
+        <div class="actions" style="margin-top: 10px;">
+          <button id="btnReplaceRoles" type="button">Replace Roles</button>
+          <button id="btnAddRoles" type="button">Add Selected</button>
+          <span id="statusUpdate" class="status"></span>
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="divider"></div>
+
+    <!-- Utilities -->
+    <fieldset>
+      <legend>Utilities</legend>
+      <div class="actions">
+        <button id="btnSeedRoles" type="button">Seed Default Roles</button>
+        <button id="btnListTechs" type="button">List Technicians</button>
+        <span class="note">Output:</span>
+      </div>
+      <pre id="out" class="mono" style="margin-top: 8px; white-space: pre-wrap;"></pre>
+    </fieldset>
+  </div>
+
+  <script>
+    // Neutral roles list
+    const BASE_ROLES = ['ADMIN','TECHNICIAN','FINANCE','SALES','OPERATIONS','HR'];
+
+    const rolesCreateDiv = document.getElementById('rolesCreate');
+    const rolesUpdateDiv = document.getElementById('rolesUpdate');
+    const techCreate = document.getElementById('techCreate');
+    const statusCreate = document.getElementById('statusCreate');
+    const statusUpdate = document.getElementById('statusUpdate');
+    const out = document.getElementById('out');
+
+    const createForm = document.getElementById('createForm');
+    const btnCreate = document.getElementById('btnCreate');
+
+    const btnSeedRoles = document.getElementById('btnSeedRoles');
+    const btnListTechs = document.getElementById('btnListTechs');
+
+    // Update roles elements
+    const btnLoadUser = document.getElementById('btnLoadUser');
+    const findEmail = document.getElementById('findEmail');
+    const userIdEl = document.getElementById('userId');
+    const currentRolesPre = document.getElementById('currentRoles');
+    const currentUserBlock = document.getElementById('currentUserBlock');
+    const btnReplaceRoles = document.getElementById('btnReplaceRoles');
+    const btnAddRoles = document.getElementById('btnAddRoles');
+
+    let availableRoles = [...BASE_ROLES];
+    let loadedUser = null;
+
+    // Load roles from server (fallback to base list)
+    async function loadRoles() {
+      try {
+        const r = await fetch('/api/roles/list');
+        const j = await r.json();
+        if (j.ok && Array.isArray(j.roles) && j.roles.length) {
+          availableRoles = j.roles.map(x => x.role_name);
+        }
+      } catch {}
+      renderRoleBoxes(rolesCreateDiv, 'create');
+      renderRoleBoxes(rolesUpdateDiv, 'update');
+    }
+
+    function renderRoleBoxes(container, scope) {
+      container.innerHTML = '';
+      availableRoles.forEach(role => {
+        const id = `${scope}_role_${role}`;
+        const wrap = document.createElement('label');
+        wrap.className = 'role';
+        wrap.innerHTML = `
+          <input type="checkbox" id="${id}" value="${role}" />
+          <span>${role}</span>
+        `;
+        container.appendChild(wrap);
+      });
+      if (scope === 'create') {
+        container.addEventListener('change', onCreateRolesChange);
+      }
+    }
+
+    function onCreateRolesChange() {
+      const selected = getSelectedRoles(rolesCreateDiv);
+      if (selected.includes('TECHNICIAN')) techCreate.classList.remove('hidden');
+      else techCreate.classList.add('hidden');
+    }
+
+    function getSelectedRoles(container) {
+      return Array.from(container.querySelectorAll('input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
+    }
+
+    // CREATE USER
+    btnCreate.addEventListener('click', async (e) => {
+      e.preventDefault();
+      statusCreate.textContent = '';
+      btnCreate.disabled = true;
+
+      const payload = {
+        full_name: document.getElementById('full_name').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        roles: getSelectedRoles(rolesCreateDiv),
+        is_active: document.getElementById('is_active').value === 'true'
+      };
+      const pw = document.getElementById('password').value;
+      if (pw) payload.password = pw;
+
+      if (payload.roles.includes('TECHNICIAN')) {
+        payload.technicianProfile = {
+          sto_registration_number: document.getElementById('sto').value.trim() || null,
+          trade_codes: (document.getElementById('trade_codes').value || '').split(',').map(s => s.trim()).filter(Boolean),
+          default_carrier: document.getElementById('default_carrier').value.trim() || null,
+          default_station_address: document.getElementById('default_station_address').value.trim() || null
+        };
+      }
+
+      try {
+        const resp = await fetch('/api/users/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed');
+        statusCreate.textContent = 'Saved';
+        createForm.reset();
+        techCreate.classList.add('hidden');
+      } catch (err) {
+        statusCreate.textContent = 'Error: ' + (err.message || 'Failed');
+      } finally {
+        btnCreate.disabled = false;
+      }
+    });
+
+    // LOAD EXISTING USER (by email)
+    btnLoadUser.addEventListener('click', async () => {
+      statusUpdate.textContent = '';
+      userIdEl.value = '';
+      currentRolesPre.textContent = '';
+      currentUserBlock.classList.add('hidden');
+      loadedUser = null;
+
+      const email = (findEmail.value || '').trim().toLowerCase();
+      if (!email) {
+        statusUpdate.textContent = 'Enter an email.';
+        return;
+      }
+
+      try {
+        // We reuse /api/users/list to avoid adding new endpoints; client-side filter by email
+        const r = await fetch('/api/users/list');
+        const j = await r.json();
+        if (!j.ok || !Array.isArray(j.users)) throw new Error('Load failed');
+
+        const match = j.users.find(u => String(u.email || '').toLowerCase() === email);
+        if (!match) {
+          statusUpdate.textContent = 'No user found for that email.';
+          return;
+        }
+        loadedUser = match;
+        userIdEl.value = match.id || '';
+        currentRolesPre.textContent = JSON.stringify(match.roles || [], null, 2);
+        // set checkboxes to current roles
+        rolesUpdateDiv.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.checked = (match.roles || []).includes(cb.value);
+        });
+        currentUserBlock.classList.remove('hidden');
+      } catch (err) {
+        statusUpdate.textContent = 'Error: ' + (err.message || 'Failed');
+      }
+    });
+
+    // UPDATE ROLES (replace)
+    btnReplaceRoles.addEventListener('click', async () => {
+      if (!loadedUser) return;
+      await updateRoles(true);
+    });
+
+    // UPDATE ROLES (add/merge)
+    btnAddRoles.addEventListener('click', async () => {
+      if (!loadedUser) return;
+      await updateRoles(false);
+    });
+
+    async function updateRoles(replace) {
+      statusUpdate.textContent = '';
+      const selected = getSelectedRoles(rolesUpdateDiv);
+
+      try {
+        const resp = await fetch('/api/users/update-roles', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: loadedUser.id,
+            roles: selected,
+            replaceRoles: !!replace
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed');
+
+        // refresh current roles display locally
+        currentRolesPre.textContent = JSON.stringify(data.roles || [], null, 2);
+        statusUpdate.textContent = replace ? 'Roles replaced.' : 'Roles added.';
+      } catch (err) {
+        statusUpdate.textContent = 'Error: ' + (err.message || 'Failed');
+      }
+    }
+
+    // UTILITIES
+    document.getElementById('btnSeedRoles').addEventListener('click', async () => {
+      out.textContent = 'Seeding...';
+      try {
+        const r = await fetch('/api/roles/seed', { method: 'POST' });
+        out.textContent = await r.text();
+      } catch (e) {
+        out.textContent = 'Seed error.';
+      }
+    });
+
+    document.getElementById('btnListTechs').addEventListener('click', async () => {
+      out.textContent = 'Loading TECHNICIAN users...';
+      try {
+        const r = await fetch('/api/users/list?role=TECHNICIAN');
+        out.textContent = await r.text();
+      } catch (e) {
+        out.textContent = 'List error.';
+      }
+    });
+
+    // Init
+    loadRoles();
+  </script>
+</body>
+</html>

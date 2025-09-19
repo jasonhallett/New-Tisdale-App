@@ -288,13 +288,9 @@
         log('Server DB update succeeded: ' + JSON.stringify(res.db_update));
       }
 
-      // Open Fleetio WO
-      if (res.url) {
         log('Opening Fleetio Work Order URL: ' + res.url);
         window.open(res.url, '_blank', 'noopener');
-      } else {
-        log('WARNING: create-work-order did not return a URL to open.');
-      }
+
     } catch (err) {
       console.error(err);
       alert('Fleetio error: ' + (err?.message || err));

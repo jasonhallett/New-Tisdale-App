@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!--
+  TEMP: Disable silent session check to avoid 401 console noise on first load.
+  Set AUTO_REDIRECT_IF_LOGGED_IN = true to re-enable the check/redirect.
+-->
+<script defer>
+(() => {
+  const AUTO_REDIRECT_IF_LOGGED_IN = false; // <- toggle to true to restore auto-redirect
+  if (!AUTO_REDIRECT_IF_LOGGED_IN) return;
+  fetch('/api/users/me', { credentials: 'include' })
+    .then(r => { if (r.ok) window.location.href = 'app.html'; })
+    .catch(() => {});
+})();
+</script>
+
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TBL Internal App - Login</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:#f5f7fb; margin:0; }
+    .card { max-width: 420px; margin: 8vh auto; background:#fff; border-radius:12px; box-shadow: 0 6px 24px rgba(0,0,0,0.08); padding:24px; }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    label { font-size: 14px; display:block; margin:14px 0 8px; }
+    input[type="email"], input[type="password"] { width:100%; padding:12px; border-radius:8px; border:1px solid #d1d7e2; font-size:15px; }
+    button { width:100%; padding:12px; border-radius:8px; border:1px solid #d1d7e2; background:#f6f6f6; font-size:15px; margin-top:18px; cursor:pointer; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .err { color:#b91c1c; font-size: 14px; min-height: 1.2em; margin-top: 10px; }
+    .muted { font-size: 12px; color:#6b7280; margin-top:10px; }
+
+    .row { display:flex; align-items:center; gap:8px; margin-top:10px; }
+    input[type="checkbox"] { width:auto; height:auto; padding:0; border:none; border-radius:0; margin:0; appearance:auto; }
+    .row .check { display:inline-flex; align-items:center; gap:8px; margin:0; font-size:14px; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>User Login</h1>
+
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="you@example.com" required />
+
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" required />
+
+    <div class="row">
+      <label class="check" for="remember7">
+        <input id="remember7" type="checkbox" />
+        <span>Stay logged in on this device for 7 days</span>
+      </label>
+    </div>
+
+    <button id="btn">Sign In</button>
+    <div class="err" id="err"></div>
+    <div class="muted">After login, you’ll be taken to the app.</div>
+  </div>
+
+<script>
+(() => {
+  const btn = document.getElementById('btn');
+  const err = document.getElementById('err');
+
+  btn.addEventListener('click', async () => {
+    err.textContent = '';
+    btn.disabled = true;
+    try {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('pw').value;
+      const remember = !!document.getElementById('remember7').checked;
+      if (!email || !password) throw new Error('Enter email and password');
+
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password, remember })
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) throw new Error(j.error || 'Login failed');
+      window.location.href = 'app.html';
+    } catch (e) {
+      err.textContent = e.message || 'Login failed';
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

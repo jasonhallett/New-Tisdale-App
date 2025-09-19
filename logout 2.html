@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Logged Out – TBL Internal App</title>
+  <style>
+    :root { --bg:#0b1320; --card:#121a2b; --ink:#e8eefc; --ink-muted:#9fb1d7; --border:#20304d; }
+    html, body { margin:0; padding:0; height:100%; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial, sans-serif; background:var(--bg); color:var(--ink);}
+    .wrap { min-height:100%; display:grid; place-items:center; padding:24px; }
+    .card { width:min(560px, 92vw); background:linear-gradient(180deg, #121a2b 0%, #0f1626 100%); border:1px solid var(--border); border-radius:16px; padding:24px; text-align:center; }
+    .muted { color:var(--ink-muted); margin-top:8px; }
+    a.btn { display:inline-block; margin-top:16px; border-radius:10px; padding:10px 14px; text-decoration:none; color:var(--ink); border:1px solid var(--border); background:#0b1a2e;}
+    a.btn:hover { border-color:#2a3b63; }
+  </style>
+  <script>
+    // Call server to clear HttpOnly cookie; ignore errors
+    (async () => {
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1 style="margin:0 0 6px 0;">You’re logged out</h1>
+      <div class="muted">Your session cookie has been cleared.</div>
+      <a href="/" class="btn">Back to Login</a>
+    </div>
+  </div>
+</body>
+</html>

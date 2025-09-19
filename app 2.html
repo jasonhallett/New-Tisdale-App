@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tisdale Employee App</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./css/tisdale-theme.css" />
+  <script defer src="auth-guard.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <picture>
+          <source srcset="./assets/tisdale-logo-dark.svg" media="(prefers-color-scheme: dark)">
+          <img src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines">
+        </picture>
+        <div class="brand-title small-muted">Tisdale Employee App</div>
+      </div>
+      <nav class="nav" id="nav">
+        <a class="active" href="#schedule4s" data-href="schedule4s.html">🧾 <span>Schedule 4s</span></a>
+        <!-- Future items can be added here -->
+      </nav>
+    </aside>
+
+    <header class="topbar">
+      <div class="title-wrap">
+        <div class="app-title">Tisdale Employee App</div>
+        <div class="page-title" id="pageTitle">Schedule 4s</div>
+      </div>
+      <div class="top-actions">
+        <button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <iframe id="contentFrame" title="Content"></iframe>
+    </main>
+  </div>
+
+  <script>
+    const frame = document.getElementById('contentFrame');
+    const pageTitle = document.getElementById('pageTitle');
+    frame.src = 'schedule4s.html';
+
+    document.getElementById('nav').addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-href]');
+      if (!a) return;
+      e.preventDefault();
+      document.querySelectorAll('.nav a').forEach(x => x.classList.remove('active'));
+      a.classList.add('active');
+      frame.src = a.dataset.href;
+      pageTitle.textContent = a.textContent.trim();
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {}
+      window.location.href = '/';
+    });
+  </script>
+</body>
+</html>
