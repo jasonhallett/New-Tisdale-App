@@ -46,12 +46,8 @@ export default async function handler(req, res) {
   // Launch Chromium from chrome-aws-lambda (has libnss3 et al.)
   let browser;
   try {
-    // ✅ IMPORTANT: executablePath is an async function — CALL it.
-    const executablePath = await chromium.executablePath();
-    // If your version of chrome-aws-lambda requires calling as a function, use:
-    // const executablePath = await chromium.executablePath();
-    // (Most versions require the parentheses. If you still get "expected string, got object",
-    //  switch to the line above with parentheses.)
+    // ✅ IMPORTANT: on chrome-aws-lambda v10, executablePath is a Promise (no parentheses).
+    const executablePath = await chromium.executablePath; // <-- NO ()
     browser = await playwright.chromium.launch({
       args: chromium.args,
       executablePath,
