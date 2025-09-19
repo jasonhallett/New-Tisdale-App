@@ -1,5 +1,7 @@
-/* css/schedule4s-grid.css */
-/* Desktop/tablet defaults (unchanged) */
+/* css/schedule4s-grid.css — Theme-only refresh aligned to styles.css
+   IMPORTANT: No changes to widths, paddings, or responsive breakpoints. */
+
+/* Desktop/tablet defaults (UNCHANGED sizing) */
 .table.compact th,
 .table.compact td {
   padding: 4px 6px;
@@ -15,7 +17,7 @@
 .col-view { white-space: nowrap; }
 
 .col-date { width: 200px; }            /* fits mm/dd/yyyy hh:mm AM/PM */
-.col-unit { width: 130px; }            /* slightly wider per prior tweak */
+.col-unit { width: 130px; }
 .col-odo  { width: 140px; text-align: left; }
 .col-tech { max-width: 110px; }
 .col-loc  { max-width: 360px; }
@@ -27,7 +29,20 @@
   text-overflow: ellipsis;
 }
 
-/* Tiny link-style "View" (unchanged) */
+/* Visual-only: header, hover, link color */
+.table.compact thead th {
+  background: var(--bg-elev-2);
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.table.compact tbody td {
+  border-bottom: 1px solid var(--border);
+}
+.table.compact tbody tr:hover td {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+/* Tiny link-style "View" (visual only) */
 .btn-link-sm {
   display: inline-block;
   font-size: 12px;
@@ -36,12 +51,12 @@
   border: 0;
   background: transparent;
   text-decoration: none;
+  color: var(--primary);
 }
 .btn-link-sm:hover { text-decoration: underline; }
 
-/* -------- Phone layout (only) -------- */
+/* -------- Phone layout (only) (UNCHANGED sizing) -------- */
 @media (max-width: 640px) {
-  /* Keep things inside the card without horizontal scroll */
   #grid {
     width: 100%;
     table-layout: fixed; /* ensures columns respect widths */
@@ -54,18 +69,15 @@
     display: none;
   }
 
-  /* Make the three visible columns fit neatly */
   .col-date { width: 56%; }  /* date + time */
   .col-unit { width: 28%; }  /* unit number */
   .col-view { width: 16%; text-align: right; }
 
-  /* Slightly more breathing room for tap targets */
   .table.compact th,
   .table.compact td {
     padding: 6px 8px;
   }
 
-  /* Toolbar wraps nicely on small screens without affecting desktop */
   .toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -73,8 +85,8 @@
     align-items: center;
   }
   .toolbar .search {
-    width: 100% !important;   /* search full-width on phone */
+    width: 100% !important;
     max-width: 100%;
   }
-  #newBtn { margin-left: auto; } /* keep button on the right when space allows */
+  #newBtn { margin-left: auto; }
 }
