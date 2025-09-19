@@ -3,14 +3,11 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
-  },
-  "scripts": {
-    "postinstall": "PUPPETEER_CACHE_DIR=$PWD/.cache PUPPETEER_BROWSERS_PATH=$PWD/.cache npx puppeteer browsers install chrome"
+    "node": ">=18"
   },
   "dependencies": {
-    "@neondatabase/serverless": "0.9.0",
-    "pg": "8.12.0",
-    "puppeteer": "22.12.1"
+    "@neondatabase/serverless": "^0.9.0",
+    "@sparticuz/chromium": "138.0.2",
+    "puppeteer-core": "^24.20.0"
   }
 }

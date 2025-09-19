@@ -14,14 +14,14 @@
   <!-- Keep: capture PDF blobs created on this page (best-effort) -->
   <script>
   (function(){
-    // Keep a weak in-memory cache for transient blobs, so if the user clicks "Save a copy"
-    // after the iframe has navigated elsewhere we can still re-provide the last blob.
-    window.__pdfBlobs = window.__pdfBlobs || new Map();
-    window.__rememberPdfBlob = (key, blob) => {
-      try { if (key && blob) window.__pdfBlobs.set(key, blob); } catch {}
-    };
-    window.__getPdfBlob = (key) => {
-      try { return key ? window.__pdfBlobs.get(key) : null; } catch { return null; }
+    const _create = URL.createObjectURL;
+    URL.createObjectURL = function(obj){
+      try {
+        if (obj instanceof Blob && obj.type === 'application/pdf') {
+          window.__lastPdfBlob = obj;
+        }
+      } catch(e){}
+      return _create.apply(this, arguments);
     };
   })();
   </script>
@@ -32,90 +32,58 @@
     <div class="max-w-screen-xl mx-auto px-4 py-2 flex items-center gap-2">
       <a href="/" class="text-sm text-white/70 hover:text-white">← Back</a>
       <div class="ml-auto flex items-center gap-2">
-        <button id="btnSave" class="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-sm">Save a copy</button>
-        <button id="btnFleetio" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-sm">Create Fleetio Work Order</button>
-        <button id="btnClose" class="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-sm">Close</button>
+        <button id="btnPrint" class="px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm">Download PDF</button>
+        <button id="btnFleetio" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">Create Fleetio Work Order</button>
+        <button id="btnClose" class="px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm">Close</button>
       </div>
     </div>
   </header>
 
-  <!-- PDF frame -->
-  <main class="max-w-screen-xl mx-auto px-4 py-4 h-[calc(100%-48px)]">
-    <iframe id="pdf" class="w-full h-full rounded-lg border border-white/10 bg-black" src=""></iframe>
+  <!-- Viewer -->
+  <main class="h-[calc(100%-56px)]">
+    <iframe id="pdfFrame" class="w-full h-full bg-neutral-900" title="PDF Preview"></iframe>
   </main>
 
   <script>
-  (function(){
-    const qs = new URLSearchParams(location.search);
-    const src = qs.get('src') || '';
-    const filename = qs.get('filename') || 'Schedule-4_Inspection.pdf';
-    const blobKey = qs.get('id') || qs.get('recordId') || 'default';
-
-    // show PDF
-    const iframe = document.getElementById('pdf');
-    if (src) {
-      iframe.src = src;
-    } else {
-      // Fallback: black page if no src
-      iframe.srcdoc = '<style>html,body{height:100%;margin:0;background:#000;color:#fff;display:grid;place-items:center;font-family:system-ui}</style><div>No PDF source was provided.</div>';
-    }
-
-    // save a copy
-    document.getElementById('btnSave').addEventListener('click', async () => {
-      try {
-        let blob;
-        if (src.startsWith('blob:')) {
-          // If the blob came from this process, try retrieve it
-          blob = window.__getPdfBlob(blobKey);
-          if (!blob) {
-            // fetch the blob from the blob URL
-            const r = await fetch(src);
-            blob = await r.blob();
-          }
-        } else {
-          // Remote URL; just fetch the bytes
-          const r = await fetch(src, { credentials: 'omit' });
-          blob = await r.blob();
-        }
-
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(a.href), 1500);
-      } catch (e) {
-        alert('Failed to save PDF: ' + (e?.message || e));
-      }
-    });
-
-    document.getElementById('btnClose').addEventListener('click', () => window.close());
-  })();
-  </script>
-
-  <!-- Viewer context: parse query params and expose for Fleetio -->
-  <script>
+    // minimal loader for the iframe using ?src and ?filename
     (function(){
-      try {
-        const q = new URLSearchParams(location.search);
-        const id = q.get('id') || q.get('recordId') || q.get('inspectionId') || '';
-        const meta = {
-          unit: q.get('unit') || '',
-          odometer: q.get('odometer') || '',
-          date: q.get('date') || '',
-          filename: q.get('filename') || ''
-        };
-        // Expose globals for /js/fleetio.js
-        window.schedule4InspectionId = id;
-        window.schedule4Meta = meta;
-        // For sanity/debugging:
-        // console.debug('[viewer] schedule4InspectionId:', id, meta);
-      } catch(e) {
-        // no-op
-      }
+      const params = new URLSearchParams(location.search);
+      const src = params.get('src') || '';
+      const filename = params.get('filename') || '';
+      const frame = document.getElementById('pdfFrame');
+      if (src) frame.src = src;
+
+      document.getElementById('btnPrint').addEventListener('click', async () => {
+        try {
+          const currentSrc = src || frame?.src || '';
+          const dlName = filename || 'schedule4.pdf';
+          if (!currentSrc) return alert('No PDF loaded.');
+
+          if (currentSrc.startsWith('blob:') || currentSrc.startsWith('data:application/pdf')) {
+            const a = document.createElement('a');
+            a.href = currentSrc; a.download = dlName;
+            document.body.appendChild(a); a.click(); a.remove();
+            return;
+          }
+          const resp = await fetch(currentSrc, { credentials: 'include' });
+          if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
+          const blob = await resp.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = dlName;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          alert('Failed to save PDF: ' + (e?.message || e));
+        }
+      });
+
+      document.getElementById('btnClose').addEventListener('click', () => window.close());
     })();
   </script>
+
+
+
 
   <!-- Single, authoritative Fleetio handler -->
   <script src="/js/fleetio.js"></script>

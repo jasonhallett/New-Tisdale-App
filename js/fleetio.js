@@ -1,6 +1,5 @@
 // /js/fleetio.js
-// Single handler + detailed debug modal + robust PDF sourcing (base64 OR pdfUrl fallback)
-// + server-side DB update verification + client fallback PATCH (snake_case).
+// DEBUG RESET: single handler + detailed debug modal + robust PDF sourcing (base64 OR pdfUrl fallback).
 
 (function () {
   const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
@@ -34,26 +33,20 @@
 
   function getCtx(log){
     const q = getQuery();
-
-    // Start with viewer-provided globals if present (pdf_viewer.html sets these)
-    let idFromWindow   = (window.schedule4InspectionId || '').trim() || null;
-    let metaFromWindow = window.schedule4Meta || {};
-
     let ctx = {
-      inspectionId: idFromWindow || q.get('id') || null,
-      inspectionDate: metaFromWindow.date || q.get('date') || q.get('inspected_at') || q.get('inspected') || null,
-      unitNumber: metaFromWindow.unit || q.get('unit') || q.get('vehicle') || q.get('unit_number') || null,
-      filename: metaFromWindow.filename || q.get('filename') || null,
-      odometer: parseNumber(metaFromWindow.odometer || q.get('odo') || q.get('odometer')),
+      inspectionId: q.get('id') || null,
+      inspectionDate: q.get('date') || q.get('inspected_at') || q.get('inspected') || null,
+      unitNumber: q.get('unit') || q.get('vehicle') || q.get('unit_number') || null,
+      filename: q.get('filename') || null,
+      odometer: parseNumber(q.get('odo') || q.get('odometer')),
       src: q.get('src') || ''
     };
-    log(`Initial ctx: ${JSON.stringify(ctx)}`);
+    log(`Initial ctx from query: ${JSON.stringify(ctx)}`);
 
     if (!ctx.unitNumber && ctx.filename) {
       const u = deriveUnitFromFilename(ctx.filename); if (u) { ctx.unitNumber = u; log(`Derived unit from filename: ${u}`); }
     }
 
-    // Session storage augmentation (form page saved schedule4Data)
     try {
       const raw = sessionStorage.getItem('schedule4Data');
       if (raw) {
@@ -62,21 +55,18 @@
         ctx.inspectionDate = ctx.inspectionDate || d.inspectionDate || d.date || d.dateInspected || null;
         ctx.unitNumber     = ctx.unitNumber     || d.unitNumber || d.unit || d.vehicle || d.unit_number || null;
         ctx.odometer       = (ctx.odometer ?? parseNumber(d.odometer ?? d.startOdometer ?? d.odo ?? d.mileage));
-        ctx.filename       = ctx.filename       || d.filename || null;
-        log(`Augmented from sessionStorage.schedule4Data: ${JSON.stringify({inspectionId:ctx.inspectionId,inspectionDate:ctx.inspectionDate,unitNumber:ctx.unitNumber,odometer:ctx.odometer,filename:ctx.filename})}`);
+        log(`Augmented ctx from sessionStorage.schedule4Data: ${JSON.stringify({inspectionId:ctx.inspectionId,inspectionDate:ctx.inspectionDate,unitNumber:ctx.unitNumber,odometer:ctx.odometer})}`);
       } else {
         log('No sessionStorage.schedule4Data found.');
       }
     } catch (e) { log('Error parsing sessionStorage.schedule4Data: ' + e.message); }
 
-    // Optional global TBL shim
     if (window.TBL && typeof window.TBL === 'object') {
       ctx.inspectionId   = ctx.inspectionId   || window.TBL.inspectionId || null;
       ctx.inspectionDate = ctx.inspectionDate || window.TBL.inspectionDate || null;
       ctx.unitNumber     = ctx.unitNumber     || window.TBL.unitNumber || null;
       ctx.odometer       = ctx.odometer ?? parseNumber(window.TBL.odometer);
-      ctx.filename       = ctx.filename || window.TBL.filename || null;
-      log(`Augmented from window.TBL: ${JSON.stringify({inspectionId:ctx.inspectionId,inspectionDate:ctx.inspectionDate,unitNumber:ctx.unitNumber,odometer:ctx.odometer,filename:ctx.filename})}`);
+      log(`Augmented ctx from window.TBL: ${JSON.stringify({inspectionId:ctx.inspectionId,inspectionDate:ctx.inspectionDate,unitNumber:ctx.unitNumber,odometer:ctx.odometer})}`);
     }
 
     return ctx;
@@ -89,18 +79,6 @@
     try { json = JSON.parse(text); } catch {}
     if (!r.ok) {
       if (r.status===404 && json?.code==='vehicle_not_found') return json;
-      const msg = json?.error || `HTTP ${r.status}`;
-      throw new Error(`${msg} :: ${text}`);
-    }
-    return json || {};
-  }
-
-  async function patchJson(url, body){
-    const r = await fetch(url, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    const text = await r.text();
-    let json = null;
-    try { json = JSON.parse(text); } catch {}
-    if (!r.ok) {
       const msg = json?.error || `HTTP ${r.status}`;
       throw new Error(`${msg} :: ${text}`);
     }
@@ -231,43 +209,6 @@
     });
   }
 
-  function pick(obj, keys, fallbackKeys = []) {
-    for (const k of keys) if (obj && obj[k] != null) return obj[k];
-    for (const k of fallbackKeys) if (obj && obj[k] != null) return obj[k];
-    return undefined;
-  }
-
-  // Normalize server response field names coming back from /api/fleetio/create-work-order
-  function normalizeWO(res){
-    const work_order_number = pick(res, ['work_order_number','workOrderNumber','number']);
-    const work_order_id     = pick(res, ['work_order_id','workOrderId','id','fleetio_work_order_id']);
-    const work_order_url    = pick(res, ['work_order_url','workOrderUrl','url']);
-    const pdf_url           = pick(res, ['pdf_url','pdfUrl']);
-    const file_name         = pick(res, ['file_name','fileName','filename']);
-    const db_update         = res?.db_update;
-    return { work_order_number, work_order_id, work_order_url, pdf_url, file_name, db_update };
-  }
-
-  async function clientFallbackPatch(inspectionId, wo, filename, log){
-    // Fallback PATCH only if server indicates DB update didn’t run/failed
-    const body = {
-      id: inspectionId,
-      internal_work_order_number: String(wo.work_order_number || '').trim(),
-      fleetio_work_order_id:      String(wo.work_order_id || '').trim(),
-      // Common column names — try "document" first; you can switch to "file" if your table uses that naming
-      fleetio_document_name:      String(wo.file_name || filename || '').trim(),
-      fleetio_document_url:       String(wo.pdf_url || '').trim()
-    };
-    log('Fallback PATCH /api/inspections with body: ' + JSON.stringify(body));
-    try {
-      await patchJson('/api/inspections', body);
-    } catch (e) {
-      // Try fallback path if your API supports it
-      log('PATCH failed, trying POST /api/inspections/update ... ' + e.message);
-      await postJson('/api/inspections/update', body);
-    }
-  }
-
   async function onClick(e){
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
 
@@ -309,18 +250,16 @@
       const filename = ctx.filename || `Schedule-4_Inspection_${unitSafe}_${dateStr}.pdf`;
       log(`Filename resolved: ${filename}`);
 
-      // Build payload as server expects
       const payload = {
         inspectionId: ctx.inspectionId,
-        recordId: ctx.inspectionId,       // server can update by id directly
-        unitNumber: ctx.unitNumber,       // REQUIRED key name
+        unitNumber: ctx.unitNumber,
         data: { inspectionDate: ctx.inspectionDate, odometer: ctx.odometer },
         filename
       };
       if (pdf.pdfBase64) payload.pdfBase64 = pdf.pdfBase64;
       if (!pdf.pdfBase64 && pdf.pdfUrl) payload.pdfUrl = pdf.pdfUrl;
 
-      log('POST /api/fleetio/create-work-order with keys: ' + Object.keys(payload).join(', '));
+      log('POST /api/fleetio/create-work-order with payload keys: ' + Object.keys(payload).join(', '));
       let res = await postJson('/api/fleetio/create-work-order', payload);
       log('Server response (1): ' + JSON.stringify(res));
 
@@ -332,26 +271,10 @@
         log('Server response (2): ' + JSON.stringify(res));
       }
 
-      // Normalize important fields from server
-      const wo = normalizeWO(res);
-
       if (res?.ok) {
-        // If server could not update DB (no DB, schema mismatch, etc.), do fallback PATCH
-        if (!wo.db_update || wo.db_update.ok === false) {
-          log('Server did not update DB (or reported failure) → running client fallback PATCH.');
-          await clientFallbackPatch(ctx.inspectionId, wo, filename, log);
-        } else {
-          log(`Server DB update: ${JSON.stringify(wo.db_update)}`);
-        }
-
-        // Open WO in Fleetio if URL is present
-        if (wo.work_order_url) {
-          log('SUCCESS. Opening Fleetio: ' + wo.work_order_url);
-          window.open(wo.work_order_url, '_blank');
-        } else {
-          log('SUCCESS. Work order created, but no URL provided.');
-        }
-
+        const url = res.work_order_url;
+        log('SUCCESS. Opening Fleetio: ' + url);
+        window.open(url, '_blank');
         log('=== Flow complete ===');
         return;
       }
