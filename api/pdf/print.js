@@ -1,28 +1,18 @@
 // /api/pdf/print
-// Robust server-side PDF render using puppeteer-core + @sparticuz/chromium for Vercel Serverless.
+// Server-side PDF render using Playwright AWS Lambda bundle (ships Chromium with NSS libs).
 
-import chromium from '@sparticuz/chromium';
-import puppeteer from 'puppeteer-core';
+import pw from 'playwright-aws-lambda';
 
-// Sparticuz recommended flags for serverless environments
-chromium.setHeadlessMode = true;
-chromium.setGraphicsMode = false;
+export const config = {
+  runtime: 'nodejs',
+  memory: 1024,
+  maxDuration: 60
+};
 
 function json(res, status, obj) {
   res.status(status);
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(obj));
-}
-
-async function launchBrowser() {
-  const executablePath = await chromium.executablePath();
-  return puppeteer.launch({
-    args: [...chromium.args, '--font-render-hinting=none'],
-    defaultViewport: chromium.defaultViewport,
-    executablePath,
-    headless: chromium.headless,
-    ignoreHTTPSErrors: true
-  });
 }
 
 export default async function handler(req, res) {
@@ -31,73 +21,53 @@ export default async function handler(req, res) {
     return json(res, 405, { error: 'Use POST' });
   }
 
-  // Parse body
   let body = {};
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); } catch {}
 
   const filename = body.filename || 'Schedule-4_Inspection.pdf';
-
-  // Resolve absolute URL for /output.html?id=...
   const baseUrl =
     (process.env.APP_BASE_URL && process.env.APP_BASE_URL.trim()) ||
     `https://${(req.headers.host || 'app.tisdale.coach').replace(/\/+$/, '')}`;
 
   const targetPath = body.path || (body.id ? `/output.html?id=${encodeURIComponent(body.id)}` : '/output.html');
   let targetUrl;
-  try {
-    targetUrl = new URL(targetPath, baseUrl).toString();
-  } catch {
-    targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`;
-  }
+  try { targetUrl = new URL(targetPath, baseUrl).toString(); } catch { targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`; }
 
   let browser;
   try {
-    browser = await launchBrowser();
+    // Launch Chromium bundled by playwright-aws-lambda (includes libnss3 et al.)
+    browser = await pw.launchChromium({ headless: true, args: ['--no-sandbox','--disable-dev-shm-usage'] });
   } catch (err) {
     console.error('[print] LAUNCH FAILED:', err);
-    return json(res, 500, {
-      step: 'launch',
-      error: 'Chromium failed to start',
-      details: err?.message
-    });
+    return json(res, 500, { step: 'launch', error: 'Chromium failed to start', details: err?.message });
   }
 
   try {
-    const page = await browser.newPage();
-    await page.emulateMediaType('print');
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.emulateMedia({ media: 'print' });
 
-    // If the client passed any render data, stash it in sessionStorage for output.html to read
+    // Pass through pre-render data
     try {
-      await page.evaluateOnNewDocument((data) => {
+      await page.addInitScript((data) => {
         try { sessionStorage.setItem('schedule4Data', JSON.stringify(data || {})); } catch {}
       }, body.data || {});
     } catch {}
 
     try {
-      await page.goto(targetUrl, { waitUntil: ['load', 'domcontentloaded', 'networkidle0'], timeout: 60000 });
+      await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 60000 });
     } catch (err) {
-      let statusCode = null;
-      try {
-        const resp = await page.mainFrame().response();
-        statusCode = resp ? resp.status() : null;
-      } catch {}
       console.error('[print] GOTO FAILED:', targetUrl, err);
-      return json(res, 500, {
-        step: 'goto',
-        targetUrl,
-        statusCode,
-        error: 'Navigation to output.html failed',
-        details: err?.message
-      });
+      return json(res, 500, { step: 'goto', targetUrl, error: 'Navigation failed', details: err?.message });
     }
 
-    // Optional: wait for a known shell element
+    // Wait minimal shell
     try { await page.waitForSelector('#page, #root, body', { timeout: 8000 }); } catch {}
 
-    // Fonts settle (prevents layout jank)
+    // Fonts
     try { await page.evaluate(() => (document.fonts && document.fonts.ready) ? document.fonts.ready : null); } catch {}
 
-    // Signature image completeness (if any)
+    // Signature image completeness
     try {
       await page.waitForFunction(() => {
         const img = document.getElementById('signatureImg');
@@ -107,9 +77,9 @@ export default async function handler(req, res) {
 
     const pdfBuffer = await page.pdf({
       format: 'Letter',
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 }
+      printBackground: True,
+      preferCSSPageSize: True,
+      margin: { top: '0in', right: '0in', bottom: '0in', left: '0in' }
     });
 
     res.status(200);
@@ -120,12 +90,7 @@ export default async function handler(req, res) {
     return res.end(pdfBuffer);
   } catch (err) {
     console.error('[print] RENDER FAILED:', { targetUrl, msg: err?.message });
-    return json(res, 500, {
-      step: 'render',
-      targetUrl,
-      error: 'PDF render failed',
-      details: err?.message
-    });
+    return json(res, 500, { step: 'render', targetUrl, error: 'PDF render failed', details: err?.message });
   } finally {
     try { await browser?.close(); } catch {}
   }
