@@ -1,11 +1,5 @@
 {
   "version": 2,
-  "functions": {
-    "api/pdf/print.js": {
-      "memory": 1024,
-      "maxDuration": 60
-    }
-  },
   "routes": [
     {
       "src": "/api/inspections",
