@@ -1,10 +1,9 @@
 // /js/schedule4s.js
 // Renders Schedule 4 grid. "View" continues to open output.html.
-// "New Schedule 4" now uses openViewer(): centered popup on desktop, new tab on phones/tablets.
+// "New Schedule 4" uses openViewer(): centered popup on desktop, new tab on phones/tablets.
 
 (function () {
   const $  = (sel, el = document) => el.querySelector(sel);
-  const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
 
   // --- Utilities ---
   function fmtDateISOtoMDY(iso) {
@@ -48,10 +47,42 @@
 
   // --- Data loading ---
   async function fetchInspections() {
-    const res = await fetch('/api/inspections?limit=500', { credentials: 'include' });
-    if (!res.ok) throw new Error(`Failed to load inspections (${res.status})`);
-    const data = await res.json();
-    return Array.isArray(data) ? data : (data.rows || data.items || []);
+    // Add a cache-busting ts param; keep your limit
+    const ts = Date.now();
+    const url = `/api/inspections?limit=500&_=${ts}`;
+    const res = await fetch(url, { credentials: 'include' });
+
+    const text = await res.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; } catch {
+      console.error('Failed to parse inspections JSON. Raw text:', text);
+      throw new Error(`Failed to parse inspections JSON (${res.status})`);
+    }
+    if (!res.ok) {
+      console.error('Failed to load inspections:', res.status, data || text);
+      throw new Error(`Failed to load inspections (${res.status})`);
+    }
+
+    // Normalize a bunch of common shapes to an array
+    const rows =
+      (Array.isArray(data) && data) ||
+      data.rows ||
+      data.items ||
+      data.result?.rows ||
+      data.data?.rows ||
+      data.data?.items ||
+      data.data ||
+      data.results ||
+      [];
+
+    if (!Array.isArray(rows)) {
+      console.warn('Inspections API returned unexpected shape. Keys:', Object.keys(data || {}));
+      return [];
+    }
+    if (rows.length === 0) {
+      console.warn('Inspections loaded: 0 rows. Top-level keys:', Object.keys(data || {}));
+    }
+    return rows;
   }
 
   // --- Rendering ---
@@ -96,17 +127,14 @@
     });
   }
 
-  // --- Viewer open helpers (your requested behavior) ---
-  // Desktop: centered popup
+  // --- Viewer open helpers ---
   function openCentered(url, name, w, h) {
     const dualLeft = window.screenLeft ?? window.screenX ?? 0;
     const dualTop  = window.screenTop  ?? window.screenY ?? 0;
     const width  = window.innerWidth  ?? document.documentElement.clientWidth  ?? screen.width;
     const height = window.innerHeight ?? document.documentElement.clientHeight ?? screen.height;
-
     const left = Math.floor(dualLeft + (width  - w) / 2);
     const top  = Math.floor(dualTop  + (height - h) / 2);
-
     const features = [
       "noopener",
       `width=${w}`, `height=${h}`,
@@ -114,11 +142,8 @@
       `screenX=${left}`, `screenY=${top}`,
       "resizable", "scrollbars"
     ].join(",");
-
     return window.open(url, name, features);
   }
-
-  // Phone/tablet check (covers iPadOS 13+ which reports as "Mac")
   function isMobileish() {
     const ua = navigator.userAgent || navigator.vendor || "";
     const iPadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
@@ -126,16 +151,12 @@
     const smallScreen = Math.min(screen.width, screen.height) < 900;
     return /Android|iPhone|iPod|IEMobile|BlackBerry/i.test(ua) || iPadOS || (coarse && smallScreen);
   }
-
-  // One call to rule them all
   function openViewer(viewerUrl) {
     if (isMobileish()) {
-      // Mobile/tablet: force a new tab
       const w = window.open(viewerUrl, "_blank", "noopener,noreferrer");
-      if (w) w.opener = null; // belt & suspenders
+      if (w) w.opener = null;
       return w;
     }
-    // Desktop: centered popup window
     return openCentered(viewerUrl, "viewer", 1100, 700);
   }
 
@@ -143,7 +164,6 @@
   async function init() {
     const newBtn = $('#newBtn');
     if (newBtn) {
-      // Must be from a user gesture to avoid popup blockers
       newBtn.addEventListener('click', (e) => {
         e.preventDefault();
         openViewer('./new_inspection.html');
@@ -155,7 +175,6 @@
       allRows = await fetchInspections();
     } catch (e) {
       console.error(e);
-      // leave table empty but don’t crash the page
     }
     renderRows(allRows);
 
