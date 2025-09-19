@@ -1,8 +1,7 @@
 // /api/pdf/print
-// Vercel Serverless PDF render using puppeteer-core + @sparticuz/chromium (Lambda-safe).
+// PDF render using full 'puppeteer' (bundles its own Chromium during install), ideal for Vercel Node functions.
 
-import chromium from '@sparticuz/chromium';
-import puppeteer from 'puppeteer-core';
+import puppeteer from 'puppeteer';
 
 export const config = {
   runtime: 'nodejs',
@@ -14,18 +13,6 @@ function json(res, status, obj) {
   res.status(status);
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(obj));
-}
-
-async function launchBrowser() {
-  // Sparticuz exposes executablePath() as an async function
-  const executablePath = await chromium.executablePath();
-  return puppeteer.launch({
-    args: [...chromium.args, '--font-render-hinting=none'],
-    defaultViewport: chromium.defaultViewport,
-    executablePath,
-    headless: chromium.headless,
-    ignoreHTTPSErrors: true
-  });
 }
 
 export default async function handler(req, res) {
@@ -46,11 +33,20 @@ export default async function handler(req, res) {
   const targetPath = body.path || (body.id ? `/output.html?id=${encodeURIComponent(body.id)}` : '/output.html');
   let targetUrl;
   try { targetUrl = new URL(targetPath, baseUrl).toString(); }
-  catch { targetUrl = `${baseUrl}${targetPath.startswith('/') ? '' : '/'}${targetPath}`; }
+  catch { targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`; }
 
   let browser;
   try {
-    browser = await launchBrowser();
+    browser = await puppeteer.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--font-render-hinting=none',
+        '--disable-gpu',
+        '--disable-dev-shm-usage'
+      ]
+    });
   } catch (err) {
     console.error('[print] LAUNCH FAILED:', err);
     return json(res, 500, { step: 'launch', error: 'Chromium failed to start', details: err?.message });
