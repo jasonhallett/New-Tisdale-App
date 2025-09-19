@@ -1,7 +1,6 @@
 /* Tisdale App Theme — single CSS (light/dark, Inter font)
-   Scope: colours, typography, buttons, controls, tables/grids.
-   NOTE: No layout/sizing changes to app structure. Pure visual polish.
-   Place at: /css/tisdale-app.css
+   Scope: colours, typography, buttons, controls, tables/grids, responsive.
+   NOTE: No JS/HTML changes; design-only.
 */
 
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
@@ -11,18 +10,18 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 
   /* LIGHT */
-  --bg: #f6f8fc;       /* canvas */
-  --bg-elev: #ffffff;  /* surfaces */
-  --bg-elev-2: #eef3ff;/* subtle elevated */
-  --ink: #ffffff;      /* control fill */
+  --bg: #f6f8fc;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #eef3ff;
+  --ink: #ffffff;
 
-  --text: #0f172a;     /* slate-900 */
-  --muted: #5b6b86;    /* slate-500-ish */
-  --border: #e1e8f5;   /* cool border */
+  --text: #0f172a;
+  --muted: #5b6b86;
+  --border: #e1e8f5;
 
   /* Fleet Blues */
-  --primary: #2563eb;       /* light blue brand */
-  --primary-strong: #1d4ed8;/* darker companion */
+  --primary: #2563eb;
+  --primary-strong: #1d4ed8;
   --primary-ink: #ffffff;
   --primary-soft: #e7efff;
 
@@ -52,7 +51,7 @@
     --muted: #9fb1d7;
     --border: #223556;
 
-    --primary: #3b82f6;        /* light-mode primary shifted brighter in dark */
+    --primary: #3b82f6;
     --primary-strong: #1e3a8a;
     --primary-ink: #081125;
     --primary-soft: #0f2247;
@@ -72,7 +71,7 @@
   }
 }
 
-/* ---------- Base Typography & Links ---------- */
+/* ---------- Base ---------- */
 *,
 *::before,
 *::after { box-sizing: border-box; }
@@ -106,11 +105,11 @@ a:hover{ text-decoration: underline; }
   * { transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 }
 
-/* ---------- App Shell (no sizing changes) ---------- */
+/* ---------- App shell (desktop-first) ---------- */
 .app{
   display: grid;
-  grid-template-columns: 260px 1fr;
-  grid-template-rows: 56px 1fr;
+  grid-template-columns: 260px 1fr;   /* sidebar | content */
+  grid-template-rows: 56px 1fr;       /* topbar | main */
   grid-template-areas: "sidebar topbar" "sidebar main";
   min-height: 100vh;
 }
@@ -126,16 +125,15 @@ a:hover{ text-decoration: underline; }
 /* --- Logo: scale to menu width & show exactly one (light OR dark) --- */
 .brand-logo{ width:100%; }
 .brand img{ width:100%; height:auto; max-width:100%; display:block; }  /* scale to sidebar width */
-.brand-logo img{ display:none; } /* hide both by default to prevent double-render */
+.brand-logo img{ display:none; } /* hide both by default to prevent doubles */
 .brand-logo .logo-light{ display:block; } /* default light */
 @media (prefers-color-scheme: dark){
   .brand-logo .logo-light{ display:none; }
   .brand-logo .logo-dark { display:block; }
 }
 
-/* Hide product name labels per request (design-only, no JS changes) */
-.brand-title,
-.app-title { display:none !important; }
+/* Hide extra titles per request (design-only) */
+.brand-title, .app-title { display:none !important; }
 
 .nav{ display:flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .nav a{
@@ -161,7 +159,7 @@ a:hover{ text-decoration: underline; }
   position: sticky; top:0; z-index:3;
 }
 
-/* Clean, stronger page title */
+/* Clean, strong page title */
 .page-title{
   font-weight: 700;
   font-size: clamp(1rem, 0.9rem + .6vw, 1.35rem);
@@ -169,7 +167,10 @@ a:hover{ text-decoration: underline; }
   color: var(--text);
 }
 
-.main{ grid-area: main; display: block; }
+.main{ grid-area: main; display:block; min-height:0; }
+
+/* If your content is inside an iframe, this helps it fill the viewport without JS */
+.main iframe{ width:100%; height: calc(100dvh - 56px); border:0; display:block; }
 
 /* ---------- Buttons ---------- */
 .btn,
@@ -364,6 +365,26 @@ input[type="checkbox"].switch:checked:after{ left: 22px; }
 }
 .btn-link-sm:hover { text-decoration: underline; }
 
+/* ---------- Responsive ---------- */
+
+/* Tablet: slightly narrower sidebar */
+@media (max-width: 1024px) {
+  .app { grid-template-columns: 220px 1fr; }
+}
+
+/* Phone: hide sidebar entirely, give content full width; keep topbar */
+@media (max-width: 768px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 56px 1fr;
+    grid-template-areas: "topbar" "main";
+  }
+  .sidebar { display: none; }
+  .topbar { position: sticky; top: 0; }
+  .main iframe{ height: calc(100dvh - 56px); }
+}
+
+/* Schedule 4 grid on small screens */
 @media (max-width: 640px) {
   #grid { width: 100%; table-layout: fixed; }
   .col-odo, .col-tech, .col-loc { display: none; }
@@ -372,33 +393,3 @@ input[type="checkbox"].switch:checked:after{ left: 22px; }
   .col-view { width: 16%; text-align: right; }
   .table.compact th, .table.compact td { padding: 8px 10px; }
 }
-
-/* ---------- Tabs & Pagination (basic) ---------- */
-.tabs { border-bottom: 1px solid var(--border); display:flex; gap:8px; }
-.tabs a{
-  padding: 8px 10px;
-  border:1px solid transparent; border-bottom: 2px solid transparent;
-  color: var(--muted); text-decoration:none; font-weight:600;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-}
-.tabs a:hover{ background: color-mix(in srgb, var(--text) 6%, transparent); }
-.tabs a.active{ color: var(--primary); border-bottom-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, transparent); }
-
-.pagination{ display:flex; align-items:center; gap:6px; }
-.pagination a{
-  display:inline-flex; align-items:center; justify-content:center; min-width: 34px; padding: 6px 8px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  color: var(--text); text-decoration:none; background: var(--ink);
-}
-.pagination a.current{ border-color: color-mix(in srgb, var(--primary) 50%, var(--border)); color: var(--primary); font-weight:700; }
-.pagination a:hover{ background: color-mix(in srgb, var(--text) 6%, transparent); }
-
-/* ---------- Toolbar & Container Utilities ---------- */
-.toolbar{ display:flex; align-items:center; gap:12px; padding: 12px 12px 10px; }
-.container{ max-width: 1200px; margin: 0 auto; }
-.small-muted{ color: var(--muted); font-size:.85rem; }
-.prose-tight  { line-height: 1.45; }
-
-/* ---------- Dialog (modal preview) ---------- */
-dialog{ border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-elev); color: var(--text); box-shadow: var(--shadow-md); }
-dialog::backdrop{ background: rgba(0,0,0,.4); }
