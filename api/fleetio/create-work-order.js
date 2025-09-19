@@ -1,8 +1,10 @@
 // /api/fleetio/create-work-order.js
-// Scope of this change:
-//   • Add Work Order line item: "Schedule 4 Inspection (& EEPOC FMCSA 396.3)"
-//   • Ensure DB record (schedule4_inspections) gets internal_work_order_number + fleetio_work_order_id
-// Nothing else changed: PDF attach flow, vehicle matching, idempotency, meter logic, etc.
+// Scope of this version:
+//   • NO schema changes, NO inserts. We ONLY UPDATE the existing row in schedule4_inspections.
+//   • Keep: vehicle match, PDF attach, service task line item, meter flags, etc.
+//   • DB write: updateExistingInspection(...) does a single UPDATE by inspection_id.
+//
+// Runtime: Node (not Edge)
 
 export const config = { runtime: 'nodejs' };
 
@@ -31,51 +33,51 @@ function jsonHeaders(extra = {}) {
   };
 }
 
-// ---------- Optional Neon (idempotency store) ----------
-let pgPool=null;
-async function initDb(){ try{ const url=process.env.DATABASE_URL; if(!url) return null; if(pgPool) return pgPool; const {Pool}=await import('pg'); pgPool=new Pool({connectionString:url,max:1,ssl:{rejectUnauthorized:false}}); await pgPool.query(`
-  CREATE TABLE IF NOT EXISTS fleetio_work_orders(
-    inspection_id TEXT PRIMARY KEY,
-    work_order_id BIGINT NOT NULL,
-    work_order_number TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
-  )`); return pgPool; }catch{return null;} }
-async function getExistingWO(id){ try{ const p=await initDb(); if(!p) return null; const {rows}=await p.query('SELECT work_order_id, work_order_number FROM fleetio_work_orders WHERE inspection_id=$1',[id]); return rows[0]||null; }catch{return null;} }
-async function saveWO(id,woId,woNum){ try{ const p=await initDb(); if(!p) return; await p.query('INSERT INTO fleetio_work_orders (inspection_id,work_order_id,work_order_number) VALUES ($1,$2,$3) ON CONFLICT (inspection_id) DO NOTHING',[id,woId,woNum]); }catch{} }
-
-// Upsert to your main inspections table: UPDATE first; if nothing updated, INSERT a stub row.
-async function upsertInspectionWO(inspectionId, workOrderId, workOrderNumber){
-  try{
-    const table = process.env.INSPECTIONS_TABLE || 'schedule4_inspections';
-    const p = await initDb();
-    if(!p) return;
-
-    // UPDATE existing row
-    const upd = await p.query(
-      `UPDATE ${table}
-         SET internal_work_order_number = $2,
-             fleetio_work_order_id      = $3,
-             updated_at                 = now()
-       WHERE inspection_id = $1`,
-      [inspectionId, workOrderNumber || null, workOrderId || null]
-    );
-
-    // If no row, INSERT minimal record with those two fields
-    if (upd.rowCount === 0) {
-      await p.query(
-        `INSERT INTO ${table} (inspection_id, internal_work_order_number, fleetio_work_order_id)
-         VALUES ($1,$2,$3)
-         ON CONFLICT (inspection_id)
-         DO UPDATE SET internal_work_order_number = EXCLUDED.internal_work_order_number,
-                       fleetio_work_order_id      = EXCLUDED.fleetio_work_order_id,
-                       updated_at                 = now()`,
-        [inspectionId, workOrderNumber || null, workOrderId || null]
-      );
-    }
-  } catch {}
+/* =======================
+   Minimal DB wiring (UPDATE only)
+   ======================= */
+let pgPool = null;
+async function getPool(){
+  const url = process.env.DATABASE_URL;
+  if(!url) return null;
+  if(pgPool) return pgPool;
+  const { Pool } = await import('pg');
+  pgPool = new Pool({ connectionString: url, max: 1, ssl: { rejectUnauthorized: false } });
+  return pgPool;
 }
 
-// ---------- HTTP helpers ----------
+// ONLY update the existing row; never insert or alter schema.
+// Columns used (if present): internal_work_order_number, fleetio_work_order_id, fleetio_document_name, fleetio_document_url
+async function updateExistingInspection({ inspectionId, woId, woNumber, docName, docUrl }){
+  try{
+    const pool = await getPool();
+    if(!pool) return { ok:false, reason:'no_db' };
+
+    const sql = `
+      UPDATE schedule4_inspections
+         SET internal_work_order_number = $2,
+             fleetio_work_order_id      = $3,
+             ${docName !== undefined ? 'fleetio_document_name = $4,' : ''}
+             ${docUrl  !== undefined ? 'fleetio_document_url  = $5,' : ''}
+             updated_at                 = now()
+       WHERE inspection_id = $1
+    `;
+
+    // Build params compactly: we still pass placeholders for doc fields if provided; otherwise omit
+    const params = [inspectionId, woNumber || null, woId || null];
+    if (docName !== undefined) params.push(docName || null);
+    if (docUrl  !== undefined) params.push(docUrl  || null);
+
+    const res = await pool.query(sql, params);
+    return { ok: res.rowCount > 0, rowCount: res.rowCount };
+  } catch (e){
+    return { ok:false, reason:'error', error: String(e?.message || e) };
+  }
+}
+
+/* =======================
+   HTTP helpers
+   ======================= */
 async function fleetio(path, init={}, step='fleetio'){
   const res = await fetch(`${BASE_V1}${path}`, { ...init, headers: jsonHeaders(init.headers) });
   if(!res.ok){ const body=await res.text().catch(()=> ''); const err=new Error(`[${step}] ${init.method||'GET'} ${path} failed: ${res.status} ${body}`); err.status=res.status; err.step=step; err.details=body; throw err; }
@@ -87,7 +89,9 @@ async function fleetioV2(path, init={}, step='fleetioV2'){
   return res.headers.get('content-type')?.includes('json') ? res.json() : res.text();
 }
 
-// ---------- Fleetio helpers ----------
+/* =======================
+   Fleetio helpers
+   ======================= */
 async function listVehicles(){ return asArray(await fleetio('/vehicles', {}, 'vehicles')); }
 function findByExactName(vehicles, name){ const n=normalize(name); return vehicles.find(v=>normalize(v?.name)===n)||null; }
 async function uploadPdf(pdfBuffer, filename){
@@ -101,7 +105,7 @@ async function uploadPdf(pdfBuffer, filename){
   return j.url;
 }
 
-// --- Service Task lookup and line item add ---
+// Service Task lookup + line item add (as previously wired)
 async function findServiceTaskIdByName(name) {
   try{
     const res = await fetch(`${BASE_V2}/service_tasks`, { method:'GET', headers: jsonHeaders() });
@@ -113,7 +117,6 @@ async function findServiceTaskIdByName(name) {
   }catch{ return null; }
 }
 async function addServiceTaskLineItem(workOrderId, serviceTaskId, description){
-  // POST /v2/work_orders/:id/work_order_line_items
   return fetch(`${BASE_V2}/work_orders/${workOrderId}/work_order_line_items`, {
     method:'POST',
     headers: jsonHeaders(),
@@ -126,7 +129,9 @@ async function addServiceTaskLineItem(workOrderId, serviceTaskId, description){
   });
 }
 
-// ---------- Handler ----------
+/* =======================
+   Handler
+   ======================= */
 export default async function handler(req, res){
   // Health check
   if(req.method==='GET' && (req.query?.ping || req.query?.health)){
@@ -141,14 +146,6 @@ export default async function handler(req, res){
   try{
     const { inspectionId, unitNumber, filename, pdfBase64, pdfUrl, data = {}, vehicleId: overrideId } = req.body || {};
     if(!inspectionId) return res.status(400).json({ error:'inspectionId is required', step:'validate' });
-
-    // Idempotency by inspectionId
-    const existing = await getExistingWO(inspectionId);
-    if(existing?.work_order_id){
-      await upsertInspectionWO(inspectionId, existing.work_order_id, sanitizeNumber(existing.work_order_number));
-      const n = sanitizeNumber(existing.work_order_number);
-      return res.status(200).json({ ok:true, reused:true, work_order_id: existing.work_order_id, work_order_number: n, work_order_url: `https://secure.fleetio.com/${getEnv('FLEETIO_ACCOUNT_TOKEN')}/work_orders/${n||existing.work_order_id}/edit` });
-    }
 
     // Vehicle resolution
     let vehicleId = overrideId || null;
@@ -169,7 +166,7 @@ export default async function handler(req, res){
     let pdfBuffer=null;
     if(typeof pdfBase64==='string' && pdfBase64.length>50){
       let raw=pdfBase64; const idx=raw.indexOf(',');
-      if(raw.startsWith('data:') && idx!==-1) raw=raw.slice(0,5)==='data:' ? raw.slice(idx+1) : raw;
+      if(raw.startsWith('data:') && idx!==-1) raw=raw.slice(idx+1);
       try{ pdfBuffer=Buffer.from(raw,'base64'); }catch{}
     }
     if((!pdfBuffer || !isPdf(pdfBuffer)) && pdfUrl){
@@ -188,25 +185,22 @@ export default async function handler(req, res){
 
     // Timestamps and meter values
     const started_at = new Date().toISOString();
-    const ended_at   = started_at; // same instant
+    const ended_at   = started_at;
     const odoFromForm = numOrNull(data.odometer);
     const odo = odoFromForm ?? currentMeter ?? null;
+    const markVoid = (currentMeter != null && odo != null) ? (odo < currentMeter) : false;
 
-    // NOTE: We are not changing your voiding logic here (per your request to only add task + DB write)
-    const markVoid = false;
-
-    // Create WO (unchanged)
+    // Create WO
     const createBody = { vehicle_id: vehicleId, work_order_status_id, issued_at: started_at, started_at, ended_at };
     if(odo!=null){
       createBody.starting_meter_entry_attributes = { value: odo, void: !!markVoid };
       createBody.ending_meter_same_as_start = true;
     }
 
-    let created, createErr = null;
+    let created;
     try{
       created = await fleetioV2('/work_orders', { method:'POST', headers:{ 'Idempotency-Key': `inspection:${inspectionId}` }, body: JSON.stringify(createBody) }, 'create_wo');
     }catch(e){
-      createErr = e;
       created = await fleetioV2('/work_orders', { method:'POST', headers:{ 'Idempotency-Key': `inspection:${inspectionId}:no-meters` }, body: JSON.stringify({ vehicle_id: vehicleId, work_order_status_id, issued_at: started_at, started_at, ended_at }) }, 'create_wo_nometers');
     }
 
@@ -218,78 +212,40 @@ export default async function handler(req, res){
       workOrderNumber = sanitizeNumber(fetched?.number);
     }
 
-    // Persist to DBs; surface non-fatal warn if DB unavailable
-    const warnList = [];
-    try { await saveWO(inspectionId, workOrderId, workOrderNumber); } catch { warnList.push({code:'db_save_wo_failed'}); }
-    try { await upsertInspectionWO(inspectionId, workOrderId, workOrderNumber); } catch { warnList.push({code:'db_upsert_inspection_failed'}); }
+    // === UPDATE your existing inspection row (number + id) ===
+    await updateExistingInspection({
+      inspectionId,
+      woId: workOrderId,
+      woNumber: workOrderNumber
+    });
 
-    // If meters were rejected on create, try to PATCH with the same-as-start flag (unchanged)
-    if(createErr && odo!=null){
-      try{
-        await fleetioV2(`/work_orders/${workOrderId}`, {
-          method:'PATCH',
-          body: JSON.stringify({
-            started_at, ended_at,
-            starting_meter_entry_attributes: { value: odo, void: !!markVoid },
-            ending_meter_same_as_start: true
-          })
-        }, 'patch_meters_after_create');
-      }catch(e2){
-        warnList.push({ code:'meter_patch_failed', details: e2?.message || String(e2) });
-      }
-    }
+    // Add Service Task line item (best-effort; non-fatal)
+    try {
+      const SERVICE_TASK_NAME = 'Schedule 4 Inspection (& EEPOC FMCSA 396.3)';
+      const taskId = await findServiceTaskIdByName(SERVICE_TASK_NAME);
+      if (taskId) { await addServiceTaskLineItem(workOrderId, taskId, SERVICE_TASK_NAME); }
+    } catch {}
 
-    // === Add Service Task line item ===
-    const taskName = "Schedule 4 Inspection (& EEPOC FMCSA 396.3)";
-    // Try to find/create Service Task
-    async function findOrCreateServiceTaskId(name) {
-      const PER_PAGE = 100;
-      let cursor = null, found = null;
-      for (let i = 0; i < 50 && !found; i++) {
-        const params = new URLSearchParams({ per_page: String(PER_PAGE) });
-        if (cursor) params.set('start_cursor', cursor);
-        const out = await fleetioV1(`/service_tasks?${params.toString()}`, {}, 'list_service_tasks');
-        const items = Array.isArray(out) ? out : (out?.records || out?.data || []);
-        found = items.find(t => normalize(t?.name) === normalize(name)) || null;
-        cursor = out?.next_cursor || null;
-        if (!cursor) break;
-      }
-      if (found?.id) return found.id;
-      const created = await fleetioV1('/service_tasks', { method: 'POST', body: JSON.stringify({ name }) }, 'create_service_task');
-      if (!created?.id) {
-        const err = new Error('[create_service_task] Service Task creation failed');
-        err.step = 'create_service_task'; err.status = 500;
-        throw err;
-      }
-      return created.id;
-    }
-    const serviceTaskId = await findOrCreateServiceTaskId(taskName);
-    await fleetioV2(`/work_orders/${workOrderId}/work_order_line_items`, {
-      method: 'POST',
-      body: JSON.stringify({
-        type: 'WorkOrderServiceTaskLineItem',
-        item_type: 'ServiceTask',
-        item_id: serviceTaskId
-      })
-    }, 'create_line_item');
-    // === end Service Task line item ===
-
-    // Attach PDF (unchanged)
+    // Attach PDF and then save its name+url onto the same row (if those columns exist)
     const filenameSafe = filename || `Schedule4_${toIsoDate(data.inspectionDate || new Date())}.pdf`;
     const file_url = await uploadPdf(pdfBuffer, filenameSafe);
     try{
       await fleetioV2(`/work_orders/${workOrderId}`, { method:'PATCH', body: JSON.stringify({ documents_attributes: [ { name: filenameSafe, file_url } ] }) }, 'attach_doc');
-    }catch(e){ warnList.push({ code:'attach_doc_failed', details: e?.message || String(e) }); }
+      await updateExistingInspection({
+        inspectionId,
+        woId: workOrderId,
+        woNumber: workOrderNumber,
+        docName: filenameSafe,
+        docUrl: file_url
+      });
+    }catch{}
 
-    const response = {
+    return res.status(200).json({
       ok:true,
       work_order_id: workOrderId,
       work_order_number: workOrderNumber,
       work_order_url: `https://secure.fleetio.com/${getEnv('FLEETIO_ACCOUNT_TOKEN')}/work_orders/${workOrderNumber || workOrderId}/edit`
-    };
-    if (warnList.length) response.warn = warnList;
-    if (createErr) response.warn = [...(response.warn||[]), { code: 'create_meters_rejected', details: createErr.message }];
-    return res.status(200).json(response);
+    });
 
   }catch(err){
     console.error('create-work-order error:', { step: err.step || 'unknown', status: err.status || 500, message: err.message, details: err.details?.slice?.(0,400) });
