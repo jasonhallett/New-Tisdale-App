@@ -1,8 +1,7 @@
 // /api/fleetio/create-work-order.js
-// Fixes:
-//  - Do not return early on meter patch failure; still attach PDF
-//  - issued_at / started_at use current time (no 11:00am artifact)
-//  - include date on starting/ending meter entries to satisfy validation
+// Stable core preserved (PDF attach, idempotency, vehicle match).
+// Change: meter patch now sets START and END with the SAME date & mileage
+// and sets ended_at. Includes a small fallback if Fleetio rejects the date format.
 //
 // Runtime: Node (not Edge)
 
@@ -310,29 +309,51 @@ export default async function handler(req, res){
     await saveWO(inspectionId, workOrderId, workOrderNumber);
     await upsertInspectionWO(inspectionId, workOrderId, workOrderNumber);
 
-    // meters (from inspection or current) — include date to satisfy validation
+    // meters (use SAME date & mileage for start and end). Also set ended_at = started_at.
     const warnList = [];
     const odometerFromForm = numOrNull(data.odometer);
     const odo = odometerFromForm ?? currentMeter ?? null;
+
     if (odo != null) {
       const markVoid = (currentMeter != null) ? (odo > currentMeter) : false;
-      const dateOnly = toIsoDate(data.inspectionDate || data.dateInspected || new Date());
+      const dayOnly   = toIsoDate(data.inspectionDate || data.dateInspected || issued_at);
+      const ended_at  = started_at; // same timestamp per your request
+
+      // First attempt: send date as YYYY-MM-DD (dayOnly)
       try {
         await fleetioV2(`/work_orders/${workOrderId}`, {
           method:'PATCH',
           body: JSON.stringify({
-            starting_meter_entry_attributes: { value: odo, void: !!markVoid, date: dateOnly },
-            ending_meter_entry_attributes:   { value: odo, void: !!markVoid, date: dateOnly }
+            started_at,
+            ended_at,
+            starting_meter_entry_attributes: { value: odo, void: !!markVoid, date: dayOnly },
+            ending_meter_entry_attributes:   { value: odo, void: !!markVoid, date: dayOnly }
           })
         }, 'patch_meters');
-      } catch (e) {
-        warnList.push({ code: 'meter_patch_failed', details: e?.message || String(e) });
-        // do NOT return — continue to attach the PDF
+      } catch (e1) {
+        // If Fleetio insists on a full datetime for 'date', retry with ISO timestamp (some accounts validate strictly)
+        const msg = String(e1?.message || '');
+        if (msg.includes(`"date":[\"can't be blank\"`)) {
+          try {
+            await fleetioV2(`/work_orders/${workOrderId}`, {
+              method:'PATCH',
+              body: JSON.stringify({
+                started_at,
+                ended_at,
+                starting_meter_entry_attributes: { value: odo, void: !!markVoid, date: started_at },
+                ending_meter_entry_attributes:   { value: odo, void: !!markVoid, date: started_at }
+              })
+            }, 'patch_meters_retry');
+          } catch (e2) {
+            warnList.push({ code: 'meter_patch_failed', details: e2?.message || String(e2) });
+          }
+        } else {
+          warnList.push({ code: 'meter_patch_failed', details: e1?.message || String(e1) });
+        }
       }
     }
 
-    // attach PDF (per docs: use documents_attributes with file_url)
-    // https://developer.fleetio.com/docs/overview/attaching-documents-and-images
+    // attach PDF (always, regardless of meter warnings)
     const filenameSafe = filename || `Schedule4_${toIsoDate(data.inspectionDate || new Date())}.pdf`;
     const file_url = await uploadPdf(pdfBuffer, filenameSafe);
     try {
