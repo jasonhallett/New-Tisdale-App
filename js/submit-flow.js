@@ -175,27 +175,24 @@
       checklist: buildChecklist()
     };
 
-    // --- Ensure odometer source is explicit so server doesn't infer 'unknown' ---
-    // If user typed an odometer and we do NOT have a Samsara reading, call it user_entered (maps to manual)
+    // ensure odometer_source explicit
     if (payload.odometer && !payload.samsaraOdometerKm) {
       payload.odometerSource = 'user_entered';
     }
-    // If Samsara reading is present and equals the odometer, mark as samsara/gps
     if (payload.samsaraOdometerKm && Number(payload.samsaraOdometerKm) === Number(payload.odometer || NaN)) {
       payload.odometerSource = 'samsara';
     }
 
     const cols = {
       carrier_name: payload.carrierName || null,
-      location: payload.locationAddress || null,          // DB uses 'location'
-      vehicle_name: payload.unitNumber || null,           // DB uses 'vehicle_name' for Unit #
+      location: payload.locationAddress || null,
+      vehicle_name: payload.unitNumber || null,
       license_plate: payload.licensePlate || null,
       odometer_km: payload.odometer ? Number(payload.odometer) : null,
       inspection_date: payload.inspectionDate || null,
       expiry_date: payload.dateExpires || null,
       next_service_odometer_km: payload.odometerExpires ? Number(payload.odometerExpires) : null,
       notes: payload.repairs || null,
-      // Populate DB enum directly for consistency with server mapping
       odometer_source: (payload.odometerSource === 'samsara' ? 'gps' :
                         payload.odometerSource === 'user_entered' ? 'manual' : null)
     };
@@ -275,13 +272,18 @@
         const path = CONFIG.reportPath(id);
         const pdfBlob = await requestServerPdf({ filename, path });
 
+        // Build viewer URL with blob src and navigate IN PLACE, replacing history
         Progress.update("Opening PDF...");
         const objectUrl = URL.createObjectURL(pdfBlob);
         const viewerUrl = `/pdf_viewer.html?src=${encodeURIComponent(objectUrl)}&filename=${encodeURIComponent(filename)}&id=${encodeURIComponent(id)}`;
-        window.open(viewerUrl, "_blank", "noopener");
+
+        // Replace current page so the Back button won't return to the form
+        location.replace(viewerUrl);
+
+        // (If the browser keeps this page alive briefly, revoke later; otherwise GC will clean it)
         setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch {} }, 10 * 60 * 1000);
 
-        Progress.hide();
+        // No need to hide progress; navigation will unload the page
       } catch (err) {
         console.error(err);
         Progress.error("Error: " + (err && err.message ? err.message : "Unexpected error."));
