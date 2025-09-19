@@ -1,7 +1,7 @@
 // /api/pdf/print
-// Server-side PDF render using chrome-aws-lambda (bundled Chromium) + puppeteer-core on Vercel Node functions.
+// Vercel Serverless PDF render using puppeteer-core + @sparticuz/chromium (Lambda-safe).
 
-import chromium from 'chrome-aws-lambda';
+import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
 export const config = {
@@ -16,19 +16,29 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+async function launchBrowser() {
+  // Sparticuz exposes executablePath() as an async function
+  const executablePath = await chromium.executablePath();
+  return puppeteer.launch({
+    args: [...chromium.args, '--font-render-hinting=none'],
+    defaultViewport: chromium.defaultViewport,
+    executablePath,
+    headless: chromium.headless,
+    ignoreHTTPSErrors: true
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return json(res, 405, { error: 'Use POST' });
   }
 
-  // Parse body
   let body = {};
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {}); } catch {}
 
   const filename = body.filename || 'Schedule-4_Inspection.pdf';
 
-  // Build absolute URL for output.html
   const baseUrl =
     (process.env.APP_BASE_URL && process.env.APP_BASE_URL.trim()) ||
     `https://${(req.headers.host || 'app.tisdale.coach').replace(/\/+$/, '')}`;
@@ -36,22 +46,11 @@ export default async function handler(req, res) {
   const targetPath = body.path || (body.id ? `/output.html?id=${encodeURIComponent(body.id)}` : '/output.html');
   let targetUrl;
   try { targetUrl = new URL(targetPath, baseUrl).toString(); }
-  catch { targetUrl = `${baseUrl}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`; }
+  catch { targetUrl = `${baseUrl}${targetPath.startswith('/') ? '' : '/'}${targetPath}`; }
 
-  // Launch Chromium from chrome-aws-lambda (includes libnss3)
   let browser;
   try {
-    const executablePath = await chromium.executablePath; // async property on v10
-    if (!executablePath || typeof executablePath !== 'string') {
-      throw new Error('chrome-aws-lambda returned invalid executablePath');
-    }
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath,
-      headless: true,
-      ignoreHTTPSErrors: true
-    });
+    browser = await launchBrowser();
   } catch (err) {
     console.error('[print] LAUNCH FAILED:', err);
     return json(res, 500, { step: 'launch', error: 'Chromium failed to start', details: err?.message });
@@ -61,28 +60,26 @@ export default async function handler(req, res) {
     const page = await browser.newPage();
     await page.emulateMediaType('print');
 
-    // Inject session data for the renderer if provided
     try {
       await page.evaluateOnNewDocument((data) => {
         try { sessionStorage.setItem('schedule4Data', JSON.stringify(data || {})); } catch {}
       }, body.data || {});
     } catch {}
 
-    // Navigate
     try {
       await page.goto(targetUrl, { waitUntil: ['load', 'domcontentloaded', 'networkidle0'], timeout: 60000 });
     } catch (err) {
+      let statusCode = null;
+      try {
+        const resp = await page.mainFrame().response();
+        statusCode = resp ? resp.status() : null;
+      } catch {}
       console.error('[print] GOTO FAILED:', targetUrl, err);
-      return json(res, 500, { step: 'goto', targetUrl, error: 'Navigation failed', details: err?.message });
+      return json(res, 500, { step: 'goto', targetUrl, statusCode, error: 'Navigation failed', details: err?.message });
     }
 
-    // Minimal readiness
     try { await page.waitForSelector('#page, #root, body', { timeout: 8000 }); } catch {}
-
-    // Fonts settle
     try { await page.evaluate(() => (document.fonts && document.fonts.ready) ? document.fonts.ready : null); } catch {}
-
-    // Signature load
     try {
       await page.waitForFunction(() => {
         const img = document.getElementById('signatureImg');
