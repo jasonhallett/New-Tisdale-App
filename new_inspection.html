@@ -49,7 +49,7 @@
 
     #signatureCanvas {
       border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair;
-      width: min(400px, 100%); max-width: 100%; height: auto;
+      width:400px; height:100px;
     }
     .footer-note{ font-size:0.875rem; color:#6b7280; margin-top:1rem; }
   </style>
@@ -64,57 +64,6 @@
       .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
     }
   </style>
-
-  <style id="themed-buttons-and-modal">
-    /* Force this page to stay LIGHT — page is white by design */
-    :root { color-scheme: light; }
-    @media (prefers-color-scheme: dark) { :root { color-scheme: light; } }
-
-    /* Buttons: primary (blue) & neutral */
-    #autoSignBtn,
-    form#inspectionForm button[type="submit"],
-    #samsara-odo-modal #odoModalConfirm {
-      background: #2563eb !important; /* blue-600 */
-      color: #ffffff !important;
-      border: 1px solid #1d4ed8 !important; /* blue-700 */
-      box-shadow: 0 2px 6px rgba(37, 99, 235, .25) !important;
-    }
-    #autoSignBtn:hover,
-    form#inspectionForm button[type="submit"]:hover,
-    #samsara-odo-modal #odoModalConfirm:hover {
-      filter: brightness(1.04);
-    }
-
-    #clearSignatureBtn,
-    form#inspectionForm button[type="reset"],
-    #samsara-odo-modal #odoModalCancel {
-      background: #eef2ff !important; /* indigo-50 */
-      color: #1e293b !important;      /* slate-800 */
-      border: 1px solid #c7d2fe !important; /* indigo-200 */
-    }
-    #clearSignatureBtn:hover,
-    form#inspectionForm button[type="reset"]:hover,
-    #samsara-odo-modal #odoModalCancel:hover {
-      background: #e0e7ff !important; /* indigo-100 */
-    }
-
-    /* Modal backdrop & card follow light theme */
-    #samsara-odo-modal > .absolute.inset-0 {
-      background: rgba(13, 23, 55, 0.25) !important; /* soft navy overlay */
-    }
-    #samsara-odo-modal .rounded-xl {
-      border: 1px solid #e0e6f2 !important;
-      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12) !important;
-    }
-    #samsara-odo-modal h3 { color: #0f172a !important; }
-    #samsara-odo-modal p  { color: #4b5563 !important; }
-    #samsara-odo-modal input#samsara-odo-input {
-      border-color: #d1d5db !important;
-      background: #ffffff !important;
-      color: #0f172a !important;
-    }
-  </style>
-
 </head>
 <body class="bg-gray-100 p-4 sm:p-8">
   <div class="form-container">

@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Inspection PDF Viewer</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="./css/tisdale-theme.css" />
   <style>
     html, body { height:100%; }
-    body { margin:0; background: var(--bg); color: var(--text); }
+    body { margin:0; background:#0b0b0c; }
     .toolbar { position:sticky; top:0; z-index:50; }
   </style>
 
@@ -29,20 +28,20 @@
 </head>
 <body class="text-white">
   <!-- Toolbar -->
-  <header class="toolbar w-full" style="background: var(--bg-elev); border-bottom: 1px solid var(--border); backdrop-filter: saturate(140%) blur(6px);">
+  <header class="toolbar w-full bg-black/60 backdrop-blur supports-[backdrop-filter]:bg-black/40 border-b border-white/10">
     <div class="max-w-screen-xl mx-auto px-4 py-2 flex items-center gap-2">
       <a href="/" class="text-sm text-white/70 hover:text-white">← Back</a>
       <div class="ml-auto flex items-center gap-2">
-        <button id="btnPrint" class="px-3 py-2 rounded-xl text-sm" style="border:1px solid var(--border); background: var(--ink); color: var(--text);">Download PDF</button>
-        <button id="btnFleetio" class="px-3 py-2 rounded-xl text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white">Create Fleetio Work Order</button>
-        <button id="btnClose" class="px-3 py-2 rounded-xl text-sm" style="border:1px solid var(--border); background: var(--ink); color: var(--text);">Close</button>
+        <button id="btnPrint" class="px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm">Download PDF</button>
+        <button id="btnFleetio" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">Create Fleetio Work Order</button>
+        <button id="btnClose" class="px-3 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-sm">Close</button>
       </div>
     </div>
   </header>
 
   <!-- Viewer -->
   <main class="h-[calc(100%-56px)]">
-    <iframe id="pdfFrame" class="w-full h-full" style="background: var(--bg-elev);" title="PDF Preview"></iframe>
+    <iframe id="pdfFrame" class="w-full h-full bg-neutral-900" title="PDF Preview"></iframe>
   </main>
 
   <script>
