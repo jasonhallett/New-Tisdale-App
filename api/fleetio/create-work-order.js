@@ -1,9 +1,7 @@
 // /api/fleetio/create-work-order.js
-// Stable core preserved (PDF attach, idempotency, vehicle match).
-// Change: use ending_meter_same_as_start: true instead of explicit ending meter entry.
-//         Send only starting_meter_entry_attributes (+ void if needed). Align started_at/ended_at.
-//         Fallback PATCH also uses ending_meter_same_as_start.
-//
+// Stable core preserved (PDF attach, vehicle match, idempotency).
+// Changes in this revision:
+
 // Runtime: Node (not Edge)
 
 export const config = { runtime: 'nodejs' };
@@ -141,13 +139,15 @@ export default async function handler(req, res){
     const ended_at   = started_at; // same instant
     const odoFromForm = numOrNull(data.odometer);
     const odo = odoFromForm ?? currentMeter ?? null;
-    const markVoid = (currentMeter!=null) ? (odo!=null && odo > currentMeter) : false;
 
-    // --- CREATE with starting meter and "same as start" flag ---
+
+    const markVoid = false;
+
+    // --- CREATE with starting meter and same-as-start flag ---
     const createBody = { vehicle_id: vehicleId, work_order_status_id, issued_at: started_at, started_at, ended_at };
     if(odo!=null){
       createBody.starting_meter_entry_attributes = { value: odo, void: !!markVoid };
-      createBody.ending_meter_same_as_start = true; // <-- key bit
+      createBody.ending_meter_same_as_start = true;
     }
 
     let created, createErr = null;
@@ -167,10 +167,11 @@ export default async function handler(req, res){
       workOrderNumber = sanitizeNumber(fetched?.number);
     }
 
-    await saveWO(inspectionId, workOrderId, workOrderNumber);
-    await upsertInspectionWO(inspectionId, workOrderId, workOrderNumber);
-
+    // Persist to DBs; if Neon missing, surface a non-fatal warn in the response for your modal
     const warnList = [];
+    try { await saveWO(inspectionId, workOrderId, workOrderNumber); } catch { warnList.push({code:'db_save_wo_failed'}); }
+    try { await upsertInspectionWO(inspectionId, workOrderId, workOrderNumber); } catch { warnList.push({code:'db_upsert_inspection_failed'}); }
+
     // If meters were rejected on create, try to PATCH with the same-as-start flag
     if(createErr && odo!=null){
       try{
