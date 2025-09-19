@@ -11,18 +11,17 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 
   /* LIGHT */
-  --bg: #f6f8fc;       /* canvas */
-  --bg-elev: #ffffff;  /* surfaces */
-  --bg-elev-2: #eef3ff;/* subtle elevated */
-  --ink: #ffffff;      /* control fill */
+  --bg: #f6f8fc;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #eef3ff;
+  --ink: #ffffff;
 
-  --text: #0f172a;     /* slate-900 */
-  --muted: #5b6b86;    /* slate-500-ish */
-  --border: #e1e8f5;   /* cool border */
+  --text: #0f172a;
+  --muted: #5b6b86;
+  --border: #e1e8f5;
 
-  /* Fleet Blues */
-  --primary: #2563eb;       /* light blue brand */
-  --primary-strong: #1d4ed8;/* darker companion */
+  --primary: #2563eb;
+  --primary-strong: #1d4ed8;
   --primary-ink: #ffffff;
   --primary-soft: #e7efff;
 
@@ -52,7 +51,7 @@
     --muted: #9fb1d7;
     --border: #223556;
 
-    --primary: #3b82f6;        /* light-mode primary shifted brighter in dark */
+    --primary: #3b82f6;
     --primary-strong: #1e3a8a;
     --primary-ink: #081125;
     --primary-soft: #0f2247;
@@ -106,7 +105,7 @@ a:hover{ text-decoration: underline; }
   * { transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 }
 
-/* ---------- App Shell (no sizing changes) ---------- */
+/* ---------- App Shell ---------- */
 .app{
   display: grid;
   grid-template-columns: 260px 1fr;
@@ -122,7 +121,19 @@ a:hover{ text-decoration: underline; }
   position: sticky; top: 0; height: 100vh;
 }
 .brand{ display:flex; align-items:center; gap:10px; margin-bottom: 10px; }
-.brand img{ height: 28px; display: block; }
+
+/* --- UPDATED: logo sizing handled via CSS --- */
+.sidebar .brand,
+.brand-logo { width: 100%; }
+.sidebar .brand img,
+.brand-logo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
+/* light/dark logo swap */
 .logo-dark{ display:none; }
 @media (prefers-color-scheme: dark){ .logo-light{ display:none; } .logo-dark{ display:block; } }
 
@@ -228,7 +239,7 @@ input[type="checkbox"], input[type="radio"]{ accent-color: var(--primary); }
 .control-row{ display:flex; align-items:center; gap:10px; }
 .control-row label{ margin:0; font-weight:500; }
 
-/* Switch (checkbox with .switch) */
+/* Switch */
 input[type="checkbox"].switch{
   appearance: none; width: 42px; height: 24px;
   background: color-mix(in srgb, var(--text) 12%, transparent);
