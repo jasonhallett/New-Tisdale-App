@@ -1,5 +1,5 @@
 // /js/schedule4s.js
-// Renders Schedule 4 grid. "View" continues to open output.html.
+// Renders Schedule 4 grid. "View" opens output.html.
 // "New Schedule 4" uses openViewer(): centered popup on desktop, new tab on phones/tablets.
 
 (function () {
@@ -45,44 +45,77 @@
     return { href: `./output.html?${params.toString()}`, external: false };
   }
 
-  // --- Data loading ---
-  async function fetchInspections() {
-    // Add a cache-busting ts param; keep your limit
-    const ts = Date.now();
-    const url = `/api/inspections?limit=500&_=${ts}`;
-    const res = await fetch(url, { credentials: 'include' });
-
-    const text = await res.text();
-    let data;
-    try { data = text ? JSON.parse(text) : {}; } catch {
-      console.error('Failed to parse inspections JSON. Raw text:', text);
-      throw new Error(`Failed to parse inspections JSON (${res.status})`);
-    }
-    if (!res.ok) {
-      console.error('Failed to load inspections:', res.status, data || text);
-      throw new Error(`Failed to load inspections (${res.status})`);
-    }
-
-    // Normalize a bunch of common shapes to an array
-    const rows =
+  // --- Data normalization ---
+  function normalizeRows(data) {
+    return (
       (Array.isArray(data) && data) ||
-      data.rows ||
-      data.items ||
-      data.result?.rows ||
-      data.data?.rows ||
-      data.data?.items ||
-      data.data ||
-      data.results ||
-      [];
+      data?.rows ||
+      data?.items ||
+      data?.result?.rows ||
+      data?.data?.rows ||
+      data?.data?.items ||
+      data?.data ||
+      data?.results ||
+      []
+    );
+  }
 
-    if (!Array.isArray(rows)) {
-      console.warn('Inspections API returned unexpected shape. Keys:', Object.keys(data || {}));
-      return [];
+  // --- Data loading with 405 fallback ---
+  async function fetchInspections(limit = 500) {
+    const ts = Date.now();
+    const getUrl = `/api/inspections?limit=${encodeURIComponent(limit)}&_=${ts}`;
+
+    // 1) Try GET first
+    try {
+      const res = await fetch(getUrl, { credentials: 'include' });
+      const text = await res.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (e) {
+        console.error('GET /api/inspections JSON parse failed:', e, 'raw:', text);
+        throw new Error(`Failed to parse inspections JSON (${res.status})`);
+      }
+      if (res.ok) return normalizeRows(data);
+      // If 405, fall through to POST attempts
+      if (res.status !== 405) {
+        console.error('GET /api/inspections failed:', res.status, data || text);
+        throw new Error(`Failed to load inspections (${res.status})`);
+      }
+    } catch (e) {
+      // Network or parsing error — we’ll still try POST next
+      console.warn('GET /api/inspections error, will try POST:', e?.message || e);
     }
-    if (rows.length === 0) {
-      console.warn('Inspections loaded: 0 rows. Top-level keys:', Object.keys(data || {}));
+
+    // 2) Try POST with a simple "list" shape
+    const postBodies = [
+      { action: 'list', limit },     // common shape A
+      { op: 'list', limit },         // common shape B
+      { limit },                     // minimal
+      {}                             // empty (some endpoints treat empty as "list")
+    ];
+
+    for (const body of postBodies) {
+      try {
+        const res = await fetch('/api/inspections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body)
+        });
+        const text = await res.text();
+        let data = {};
+        try { data = text ? JSON.parse(text) : {}; } catch (e) {
+          console.error('POST /api/inspections JSON parse failed:', e, 'raw:', text);
+          continue;
+        }
+        if (res.ok) return normalizeRows(data);
+        // keep looping if not ok
+      } catch (e) {
+        // continue to next attempt
+      }
     }
-    return rows;
+
+    // If we got here, all attempts failed
+    throw new Error('Unable to load inspections: GET not allowed and POST attempts failed.');
   }
 
   // --- Rendering ---
@@ -127,7 +160,7 @@
     });
   }
 
-  // --- Viewer open helpers ---
+  // --- Viewer open helpers (unchanged from your request) ---
   function openCentered(url, name, w, h) {
     const dualLeft = window.screenLeft ?? window.screenX ?? 0;
     const dualTop  = window.screenTop  ?? window.screenY ?? 0;
