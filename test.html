@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tisdale Theme Sampler</title>
+  <link rel="stylesheet" href="css/tisdale-app.css" />
+  <style>
+    .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:16px; }
+    @media (max-width: 860px){ .grid{ grid-template-columns: 1fr; } }
+    .space-y > * + * { margin-top: 10px; }
+    .row { display:flex; gap:10px; align-items:center; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="logo-light" src="assets/tisdale-logo-light.svg" alt="Tisdale Logo Light" />
+      <img class="logo-dark"  src="assets/tisdale-logo-dark.svg"  alt="Tisdale Logo Dark" />
+    </div>
+    <nav class="nav">
+      <a class="active" href="#">Dashboard</a>
+      <a href="#">Schedule 4</a>
+      <a href="#">Fuel Fillups</a>
+      <a href="#">Drivers</a>
+      <a href="#">Reports</a>
+      <a href="#">Settings</a>
+    </nav>
+  </aside>
+
+  <header class="topbar">
+    <div class="row">
+      <div class="search" style="width: 360px;">
+        <span>🔎</span>
+        <input type="search" placeholder="Search anything…" />
+      </div>
+    </div>
+    <div class="row">
+      <span class="badge info">Info</span>
+      <span class="badge success">Healthy</span>
+      <span class="badge warning">Pending</span>
+      <span class="badge danger">Issue</span>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="container">
+      <h1>Tisdale UI Sampler</h1>
+      <p class="small">Uses one CSS file: <code>/css/tisdale-app.css</code>. Auto-adapts to system light/dark.</p>
+
+      <div class="tabs" style="margin:14px 0 16px;">
+        <a class="active" href="#">Overview</a>
+        <a href="#">Forms</a>
+        <a href="#">Tables</a>
+        <a href="#">Components</a>
+      </div>
+
+      <div class="grid">
+        <section class="card">
+          <h2>Buttons</h2>
+          <div class="row">
+            <a class="btn" href="#">Primary</a>
+            <button class="btn-outline">Outline</button>
+            <button class="btn-ghost">Ghost</button>
+            <button class="btn" disabled>Disabled</button>
+          </div>
+          <p class="small-muted">Primary aligns to fleet blues; outline & ghost respect dark/light.</p>
+        </section>
+
+        <section class="card">
+          <h2>Alerts</h2>
+          <div class="space-y">
+            <div class="alert">Default info alert for neutral messaging.</div>
+            <div class="alert success">Success — action completed.</div>
+            <div class="alert warning">Warning — attention required.</div>
+            <div class="alert danger">Danger — error state.</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Form controls</h2>
+          <div class="grid">
+            <div>
+              <label>Text</label>
+              <input type="text" placeholder="Fleet Name" />
+            </div>
+            <div>
+              <label>Email</label>
+              <input type="email" placeholder="name@example.com" />
+            </div>
+            <div>
+              <label>Password</label>
+              <input type="password" placeholder="••••••••" />
+            </div>
+            <div>
+              <label>Number</label>
+              <input type="number" placeholder="12345" />
+            </div>
+            <div>
+              <label>Date</label>
+              <input type="date" />
+            </div>
+            <div>
+              <label>Time</label>
+              <input type="time" />
+            </div>
+            <div>
+              <label>Select</label>
+              <select>
+                <option>Choose a unit…</option>
+                <option>Unit 101</option>
+                <option>Unit 350</option>
+              </select>
+            </div>
+            <div>
+              <label>Textarea</label>
+              <textarea rows="3" placeholder="Notes…"></textarea>
+            </div>
+            <div class="file">
+              <input type="file" />
+              <span class="small-muted">Attach PDF / image</span>
+            </div>
+            <div class="row" style="margin-top: 8px;">
+              <input class="switch" id="switch1" type="checkbox" checked />
+              <label for="switch1">Switch (checkbox)</label>
+            </div>
+            <div class="row">
+              <input id="cbx" type="checkbox" checked />
+              <label for="cbx">Checkbox</label>
+            </div>
+            <div class="row">
+              <input id="r1" type="radio" name="r" checked />
+              <label for="r1">Radio A</label>
+              <input id="r2" type="radio" name="r" />
+              <label for="r2">Radio B</label>
+            </div>
+          </div>
+          <div style="margin-top: 12px;">
+            <button class="btn">Submit</button>
+            <button class="btn-ghost">Cancel</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Schedule 4 – Grid sample</h2>
+          <table id="grid" class="table compact">
+            <thead>
+              <tr>
+                <th class="col-date">Date</th>
+                <th class="col-unit">Unit</th>
+                <th class="col-odo">Odometer</th>
+                <th class="col-tech">Technician</th>
+                <th class="col-loc">Location</th>
+                <th class="col-view">View</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="col-date">2025-09-18</td>
+                <td class="col-unit">350</td>
+                <td class="col-odo tabular-nums">386,016</td>
+                <td class="col-tech cell-ellipsis">J. Doe, 310S</td>
+                <td class="col-loc cell-ellipsis">Detour Lake Mine — Lot 4</td>
+                <td class="col-view"><a class="btn-link-sm" href="#">Open</a></td>
+              </tr>
+              <tr>
+                <td class="col-date">2025-09-17</td>
+                <td class="col-unit">101</td>
+                <td class="col-odo tabular-nums">1,086,442</td>
+                <td class="col-tech cell-ellipsis">A. Smith, 310T</td>
+                <td class="col-loc cell-ellipsis">Timmins Yard</td>
+                <td class="col-view"><a class="btn-link-sm" href="#">Open</a></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="row" style="justify-content: space-between; margin-top: 10px;">
+            <div class="small-muted">Showing 1–2 of 2</div>
+            <nav class="pagination">
+              <a href="#">«</a>
+              <a class="current" href="#">1</a>
+              <a href="#">2</a>
+              <a href="#">3</a>
+              <a href="#">»</a>
+            </nav>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Dialog (Modal) preview</h2>
+          <p>Pure HTML <code>&lt;dialog open&gt;</code> styled by the theme.</p>
+          <dialog open>
+            <h3>Confirm action</h3>
+            <p class="small">Are you sure you want to proceed?</p>
+            <div class="row" style="justify-content:flex-end;">
+              <button class="btn-ghost" onclick="this.closest('dialog').removeAttribute('open')">Cancel</button>
+              <button class="btn">Confirm</button>
+            </div>
+          </dialog>
+        </section>
+      </div>
+
+      <footer class="small" style="margin:18px 0 30px; color: var(--muted);">
+        Tip: Switch your system between Light/Dark to preview the theme.
+      </footer>
+    </div>
+  </main>
+</div>
+</body>
+</html>

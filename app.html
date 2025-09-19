@@ -8,17 +8,17 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./css/tisdale-theme.css" />
+  <link rel="stylesheet" href="./css/tisdale-app.css" />
   <script defer src="auth-guard.js"></script>
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <picture>
-          <source srcset="./assets/tisdale-logo-dark.svg" media="(prefers-color-scheme: dark)">
-          <img src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines">
-        </picture>
+        <div class="brand-logo" style="width:100%">
+  <img class="logo-light" src="./assets/logo-light.svg" alt="Tisdale Bus Lines (Light)" style="width:100%;height:auto;display:block;" />
+  <img class="logo-dark"  src="./assets/logo-dark.svg"  alt="Tisdale Bus Lines (Dark)"  style="width:100%;height:auto;display:block;" />
+</div>
         <div class="brand-title small-muted">Tisdale Employee App</div>
       </div>
       <nav class="nav" id="nav">
