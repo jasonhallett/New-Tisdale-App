@@ -56,6 +56,24 @@
       }
     }
   </style>
+
+  <style id="light-themed-output-buttons">
+    :root { color-scheme: light; }
+    @media (prefers-color-scheme: dark) { :root { color-scheme: light; } }
+
+    /* Unify top action buttons to theme */
+    .no-print button {
+      background: #2563eb !important;
+      color: #ffffff !important;
+      border: 1px solid #1d4ed8 !important;
+      border-radius: 6px !important;
+      padding: 8px 12px !important;
+      box-shadow: 0 2px 6px rgba(37,99,235,.18) !important;
+      cursor: pointer;
+    }
+    .no-print button:hover { filter: brightness(1.05); }
+  </style>
+
 </head>
 <body>
   <div class="no-print" style="position:fixed;top:10px;right:10px;z-index:999;display:flex;gap:8px;">
