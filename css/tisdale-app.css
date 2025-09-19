@@ -4,6 +4,7 @@
    - Clean page title
    - Centered content container on desktop
    - Responsive: sidebar hidden on phones
+   - IMPORTANT: No global .search styles (won’t touch your search bar)
 */
 
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
@@ -100,17 +101,14 @@ a:hover{ text-decoration:underline; }
 }
 .brand{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
 
-/* ------- CRITICAL: Logo rules (never 2 logos) -------
-   Default to LIGHT logo; swap to DARK in dark-scheme.
-   Use !important to beat any generic img display rules.
-*/
+/* ------- CRITICAL: Logo rules (never 2 logos) ------- */
 .logo-light{ display:block !important; width:100%; height:auto; max-width:100%; }
 .logo-dark { display:none  !important; width:100%; height:auto; max-width:100%; }
 @media (prefers-color-scheme: dark){
   .logo-light{ display:none  !important; }
   .logo-dark { display:block !important; }
 }
-/* Do NOT force display on generic brand images — only size them */
+/* Generic brand image sizing only (no forced display) */
 .brand img{ width:100%; height:auto; max-width:100%; }
 
 /* Hide product name labels (design-only) */
@@ -245,4 +243,18 @@ input:focus, select:focus, textarea:focus{
   .col-odo,.col-tech,.col-loc{ display:none; }
   .col-date{ width:56%; } .col-unit{ width:28%; } .col-view{ width:16%; text-align:right; }
   .table.compact th, .table.compact td{ padding:8px 10px; }
+}
+
+/* ---------- Opt-in search style (NOT applied by default) ----------
+   Use only if you explicitly add class="tisdale-search" in your HTML.
+*/
+.tisdale-search{
+  display:flex; align-items:center; gap:8px;
+  background: var(--bg-elev);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+}
+.tisdale-search input{
+  border:none; outline:none; background:transparent; width:100%; color:var(--text); font:inherit;
 }
