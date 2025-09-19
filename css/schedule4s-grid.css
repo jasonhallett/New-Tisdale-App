@@ -1,7 +1,6 @@
-/* css/schedule4s-grid.css — Theme-only refresh aligned to styles.css
-   IMPORTANT: No changes to widths, paddings, or responsive breakpoints. */
+/* schedule4s-grid.css — fine-tuned for compact desktop, preserved phone behavior */
+/* Spacing unchanged from your working version */
 
-/* Desktop/tablet defaults (UNCHANGED sizing) */
 .table.compact th,
 .table.compact td {
   padding: 4px 6px;
@@ -16,7 +15,7 @@
 .col-loc,
 .col-view { white-space: nowrap; }
 
-.col-date { width: 200px; }            /* fits mm/dd/yyyy hh:mm AM/PM */
+.col-date { width: 200px; }
 .col-unit { width: 130px; }
 .col-odo  { width: 140px; text-align: left; }
 .col-tech { max-width: 110px; }
@@ -29,20 +28,18 @@
   text-overflow: ellipsis;
 }
 
-/* Visual-only: header, hover, link color */
+/* Visual only */
 .table.compact thead th {
   background: var(--bg-elev-2);
   color: var(--muted);
   border-bottom: 1px solid var(--border);
 }
-.table.compact tbody td {
-  border-bottom: 1px solid var(--border);
-}
+.table.compact tbody td { border-bottom: 1px solid var(--border); }
 .table.compact tbody tr:hover td {
   background: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
-/* Tiny link-style "View" (visual only) */
+/* View link style */
 .btn-link-sm {
   display: inline-block;
   font-size: 12px;
@@ -55,38 +52,15 @@
 }
 .btn-link-sm:hover { text-decoration: underline; }
 
-/* -------- Phone layout (only) (UNCHANGED sizing) -------- */
+/* Phone layout (unchanged) */
 @media (max-width: 640px) {
-  #grid {
-    width: 100%;
-    table-layout: fixed; /* ensures columns respect widths */
-  }
-
-  /* Show only: Date Inspected, Unit #, View */
-  .col-odo,
-  .col-tech,
-  .col-loc {
-    display: none;
-  }
-
-  .col-date { width: 56%; }  /* date + time */
-  .col-unit { width: 28%; }  /* unit number */
+  #grid { width: 100%; table-layout: fixed; }
+  .col-odo, .col-tech, .col-loc { display: none; }
+  .col-date { width: 56%; }
+  .col-unit { width: 28%; }
   .col-view { width: 16%; text-align: right; }
-
-  .table.compact th,
-  .table.compact td {
-    padding: 6px 8px;
-  }
-
-  .toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-  }
-  .toolbar .search {
-    width: 100% !important;
-    max-width: 100%;
-  }
+  .table.compact th, .table.compact td { padding: 6px 8px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .toolbar .search { width: 100% !important; max-width: 100%; }
   #newBtn { margin-left: auto; }
 }

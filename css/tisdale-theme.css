@@ -1,182 +1,203 @@
-/* Tisdale — polished UI layer (visual refresh using styles.css palette)
-   IMPORTANT: No spacing or grid/table sizing changes. Color-only + typography.
-   Light/Dark via prefers-color-scheme. */
+/* tisdale-theme.css — Modern polish for the Tisdale Employee App
+   - Keep background colours
+   - You may adjust the green accent
+   - No functional changes
+   - Desktop compact grid preserved; mobile layout preserved
+*/
 
-/* 0) Font */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
-/* 1) Design tokens */
-:root {
+:root{
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-  --radius-sm: .375rem; --radius-md: .625rem; --radius-lg: 1rem;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.06);
-  --shadow-md: 0 8px 24px rgba(0,0,0,.08);
 
-  /* Keep light mode as before (subtle polish only) */
-  --bg: #ffffff;
-  --bg-elev: #f7f9fc;
-  --bg-elev-2: #eef3f9;
-  --ink: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
-  --border: #e5e7eb;
+  /* Background family: keep existing vibe */
+  --bg: #0b1220;        /* page background (dark) */
+  --bg-elev: #121a2b;   /* panels/cards */
+  --bg-elev-2: #0e1521; /* table headers / header bars */
+  --ink: #0e1626;       /* input background */
 
-  /* Use green as primary to align with styles.css accent */
-  --primary: #22c55e;
-  --primary-ink: #0b1220;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --border: #243145;
 
-  --success: #16a34a;
-  --warn: #f59e0b;
-  --danger: #ef4444;
+  /* Primary accent (green; can be tuned) */
+  --primary: #2bd072;
+  --primary-ink: #071216;
 
   --focus: #60a5fa;
+  --shadow-sm: 0 2px 6px rgba(0,0,0,.25);
+  --shadow-md: 0 12px 30px rgba(0,0,0,.3);
+  --radius-sm: .5rem;
+  --radius-md: .75rem;
+  --radius-lg: 1rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Adopt styles.css palette */
-    --bg: #0b1220;
-    --bg-elev: #121a2b;   /* panel */
-    --bg-elev-2: #0e1521; /* header rows */
-    --ink: #0e1626;
-    --text: #e2e8f0;
-    --muted: #94a3b8;
-    --border: #243145;
-
-    --primary: #22c55e;       /* accent */
-    --primary-ink: #0b1220;
-
-    --success: #22c55e;
-    --warn: #f59e0b;
-    --danger: #ef4444;
-
-    --focus: #60a5fa;
-  }
-}
-
-/* 2) Base reset */
+/* Base */
 *,
 *::before,
 *::after { box-sizing: border-box; }
 html, body { height: 100%; }
-html { -webkit-text-size-adjust: 100%; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
+body{
+  margin:0;
   font: 400 16px/1.5 var(--font-sans);
+  background: radial-gradient(1200px 700px at 20% -10%, rgba(43,208,114,.12), transparent 50%),
+              radial-gradient(1000px 600px at 120% 10%, rgba(96,165,250,.10), transparent 40%),
+              var(--bg);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-img, svg { display: block; max-width: 100%; }
-a { color: var(--primary); text-decoration: none; text-underline-offset: 2px; }
-a:hover { text-decoration: underline; }
+a{ color: var(--primary); text-decoration: none; text-underline-offset: 2px; }
+a:hover{ text-decoration: underline; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-* { transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (prefers-reduced-motion: no-preference){
+  * { transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+}
 
-/* 3) Buttons */
+/* App Shell */
+.app{
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: 64px 1fr;
+  grid-template-areas:
+    "sidebar topbar"
+    "sidebar main";
+  min-height: 100vh;
+}
+
+.sidebar{
+  grid-area: sidebar;
+  background: linear-gradient(180deg, var(--bg-elev-2), var(--bg-elev));
+  border-right: 1px solid var(--border);
+  padding: 14px 14px 16px;
+  position: sticky; top: 0; height: 100vh;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
+}
+.brand{
+  display:flex; align-items:center; gap:10px;
+  margin-bottom: 12px;
+}
+.brand img{ height: 34px; display:block; }
+.brand-title{
+  font-weight: 700; letter-spacing:.3px; font-size: 14px; color: var(--muted);
+}
+
+.nav{ display:flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.nav a{
+  display:flex; align-items:center; gap:10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--text);
+  border: 1px solid transparent;
+}
+.nav a:hover{ background: rgba(255,255,255,.04); }
+.nav a.active{
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 26%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.topbar{
+  grid-area: topbar;
+  display:flex; align-items:center; justify-content: space-between;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0));
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: saturate(140%) blur(6px);
+  position: sticky; top:0; z-index:3;
+}
+.topbar .title-wrap{
+  display:flex; align-items:center; gap: 12px;
+}
+.app-title{
+  font-weight: 700; font-size: 18px; letter-spacing:.2px;
+  color: var(--text);
+}
+.page-title{
+  font-weight: 600; color: var(--muted);
+  padding-left: 12px; border-left: 1px solid var(--border);
+}
+
+.main{
+  grid-area: main;
+  padding: 0;
+  display: block;
+}
+
+/* Buttons */
 .btn,
 button.btn,
 input[type="button"].btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  display:inline-flex; align-items:center; justify-content:center; gap:.5rem;
   font-weight: 600;
   padding: 10px 14px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(0,0,0,0);
-  background: var(--primary);
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: radial-gradient(120% 120% at 30% 20%, color-mix(in srgb, var(--primary) 92%, white 6%), var(--primary));
   color: var(--primary-ink);
-  cursor: pointer; user-select: none;
+  cursor:pointer; user-select:none;
   box-shadow: var(--shadow-sm);
 }
-.btn:hover { filter: brightness(1.04); text-decoration: none; }
-.btn:active { transform: translateY(1px); }
-
-.btn-ghost {
+.btn:hover{ filter: brightness(1.04); text-decoration:none; }
+.btn:active{ transform: translateY(1px); }
+.btn-ghost{
   background: transparent; color: var(--text);
   border: 1px solid var(--border);
-  padding: 8px 12px; border-radius: var(--radius-md);
+  padding: 8px 12px; border-radius: 10px;
 }
-.btn-ghost:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.btn-ghost:hover{ background: rgba(255,255,255,.04); }
 
-/* 4) Forms */
-input, select, textarea {
-  font: inherit; color: var(--text);
+/* Search control */
+.search{
+  display:flex; align-items:center; gap:8px;
   background: var(--ink);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px; outline: none;
-}
-input::placeholder, textarea::placeholder { color: var(--muted); }
-input:focus, select:focus, textarea:focus {
-  border-color: var(--focus);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 28%, transparent);
-}
-
-/* 5) Tables (color-only; DO NOT change spacing) */
-.table { width: 100%; border-collapse: collapse; background: var(--bg); border-radius: var(--radius-md); overflow: hidden; }
-.table thead th {
-  font-size: .8rem; font-weight: 600; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .04em;
-  background: var(--bg-elev-2);
-  border-bottom: 1px solid var(--border);
-  /* spacing defined elsewhere; keep as-is */
-}
-.table tbody td {
-  border-bottom: 1px solid var(--border);
-  /* spacing defined elsewhere; keep as-is */
-}
-.table tbody tr:hover td {
-  background: color-mix(in srgb, var(--primary) 6%, transparent);
-}
-.table td:last-child,
-.table th:last-child { text-align: right; }
-
-/* 6) Cards & containers (visual only) */
-.card {
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  /* padding defined in HTML or other CSS; we do not alter sizing here */
-}
-
-/* 7) Toolbar / search (visual only) */
-.toolbar { /* spacing unchanged */ }
-.search {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--ink);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   padding: 8px 10px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.02);
 }
-.search input { border: none; outline: none; background: transparent; width: 100%; color: var(--text); font: inherit; }
-.search input::placeholder { color: var(--muted); }
+.search input{ border:none; outline:none; background:transparent; width:100%; color:var(--text); font:inherit; }
+.search input::placeholder{ color: var(--muted); }
 
-/* 8) Badges / status */
-.badge,
-.status {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: .75rem;
-  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  background: color-mix(in srgb, var(--bg-elev) 80%, transparent);
+/* Card and Table visuals only (no spacing changes) */
+.card{
+  background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.00)) , var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
 }
-.status.success { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
-.status.warn    { color: var(--warn);    border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
-.status.danger  { color: var(--danger);  border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+.table{ width:100%; border-collapse:collapse; background: transparent; overflow:hidden; }
+.table thead th{
+  font-size:.8rem; font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.04em;
+  background: linear-gradient(180deg, var(--bg-elev-2), color-mix(in srgb, var(--bg-elev-2) 60%, transparent));
+  border-bottom: 1px solid var(--border);
+}
+.table tbody td{
+  border-bottom: 1px solid var(--border);
+}
+.table tbody tr:hover td{
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
 
-/* 9) Scrollbars */
-*::-webkit-scrollbar { height: 10px; width: 10px; }
-*::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 35%, transparent);
-  border-radius: 8px; border: 2px solid transparent; background-clip: padding-box;
+/* Iframe content frame edge fade */
+#contentFrame{
+  width:100%;
+  height: calc(100vh - 64px);
+  border:0;
+  background: transparent;
 }
-*::-webkit-scrollbar-track { background: transparent; }
 
-/* 10) Print basics */
-@media print {
-  .sidebar, .topbar { display: none !important; }
+/* Responsive: collapse sidebar on small screens */
+@media (max-width: 820px){
+  .app{ grid-template-columns: 1fr; grid-template-rows: 64px auto auto; grid-template-areas:
+    "topbar"
+    "main"
+    "sidebar"; }
+  .sidebar{ position: static; height: auto; border-right: 0; border-top: 1px solid var(--border); }
 }
+
+/* Utility (do not affect layout sizing) */
+.toolbar{ display:flex; align-items:center; gap:12px; padding: 12px 12px 10px; }
+.container{ max-width: 1200px; margin: 0 auto; }
+.small-muted{ color: var(--muted); font-size:.85rem; }
