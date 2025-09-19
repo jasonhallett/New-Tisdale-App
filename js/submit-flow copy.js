@@ -1,9 +1,9 @@
-/* submit-flow.js — POST-only + auto-retry create on 404 + DB-only render + server PDF (with fallback)
+/* submit-flow.js — POST-only + auto-retry create on 404 + DB-only render + server PDF
  * - Always POST /api/inspections (server handles create or update if id is present)
  * - If POST returns 404 "Inspection not found" while updating, clear the stale id and POST again to create
  * - Builds canonical payload + flat column map (aligned to DB) to reduce NULLs
  * - Explicitly sets odometer_source (manual/gps) so DB won't show 'unknown' when user typed it
- * - Tries PDF via /api/pdf/print (server puppeteer); if it fails, still opens viewer with all context (no src)
+ * - Generates PDF via /api/pdf/print (server puppeteer), using /output.html?id=...
  */
 (function () {
   const CONFIG = {
@@ -144,8 +144,6 @@
   function rememberInspectionId(id) {
     try { sessionStorage.setItem("__inspectionId", id); } catch(_){}
     const hidden = byId("inspection-id"); if (hidden) hidden.value = id;
-    // also expose for viewer/fleetio
-    window.__lastInspectionDbId = id;
   }
 
   // Build canonical payload + flat column map (aligned to DB)
@@ -255,20 +253,6 @@
     return await res.blob();
   }
 
-  function buildViewerUrl({ id, filename, objectUrl, payload }) {
-    // Carry all the context the viewer & Fleetio need
-    const qs = new URLSearchParams({
-      id: id || '',
-      recordId: id || '',                           // so API updates by primary key
-      filename: filename || '',
-      src: objectUrl || '',                         // may be empty on fallback
-      unit: payload.unitNumber || '',
-      date: payload.inspectionDate || '',
-      odometer: payload.odometer || ''
-    });
-    return `/pdf_viewer.html?${qs.toString()}`;
-  }
-
   function install() {
     const form = document.querySelector("form[data-inspection-form]") || document.querySelector("form");
     if (!form || form.dataset.submitFlowInstalled === "1") return;
@@ -283,31 +267,19 @@
         Progress.show("Saving...");
         const { payload, columns } = makePayloadAndColumns();
 
-        // 1) Save/Update DB
         const id = await saveInspection(payload, columns);
         rememberInspectionId(id);
 
-        // 2) Try server-side PDF
+        Progress.update("Generating PDF...");
         const filename = CONFIG.filenameFrom(payload);
         const path = CONFIG.reportPath(id);
-        let objectUrl = null;
+        const pdfBlob = await requestServerPdf({ filename, path });
 
-        Progress.update("Generating PDF...");
-        try {
-          const pdfBlob = await requestServerPdf({ filename, path });
-          objectUrl = URL.createObjectURL(pdfBlob);
-        } catch (err) {
-          console.warn("Server PDF failed, continuing with viewer fallback:", err);
-          // no objectUrl — viewer will still open and Fleetio attach will work via its own logic
-        }
-
-        // 3) Always open the viewer, even if server PDF failed
         Progress.update("Opening PDF...");
-        const viewerUrl = buildViewerUrl({ id, filename, objectUrl, payload });
+        const objectUrl = URL.createObjectURL(pdfBlob);
+        const viewerUrl = `/pdf_viewer.html?src=${encodeURIComponent(objectUrl)}&filename=${encodeURIComponent(filename)}&id=${encodeURIComponent(id)}`;
         window.open(viewerUrl, "_blank", "noopener");
-
-        // release object URL later if we created one
-        if (objectUrl) setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch {} }, 10 * 60 * 1000);
+        setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch {} }, 10 * 60 * 1000);
 
         Progress.hide();
       } catch (err) {
