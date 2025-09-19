@@ -122,9 +122,20 @@ a:hover{ text-decoration: underline; }
   position: sticky; top: 0; height: 100vh;
 }
 .brand{ display:flex; align-items:center; gap:10px; margin-bottom: 10px; }
-.brand img{ height: 28px; display: block; }
-.logo-dark{ display:none; }
-@media (prefers-color-scheme: dark){ .logo-light{ display:none; } .logo-dark{ display:block; } }
+
+/* --- Logo: scale to menu width & show exactly one (light OR dark) --- */
+.brand-logo{ width:100%; }
+.brand img{ width:100%; height:auto; max-width:100%; display:block; }  /* scale to sidebar width */
+.brand-logo img{ display:none; } /* hide both by default to prevent double-render */
+.brand-logo .logo-light{ display:block; } /* default light */
+@media (prefers-color-scheme: dark){
+  .brand-logo .logo-light{ display:none; }
+  .brand-logo .logo-dark { display:block; }
+}
+
+/* Hide product name labels per request (design-only, no JS changes) */
+.brand-title,
+.app-title { display:none !important; }
 
 .nav{ display:flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .nav a{
@@ -148,6 +159,14 @@ a:hover{ text-decoration: underline; }
   border-bottom: 1px solid var(--border);
   backdrop-filter: saturate(140%) blur(6px);
   position: sticky; top:0; z-index:3;
+}
+
+/* Clean, stronger page title */
+.page-title{
+  font-weight: 700;
+  font-size: clamp(1rem, 0.9rem + .6vw, 1.35rem);
+  letter-spacing: .01em;
+  color: var(--text);
 }
 
 .main{ grid-area: main; display: block; }
