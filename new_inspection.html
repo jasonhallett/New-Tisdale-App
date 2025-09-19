@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TBL Internal App - Schedule 4 Inspection</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+    .form-container {
+      max-width: 900px; margin: 2rem auto; padding: 2rem; background-color: #ffffff;
+      border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -2px rgba(0,0,0,.05);
+    }
+    .section-header { font-size: 1.25rem; font-weight: 600; color: #1f2937; margin-bottom: 1rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
+    .form-group label { font-weight: 500; color: #374151; }
+    .form-group input[type="text"],
+    .form-group input[type="date"],
+    .form-group input[type="number"],
+    .form-group textarea,
+    .form-group select {
+      width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #d1d5db; margin-top: 0.25rem;
+      transition: all 0.2s ease-in-out; background-color: white;
+    }
+    .form-group input[type="text"]:focus,
+    .form-group input[type="date"]:focus,
+    .form-group input[type="number"]:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2); outline: none;
+    }
+    .form-group input[readonly]{ background-color:#e5e7eb; cursor:not-allowed; }
+
+    .checkbox-container { display:grid; grid-template-columns:repeat(1,minmax(0,1fr)); gap:1.25rem; }
+    @media (min-width:640px){ .checkbox-container{ grid-template-columns:repeat(1,minmax(0,1fr)); } }
+    .checkbox-item{ display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+    .option-boxes{ display:flex; gap:0.25rem; }
+    .option-box{
+      display:inline-flex; justify-content:center; align-items:center; height:1.5rem; width:2.5rem;
+      border:1px solid #d1d5db; border-radius:4px; background-color:#fff; cursor:pointer;
+      font-weight:700; font-size:0.875rem; color:#4b5563; user-select:none; transition:all .15s ease-in-out;
+    }
+    .option-box.ok.selected       { background-color:#dcfce7; color:#166534; border-color:#86efac; }
+    .option-box.repaired.selected { background-color:#fee2e2; color:#991b1b; border-color:#fecaca; }
+    .option-box.na.selected       { background-color:#e5e7eb; color:#4b5563; border-color:#d1d5db; }
+
+    .grid-3 { display:grid; grid-template-columns:repeat(1,minmax(0,1fr)); gap:1rem; }
+    @media (min-width:640px){ .grid-3{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+
+    #signatureCanvas {
+      border:1px solid #d1d5db; border-radius:6px; touch-action:none; cursor:crosshair;
+      width:400px; height:100px;
+    }
+    .footer-note{ font-size:0.875rem; color:#6b7280; margin-top:1rem; }
+  </style>
+
+  <style id="single-page-fix">
+    body::before, body::after, html::before, html::after,
+    #page::before, #page::after, .page::before, .page::after { content: none !important; display: none !important; }
+    .page-number, .pageNumber, [data-page-number] { display: none !important; }
+
+    @media print {
+      .page, #page { page-break-after: auto !important; break-after: auto !important; }
+      .page:last-child, #page:last-child { page-break-after: avoid !important; break-after: avoid-page !important; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 p-4 sm:p-8">
+  <div class="form-container">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6 text-center sm:text-left">Schedule 4 Motor Coach Under-Vehicle Inspection Report</h1>
+
+    <form id="inspectionForm" action="#" data-inspection-form>
+
+      <div id="message-box" class="mb-4 text-center text-red-600 font-bold hidden"></div>
+
+      <!-- General Information -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <div class="form-group">
+          <label for="carrier" class="block text-sm">Carrier</label>
+          <input type="text" id="carrier" name="carrier" class="rounded-md">
+        </div>
+        <div class="form-group">
+          <label for="address" class="block text-sm">Address of the location where the inspection is conducted</label>
+          <input type="text" id="address" name="address" class="rounded-md">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="form-group" id="unit-number-wrapper">
+          <label for="unit-number" class="block text-sm">Unit #</label>
+          <select id="unit-number" name="unit-number" class="rounded-md">
+            <option value="">Select a vehicle…</option>
+          </select>
+          <input type="text" id="unit-number-other" name="unit-number-other" class="rounded-md mt-2 hidden" placeholder="Enter Unit #"/>
+        </div>
+        <div class="form-group">
+          <label for="license-plate" class="block text-sm">Licence Plate</label>
+          <input type="text" id="license-plate" name="license-plate" class="rounded-md">
+        </div>
+        <div class="form-group">
+          <label for="odometer" class="block text-sm">Odometer (KM)</label>
+          <input type="text" id="odometer" name="odometer" class="rounded-md" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label for="inspection-date" class="block text-sm">Date Inspected</label>
+          <input type="date" id="inspection-date" name="inspection-date" class="rounded-md">
+        </div>
+      </div>
+
+      <div class="mb-6">
+        <p class="text-sm text-gray-500 italic">An under-vehicle inspection is valid until the 31st day after it is conducted or until the motor coach has been driven 12,000 kilometres, whichever occurs last.</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+          <div class="form-group">
+            <label for="expiry-date" class="block text-sm">Date Expires</label>
+            <input type="date" id="expiry-date" name="expiry-date" class="rounded-md" readonly>
+          </div>
+          <div class="form-group">
+            <label for="expiry-odometer" class="block text-sm">Odometer Expiration</label>
+            <input type="text" id="expiry-odometer" name="expiry-odometer" class="rounded-md" readonly>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
+        <!-- LEFT COLUMN -->
+        <div>
+          <!-- Section 1: Air Brake System with Disc Brakes toggle in header -->
+          <div class="mb-8">
+            <div class="flex items-center justify-between">
+              <h2 class="section-header w-full">1. Air Brake System</h2>
+              <label class="ml-4 inline-flex items-center gap-2 text-sm text-gray-700 select-none">
+                <input type="checkbox" id="disc-brakes" class="h-4 w-4 text-indigo-600 rounded">
+                <span>Disc Brakes</span>
+              </label>
+            </div>
+
+            <div class="checkbox-container">
+              <div class="checkbox-item">
+                <label class="text-sm">Audible air leak</label>
+                <div class="option-boxes" data-name="Audible air leak">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+
+              <div class="checkbox-item">
+                <label class="text-sm">Brake pushrod stroke is at or beyond the adjustment limit</label>
+                <div class="option-boxes" data-name="Brake pushrod stroke is at or beyond the adjustment limit">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+            </div>
+
+            <h3 class="font-bold mt-4 mb-2 text-gray-800">Brake Pushrod Stroke Measurements</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div class="form-group">
+                <label for="r-steer" class="block text-sm">R Steer</label>
+                <input type="text" id="r-steer" class="rounded-md">
+              </div>
+              <div class="form-group">
+                <label for="r-drive" class="block text-sm">R Drive</label>
+                <input type="text" id="r-drive" class="rounded-md">
+              </div>
+              <div class="form-group">
+                <label for="r-tag" class="block text-sm">R Tag</label>
+                <input type="text" id="r-tag" class="rounded-md">
+              </div>
+              <div class="form-group">
+                <label for="l-steer" class="block text-sm">L Steer</label>
+                <input type="text" id="l-steer" class="rounded-md">
+              </div>
+              <div class="form-group">
+                <label for="l-drive" class="block text-sm">L Drive</label>
+                <input type="text" id="l-drive" class="rounded-md">
+              </div>
+              <div class="form-group">
+                <label for="l-tag" class="block text-sm">L Tag</label>
+                <input type="text" id="l-tag" class="rounded-md">
+              </div>
+            </div>
+
+            <div class="checkbox-container mt-4">
+              <div class="checkbox-item">
+                <label class="text-sm">Clearance between disc brake pads and rotor exceeds manufacturer's specified limit</label>
+                <div class="option-boxes" data-name="Clearance between disc brake pads and rotor exceeds manufacturer's specified limit">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Wedge brake shoe movement exceeds manufacturer's specified limit</label>
+                <div class="option-boxes" data-name="Wedge brake shoe movement exceeds manufacturer's specified limit">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Excessive discharge of fluids from air reservoir</label>
+                <div class="option-boxes" data-name="Excessive discharge of fluids from air reservoir">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Air compressor, mounts or attachments damaged or defective</label>
+                <div class="option-boxes" data-name="Air compressor, mounts or attachments damaged or defective">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Compressor drive belt loose or damaged</label>
+                <div class="option-boxes" data-name="Compressor drive belt loose or damaged">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Air line or fitting damaged or insecure</label>
+                <div class="option-boxes" data-name="Air line or fitting damaged or insecure">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Air tank defective, damaged or insecure</label>
+                <div class="option-boxes" data-name="Air tank defective, damaged or insecure">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Air tank drain or moisture ejector device inoperative</label>
+                <div class="option-boxes" data-name="Air tank drain or moisture ejector device inoperative">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Brake chamber, brake linkage or other brake component is defective, damaged or insecure</label>
+                <div class="option-boxes" data-name="Brake chamber, brake linkage or other brake component is defective, damaged or insecure">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Spring brake is broken or malfunctions</label>
+                <div class="option-boxes" data-name="Spring brake is broken or malfunctions">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Inoperative service, parking or emergency brake</label>
+                <div class="option-boxes" data-name="Inoperative service, parking or emergency brake">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 2: Exhaust System -->
+          <div class="mb-8">
+            <h2 class="section-header">2. Exhaust System</h2>
+            <div class="checkbox-container">
+              <div class="checkbox-item">
+                <label class="text-sm">Exhaust leak</label>
+                <div class="option-boxes" data-name="Exhaust leak">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Exhaust system component insecure, damaged or perforated</label>
+                <div class="option-boxes" data-name="Exhaust system component insecure, damaged or perforated">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 3: Frame &&/or Underbody -->
+          <div class="mb-8">
+            <h2 class="section-header">3. Frame &&/or Underbody</h2>
+            <div class="checkbox-container">
+              <div class="checkbox-item">
+                <label class="text-sm">Any frame member or fastener is damaged, cracked or insecure</label>
+                <div class="option-boxes" data-name="Any frame member or fastener is damaged, cracked or insecure">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Any component mount is damaged or insecure</label>
+                <div class="option-boxes" data-name="Any component mount is damaged or insecure">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div>
+          <!-- Section 4: Fuel System -->
+          <div class="mb-8">
+            <h2 class="section-header">4. Fuel System</h2>
+            <div class="checkbox-container">
+              <div class="checkbox-item">
+                <label class="text-sm">Fuel leak</label>
+                <div class="option-boxes" data-name="Fuel leak">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Insecure fuel tanks, fuel tank mounts or guards</label>
+                <div class="option-boxes" data-name="Insecure fuel tanks, fuel tank mounts or guards">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Fuel line or fitting damaged or insecure</label>
+                <div class="option-boxes" data-name="Fuel line or fitting damaged or insecure">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 5: Steering -->
+          <div class="mb-8">
+            <h2 class="section-header">5. Steering</h2>
+            <div class="checkbox-container">
+              <div class="checkbox-item">
+                <label class="text-sm">Steering linkage is damaged or insecure</label>
+                <div class="option-boxes" data-name="Steering linkage is damaged or insecure">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Power steering fluid is leaking, contaminated or low</label>
+                <div class="option-boxes" data-name="Power steering fluid is leaking, contaminated or low">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Power steering component damaged or insecure</label>
+                <div class="option-boxes" data-name="Power steering component damaged or insecure">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 6: Suspension System -->
+          <div class="mb-8">
+            <h2 class="section-header">6. Suspension System</h2>
+            <div class="checkbox-container">
+              <div class="checkbox-item">
+                <label class="text-sm">Air leak or malfunction of air suspension system or component</label>
+                <div class="option-boxes" data-name="Air leak or malfunction of air suspension system or component">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Damage or deterioration of any suspension component</label>
+                <div class="option-boxes" data-name="Damage or deterioration of any suspension component">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 7: Tires -->
+          <div class="mb-8">
+            <h2 class="section-header">7. Tires</h2>
+            <div class="checkbox-container">
+              <div class="checkbox-item">
+                <label class="text-sm">Tire inflation less than required</label>
+                <div class="option-boxes" data-name="Tire inflation less than required">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Tire treads worn to wear limits</label>
+                <div class="option-boxes" data-name="Tire treads worn to wear limits">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Damage to tread or sidewall of tire</label>
+                <div class="option-boxes" data-name="Damage to tread or sidewall of tire">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Retread or rebuilt tire is used on front axle</label>
+                <div class="option-boxes" data-name="Retread or rebuilt tire is used on front axle">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 8: Wheels && Fasteners -->
+          <div class="mb-8">
+            <h2 class="section-header">8. Wheels && Fasteners</h2>
+            <div class="checkbox-container">
+              <div class="checkbox-item">
+                <label class="text-sm">Loose, missing, damaged or ineffective wheel fastener</label>
+                <div class="option-boxes" data-name="Loose, missing, damaged or ineffective wheel fastener">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="checkbox-item">
+                <label class="text-sm">Damaged wheel or wheel component</label>
+                <div class="option-boxes" data-name="Damaged wheel or wheel component">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FMCSA -->
+          <div class="mb-8">
+            <h2 class="section-header">For buses travelling to USA, per FMCSA Regulations, Part 396.3</h2>
+            <div class="checkbox-container">
+              <div class="checkbox-item">
+                <label class="text-sm">All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally</label>
+                <div class="option-boxes" data-name="All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally">
+                  <span class="option-box ok" data-value="ok">✓</span>
+                  <span class="option-box repaired" data-value="repaired">R</span>
+                  <span class="option-box na" data-value="na">N/A</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="tire-size" class="block text-sm">Tire size:</label>
+                <input type="text" id="tire-size" class="rounded-md">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Repairs -->
+      <div class="mb-8">
+        <h2 class="section-header">Repairs</h2>
+        <div class="form-group">
+          <label for="repairs-notes" class="block text-sm">Notes on Repairs Made</label>
+          <textarea id="repairs-notes" rows="4" class="rounded-md"></textarea>
+        </div>
+      </div>
+
+      <!-- Declaration + Signature -->
+      <div class="mb-8">
+        <h2 class="section-header">Declaration</h2>
+        <div class="mt-2 mb-4">
+          <button type="button" id="autoSignBtn" class="inline-flex items-center px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">Click to Declare &amp; Sign</button>
+        </div>
+
+        <div class="mb-4">
+          <label class="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" id="declaration-checkbox" class="mt-1 h-4 w-4 text-indigo-600 rounded focus:ring-indigo-500 transition"/>
+            <span>I declare that the vehicle shown above has been inspected in accordance with this Regulation && that at the end of the inspection, there are no defects listed in Schedule 4. O. Reg. 199/07, s. 12 (1); O. Reg. 242/14, s. 6 (1-3); O. Reg. 256/15, s. 5 (1).</span>
+          </label>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="form-group">
+            <label for="inspector-name" class="block text-sm">Name of the person who conducted the inspection (Printed)</label>
+            <input type="text" id="inspector-name" class="rounded-md">
+          </div>
+          <div class="form-group">
+            <label class="block text-sm">Signature of the person who conducted the inspection</label>
+            <canvas id="signatureCanvas" width="400" height="100" class="mx-auto block"></canvas>
+            <button type="button" id="clearSignatureBtn" class="mt-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition">Clear Signature</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row justify-end gap-4">
+        <button type="submit" class="px-6 py-3 bg-indigo-600 text-white font-medium rounded-md shadow-lg hover:bg-indigo-700 transition">
+          Submit & Generate PDF
+        </button>
+        <button type="reset" class="px-6 py-3 bg-gray-200 text-gray-800 font-medium rounded-md shadow-lg hover:bg-gray-300 transition">
+          Reset
+        </button>
+      </div>
+    </form>
+
+    <div class="footer-note flex justify-center mt-6 gap-6">
+      <p><strong>✓</strong> = Found Okay</p>
+      <p><strong>R</strong> = Repaired</p>
+      <p><strong>N/A</strong> = Not Applicable</p>
+    </div>
+  </div>
+
+  <!-- Samsara Odometer Modal -->
+  <div id="samsara-odo-modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="relative mx-auto mt-24 w-[92%] max-w-md">
+      <div class="bg-white rounded-xl shadow-xl p-5">
+        <h3 class="text-lg font-semibold mb-1">Confirm Odometer (Samsara)</h3>
+        <p class="text-sm text-gray-600 mb-3">
+          We pulled this mileage from Samsara. Confirm or edit the value below.
+        </p>
+        <label for="samsara-odo-input" class="block text-sm font-medium">Odometer (km)</label>
+        <input
+          type="text"
+          id="samsara-odo-input"
+          class="mt-1 w-full border border-gray-300 rounded-md p-2"
+          inputmode="numeric"
+        />
+        <div class="mt-4 flex justify-end gap-2">
+          <button type="button" id="odoModalCancel" class="px-3 py-2 rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300">
+            Cancel
+          </button>
+          <button type="button" id="odoModalConfirm" class="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700">
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('inspectionForm');
+      const messageBox = document.getElementById('message-box');
+
+      /* Checklist pill selection */
+      document.querySelectorAll('.option-boxes').forEach(group => {
+        group.addEventListener('click', (e) => {
+          const box = e.target.closest('.option-box');
+          if (!box) return;
+          group.querySelectorAll('.option-box').forEach(b => b.classList.remove('selected'));
+          box.classList.add('selected');
+        });
+      });
+
+      // Expiry helpers
+      const inspectionDateInput = document.getElementById('inspection-date');
+      const expiryDateInput = document.getElementById('expiry-date');
+      const odometerInput = document.getElementById('odometer');
+      const expiryOdometerInput = document.getElementById('expiry-odometer');
+
+      // Track odometer provenance
+      let _samsaraOdometerKm = null;
+      let _odometerSource = 'unknown';
+
+      function formatOdometer(input){
+        let v = (input.value||'').replace(/,/g,'');
+        if (v!=='' && !/^\d+$/.test(v)) v = v.replace(/\D/g,'');
+        if (v.length>9) v = v.slice(0,9);
+        input.value = v ? Number(v).toLocaleString('en-US') : '';
+      }
+      function getNumericValue(input){ return parseInt((input.value||'').replace(/,/g,''),10); }
+      function calculateExpiryDate(){
+        if(!inspectionDateInput.value){ expiryDateInput.value=''; return; }
+        const d = new Date(inspectionDateInput.value); d.setDate(d.getDate()+31);
+        expiryDateInput.value = d.toISOString().split('T')[0];
+      }
+      function calculateExpiryOdometer(){
+        const km = getNumericValue(odometerInput);
+        expiryOdometerInput.value = isNaN(km) ? '' : (km+12000).toLocaleString('en-US');
+      }
+      inspectionDateInput.addEventListener('change', calculateExpiryDate);
+      odometerInput.addEventListener('input', ()=> formatOdometer(odometerInput));
+      odometerInput.addEventListener('blur', calculateExpiryOdometer);
+
+      // If the tech edits the odometer after a Samsara prefill, mark as user_entered
+      odometerInput.addEventListener('input', ()=>{
+        const val = getNumericValue(odometerInput);
+        if (!isNaN(val)) {
+          if (_samsaraOdometerKm != null) {
+            if (val !== _samsaraOdometerKm) _odometerSource = 'user_entered';
+          } else {
+            _odometerSource = 'user_entered';
+          }
+        }
+      });
+
+      // Signature pad
+      const canvas = document.getElementById('signatureCanvas');
+      const ctx = canvas.getContext('2d');
+      let isDrawing=false, lastX=0, lastY=0;
+      function resizeCanvas(){ canvas.width=400; canvas.height=100; }
+      window.addEventListener('resize', resizeCanvas); resizeCanvas();
+      function draw(e){
+        if(!isDrawing) return;
+        const r=canvas.getBoundingClientRect();
+        const x = e.touches ? e.touches[0].clientX - r.left : e.offsetX;
+        const y = e.touches ? e.touches[0].clientY - r.top  : e.offsetY;
+        ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(x,y);
+        ctx.strokeStyle='#000'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.stroke();
+        lastX=x; lastY=y;
+      }
+      canvas.addEventListener('mousedown', e=>{ isDrawing=true; [lastX,lastY]=[e.offsetX,e.offsetY]; });
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('mouseup', ()=>isDrawing=false);
+      canvas.addEventListener('mouseout', ()=>isDrawing=false);
+      canvas.addEventListener('touchstart', e=>{ e.preventDefault(); isDrawing=true; const r=canvas.getBoundingClientRect(); const t=e.touches[0]; [lastX,lastY]=[t.clientX-r.left,t.clientY-r.top]; });
+      canvas.addEventListener('touchmove', e=>{ e.preventDefault(); draw(e); });
+      canvas.addEventListener('touchend', ()=>isDrawing=false);
+      document.getElementById('clearSignatureBtn').addEventListener('click', ()=>ctx.clearRect(0,0,canvas.width,canvas.height));
+
+      // ---------- Samsara ----------
+      const unitSelect = document.getElementById('unit-number');
+      const unitOtherInput = document.getElementById('unit-number-other');
+      const licensePlateInput = document.getElementById('license-plate');
+      const vehicleIndex = new Map();
+
+      // Modal elements & helpers
+      const odoModal = document.getElementById('samsara-odo-modal');
+      const odoModalInput = document.getElementById('samsara-odo-input');
+      const odoModalCancel = document.getElementById('odoModalCancel');
+      const odoModalConfirm = document.getElementById('odoModalConfirm');
+
+      function openOdoModal(kmFromSamsara){
+        // Prefill with Samsara value, formatted
+        odoModalInput.value = Number(kmFromSamsara).toLocaleString('en-US');
+        odoModal.classList.remove('hidden');
+        // focus and select value
+        setTimeout(() => { odoModalInput.focus(); odoModalInput.select && odoModalInput.select(); }, 0);
+      }
+      function closeOdoModal(){ odoModal.classList.add('hidden'); }
+
+      odoModalInput.addEventListener('input', () => formatOdometer(odoModalInput));
+      odoModalInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); odoModalConfirm.click(); }
+        if (e.key === 'Escape') { e.preventDefault(); odoModalCancel.click(); }
+      });
+      odoModal.addEventListener('click', (e) => {
+        // click backdrop to cancel
+        if (e.target === odoModal) odoModalCancel.click();
+      });
+
+      odoModalCancel.addEventListener('click', () => {
+        // keep current field values; leave source as 'samsara'
+        closeOdoModal();
+      });
+
+      odoModalConfirm.addEventListener('click', () => {
+        const raw = (odoModalInput.value || '').replace(/,/g,'').replace(/\D+/g,'');
+        const val = parseInt(raw, 10);
+        const base = _samsaraOdometerKm != null ? _samsaraOdometerKm : NaN;
+
+        if (!isNaN(val)) {
+          odometerInput.value = val.toLocaleString('en-US');
+          calculateExpiryOdometer();
+          _odometerSource = (base === val) ? 'samsara' : 'user_entered';
+        }
+        closeOdoModal();
+        odometerInput.focus();
+      });
+
+      async function loadVehicles(){
+        try{
+          const res = await fetch('/api/samsara/vehicles');
+          const data = await res.json();
+          if (!res.ok) throw new Error(JSON.stringify(data));
+          unitSelect.innerHTML = '<option value="">Select a vehicle…</option>';
+          const vehicles = (data.vehicles||[]).map(v=>({ id:v.id, label:v.name || v.externalId || `Vehicle ${v.id}`, licensePlate:v.licensePlate || '' }));
+          vehicles.sort((a,b)=>{ const na=a.label.match(/\d+/), nb=b.label.match(/\d+/); if(na&&nb) return parseInt(na[0],10)-parseInt(nb[0],10); return a.label.localeCompare(b.label,undefined,{numeric:true,sensitivity:'base'}); });
+          vehicles.forEach(v=>{ const opt=document.createElement('option'); opt.value=v.id; opt.textContent=v.label; unitSelect.appendChild(opt); vehicleIndex.set(String(v.id),v); });
+          const other=document.createElement('option'); other.value='other'; other.textContent='Other Vehicle'; unitSelect.appendChild(other);
+        }catch(err){
+          console.error('Vehicles load failed:', err);
+          const opt=document.createElement('option'); opt.textContent='Error loading vehicles'; opt.value=''; unitSelect.appendChild(opt);
+        }
+      }
+
+      unitSelect.addEventListener('change', async ()=>{
+        if (unitSelect.value==='other'){
+          unitSelect.classList.add('hidden'); unitOtherInput.classList.remove('hidden'); unitOtherInput.focus(); return;
+        }
+        const picked = vehicleIndex.get(unitSelect.value); if(!picked) return;
+        if (picked.licensePlate) licensePlateInput.value = picked.licensePlate;
+
+        try{
+          const res = await fetch('/api/samsara/vehicle-stats?id='+encodeURIComponent(picked.id));
+          const payload = await res.json();
+          if (!res.ok) throw new Error(JSON.stringify(payload));
+          if (payload && payload.odometerMeters != null){
+            const km = Math.round(payload.odometerMeters/1000);
+
+            // Prefill page immediately
+            odometerInput.value = km.toLocaleString('en-US');
+            expiryOdometerInput.value = (km+12000).toLocaleString('en-US');
+
+            // Track Samsara source + ask technician to confirm/edit via modal
+            _samsaraOdometerKm = km;
+            _odometerSource = 'samsara';
+
+            openOdoModal(km);
+          }
+        }catch(e){
+          console.error('odometer fetch failed', e);
+        }
+      });
+
+      loadVehicles();
+      // ---------- End Samsara ----------
+
+      /* Disc Brakes behavior: in Air Brake System header */
+      const discToggle = document.getElementById('disc-brakes');
+      const strokeIds = ['r-steer','r-drive','r-tag','l-steer','l-drive','l-tag'];
+      const NAsToSet = [
+        'Brake pushrod stroke is at or beyond the adjustment limit',
+        "Wedge brake shoe movement exceeds manufacturer's specified limit"
+      ];
+      function setGroupNA(labelText, setNA){
+        const group = document.querySelector(`.option-boxes[data-name="${CSS.escape(labelText)}"]`);
+        if (!group) return;
+        group.querySelectorAll('.option-box').forEach(b=>b.classList.remove('selected'));
+        if (setNA){
+          const na = group.querySelector('.option-box.na[data-value="na"]');
+          if (na) na.classList.add('selected');
+        }
+      }
+      function setDiscMode(on){
+        strokeIds.forEach(id=>{
+          const input = document.getElementById(id);
+          if (!input) return;
+          input.value = on ? 'Disc' : '';
+        });
+        NAsToSet.forEach(label => setGroupNA(label, on));
+      }
+      discToggle.addEventListener('change', ()=> setDiscMode(discToggle.checked));
+
+      // Validation + handoff
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        let errors = [];
+
+        // Required fields
+        const requiredIds = ['carrier','license-plate','odometer','inspection-date','address','inspector-name'];
+        requiredIds.forEach(id=>{
+          const el = document.getElementById(id);
+          if (!el || !el.value) errors.push(`${(el?.previousElementSibling?.textContent || id).replace('(Printed)','').trim()} is required.`);
+        });
+
+        // Unit #
+        const unitSelect = document.getElementById('unit-number');
+        const unitOtherInput = document.getElementById('unit-number-other');
+        const unitValid = (unitSelect.value && unitSelect.value!=='other') || (!!unitOtherInput.value && !unitOtherInput.classList.contains('hidden'));
+        if (!unitValid) errors.push('Unit # is required.');
+
+        // Checklist selections
+        document.querySelectorAll('.checkbox-container').forEach(section=>{
+          const items = section.querySelectorAll('.checkbox-item');
+          items.forEach(item=>{
+            const labelEl = item.querySelector('label');
+            const group = item.querySelector('.option-boxes');
+            if (group && !group.querySelector('.selected')){
+              errors.push(`A status must be selected for "${labelEl.textContent.trim()}".`);
+            }
+          });
+        });
+
+        // FMCSA tire size
+        const tireSizeInput = document.getElementById('tire-size');
+        if (!tireSizeInput.value) errors.push('Tire size is required.');
+
+        // Declaration
+        if (!document.getElementById('declaration-checkbox').checked) errors.push('You must agree to the declaration.');
+
+        // Signature present?
+        const hasInk = ctx.getImageData(0, 0, canvas.width, canvas.height).data.some(ch => ch !== 0);
+        if (!hasInk) errors.push('A signature is required.');
+
+        if (errors.length){
+          messageBox.classList.remove('hidden'); messageBox.classList.add('text-red-600'); messageBox.classList.remove('text-green-600');
+          messageBox.innerHTML = `<h3 class="font-bold mb-2">Please correct the following issues:</h3><ul class="list-disc list-inside text-left">${errors.map(e=>`<li>${e}</li>`).join('')}</ul>`;
+          messageBox.scrollIntoView({ behavior: 'smooth' });
+          return;
+        }
+
+        // Build payload for output.html
+        const selectedVehicleId = (unitSelect.value && unitSelect.value !== 'other') ? String(unitSelect.value) : null;
+        let signatureSource = 'drawn';
+        try { const ss = sessionStorage.getItem('__signatureSource'); if (ss) signatureSource = ss; } catch(_){}
+        const unitNumber = (unitSelect.value && unitSelect.value!=='other')
+          ? (unitSelect.options[unitSelect.selectedIndex]?.textContent || '')
+          : (unitOtherInput.value || '');
+
+        const odometerClean = (document.getElementById('odometer').value || '').replace(/,/g,'');
+
+        // Checklist → { "Label": "pass|repair|na" }
+        const checklist = {};
+        document.querySelectorAll('.option-boxes').forEach(group=>{
+          const label = group.getAttribute('data-name');
+          const sel = group.querySelector('.option-box.selected');
+          if (label && sel){
+            const v = sel.dataset.value || '';
+            if (v === 'ok') checklist[label] = 'pass';
+            else if (v === 'repaired') checklist[label] = 'repair';
+            else if (v === 'na') checklist[label] = 'na';
+          }
+        });
+
+        const signatureDataURL = canvas.toDataURL('image/png');
+
+        const payload = {
+          samsaraVehicleId: selectedVehicleId,
+          signatureSource: signatureSource,
+          carrierName: document.getElementById('carrier').value || '',
+          locationAddress: document.getElementById('address').value || '',
+          unitNumber,
+          licensePlate: document.getElementById('license-plate').value || '',
+          odometer: odometerClean,
+          inspectionDate: document.getElementById('inspection-date').value || '',
+          dateExpires: document.getElementById('expiry-date').value || '',
+          odometerExpires: (document.getElementById('expiry-odometer').value || '').replace(/,/g,''),
+
+          rSteerBrake: document.getElementById('r-steer').value || '',
+          rDriveBrake: document.getElementById('r-drive').value || '',
+          rTagBrake:   document.getElementById('r-tag').value || '',
+          lSteerBrake: document.getElementById('l-steer').value || '',
+          lDriveBrake: document.getElementById('l-drive').value || '',
+          lTagBrake:   document.getElementById('l-tag').value || '',
+
+          tireSize: document.getElementById('tire-size').value || '',
+          repairs: document.getElementById('repairs-notes').value || '',
+          inspectorName: document.getElementById('inspector-name').value || '',
+          odometerSource: _odometerSource,
+          samsaraOdometerKm: _samsaraOdometerKm,
+          signature: signatureDataURL,
+          checklist
+        };
+
+        // Save to DB first
+        try {
+          const resp = await fetch('/api/inspections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ payload })
+          });
+          if (!resp.ok) {
+            const text = await resp.text().catch(()=> '');
+            throw new Error(`Save failed (${resp.status}) ${text}`);
+          }
+        } catch (err) {
+          const box = document.getElementById('message-box');
+          if (box) {
+            box.classList.remove('hidden');
+            box.classList.add('text-red-600');
+            box.classList.remove('text-green-600');
+            box.innerHTML = '<strong>Could not save to database.</strong><br>'
+              + 'Reason: ' + (err && err.message ? err.message : 'Unknown error')
+              + '<br>Please try again.';
+            box.scrollIntoView({ behavior: 'smooth' });
+          } else {
+            alert('Could not save to database: ' + (err && err.message ? err.message : 'Unknown error'));
+          }
+          return;
+        }
+      });
+    });
+
+    // Prefill from technician profile + Declare & Sign
+    (function(){
+      let cachedProfile = null;
+      async function loadProfile(){
+        if (cachedProfile) return cachedProfile;
+        try {
+          const res = await fetch('/api/technicians/me', { credentials: 'include' });
+          if (!res.ok) return null;
+          const j = await res.json();
+          cachedProfile = j;
+          return j;
+        } catch { return null; }
+      }
+      function drawSignatureFromDataUrl(dataUrl){
+        try{
+          const canvas = document.getElementById('signatureCanvas');
+          const ctx = canvas.getContext('2d');
+          const img = new Image();
+          img.onload = function(){
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            const sx = canvas.width / img.width;
+            const sy = canvas.height / img.height;
+            const s = Math.min(sx, sy) * 0.95;
+            const w = img.width * s, h = img.height * s;
+            const x = (canvas.width - w)/2, y = (canvas.height - h)/2;
+            ctx.drawImage(img, x, y, w, h);
+            try { sessionStorage.setItem('__signatureSource','applied'); } catch(e){}
+          };
+          img.src = dataUrl;
+        }catch(_){}
+      }
+      document.addEventListener('DOMContentLoaded', async () => {
+        const prof = await loadProfile();
+        if (prof){
+          try {
+            const carrier = document.getElementById('carrier');
+            const address = document.getElementById('address');
+            if (carrier && (!carrier.value || carrier.value.trim()==='') && prof.defaultCarrier) carrier.value = prof.defaultCarrier;
+            if (address && (!address.value || address.value.trim()==='') && prof.defaultInspectionStationAddress) address.value = prof.defaultInspectionStationAddress;
+          } catch(_){}
+        }
+        const btn = document.getElementById('autoSignBtn');
+        if (btn){
+          btn.addEventListener('click', async () => {
+            const prof2 = await loadProfile();
+            if (!prof2){ return; }
+            const decl = document.getElementById('declaration-checkbox'); if (decl) decl.checked = true;
+            const nameEl = document.getElementById('inspector-name'); if (nameEl && prof2.fullName) nameEl.value = prof2.fullName;
+            const carrier = document.getElementById('carrier'); if (carrier && prof2.defaultCarrier) carrier.value = prof2.defaultCarrier;
+            const address = document.getElementById('address'); if (address && prof2.defaultInspectionStationAddress) address.value = prof2.defaultInspectionStationAddress;
+            if (prof2.signatureDataUrl) drawSignatureFromDataUrl(prof2.signatureDataUrl);
+          });
+        }
+      });
+    })();
+  </script>
+
+<script>
+(function(){
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function todayUS(){
+    const d = new Date();
+    return pad(d.getMonth()+1) + '/' + pad(d.getDate()) + '/' + d.getFullYear();
+  }
+  function addDaysUS(s, days){
+    let d;
+    const m = String(s||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m){ d = new Date(parseInt(m[3],10), parseInt(m[1],10)-1, parseInt(m[2],10)); }
+    else { d = new Date(); }
+    d.setDate(d.getDate() + days);
+    return pad(d.getMonth()+1) + '/' + pad(d.getDate()) + '/' + d.getFullYear();
+  }
+  function fmtKMInput(input){
+    let v = (input.value||'').replace(/,/g,'');
+    if (v !== '' && !/^\d+$/.test(v)) v = v.replace(/\D/g,'');
+    input.value = v ? Number(v).toLocaleString('en-US') : '';
+  }
+  function findInputByLabelText(target){
+    target = target.toLowerCase().replace(/\s+/g,' ').trim();
+    const labels = Array.from(document.querySelectorAll('label'));
+    for (const lab of labels){
+      const txt = lab.textContent.toLowerCase().replace(/\s+/g,' ').trim();
+      if (txt.startsWith(target)){
+        const forId = lab.getAttribute('for');
+        if (forId){
+          const el = document.getElementById(forId);
+          if (el) return el;
+        }
+        const el = lab.parentElement && lab.parentElement.querySelector('input,textarea,select');
+        if (el) return el;
+      }
+    }
+    return null;
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    const insp = findInputByLabelText('date inspected') || document.getElementById('inspection-date');
+    const exp  = findInputByLabelText('date expires') || document.getElementById('expiry-date');
+if (insp && !insp.value){
+  const d = new Date();
+  insp.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+if (exp){
+  const base = (insp && insp.value) ? new Date(insp.value) : new Date();
+  base.setDate(base.getDate() + 31);
+  exp.value = `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-${String(base.getDate()).padStart(2,'0')}`;
+}
+    const odo = findInputByLabelText('odometer (km)') || document.getElementById('odometer');
+    const odoExp = findInputByLabelText('odometer expires') || document.getElementById('expiry-odometer') || findInputByLabelText('odometer expiration');
+    function recalcOdoExp(){
+      if (!odo || !odoExp) return;
+      const raw = (odo.value||'').replace(/,/g,'');
+      const n = parseInt(raw,10);
+      if (!isNaN(n)) odoExp.value = (n+12000).toLocaleString('en-US');
+    }
+    if (odo){
+      odo.addEventListener('input', function(){ fmtKMInput(odo); });
+      odo.addEventListener('blur', recalcOdoExp);
+      fmtKMInput(odo); recalcOdoExp();
+    }
+    if (insp && exp){
+insp.addEventListener('blur', function(){
+  const d = insp.value ? new Date(insp.value) : new Date();
+  d.setDate(d.getDate() + 31);
+  exp.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+});
+
+    }
+    document.addEventListener('submit', function(e){
+      if (insp) insp.value = todayUS() && insp.value ? insp.value : todayUS();
+      if (exp && insp) exp.value = addDaysUS(insp.value, 31);
+      if (odo) odo.value = (odo.value||'').replace(/,/g,'');
+      if (odoExp) odoExp.value = (odoExp.value||'').replace(/,/g,'');
+    }, true);
+  });
+})();
+</script>
+
+<!-- S4 minimal date prefill (no UI changes) -->
+<script>
+(function(){
+  function toISODateLocal(d){
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,'0');
+    var day = String(d.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + day;
+  }
+  function addDays(d, n){ var e = new Date(d.getTime()); e.setDate(e.getDate()+n); return e; }
+  function findInputByLabel(labelText){
+    labelText = String(labelText).toLowerCase().trim();
+    var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
+    for (var i=0;i<labels.length;i++){
+      var l = labels[i];
+      if (!l.textContent) continue;
+      if (l.textContent.toLowerCase().indexOf(labelText) !== -1){
+        var forId = l.getAttribute('for');
+        if (forId){
+          var el = document.getElementById(forId);
+          if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return el;
+        }
+        var c = l.closest('.form-group, .row, .grid, div, section') || l.parentElement;
+        if (c){
+          var input = c.querySelector('input, textarea, select');
+          if (input) return input;
+        }
+      }
+    }
+    return null;
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    var insp = findInputByLabel('date inspected') || document.getElementById('inspection-date') || document.querySelector('input[name="inspection-date"],input[name="date_inspected"]');
+    var exp  = findInputByLabel('date expires') || document.getElementById('expiry-date') || document.querySelector('input[name="expiry-date"],input[name="date_expires"]');
+    if (insp && !insp.value){
+      var now = new Date();
+      if (insp.type === 'date') insp.value = toISODateLocal(now);
+      else insp.value = (now.getMonth()+1).toString().padStart(2,'0') + '/' + now.getDate().toString().padStart(2,'0') + '/' + now.getFullYear();
+    }
+    if (exp){
+      var base = insp && insp.value ? new Date(insp.value) : new Date();
+      if (!(base instanceof Date) || isNaN(base)) base = new Date();
+      var e = addDays(base, 31);
+      if (exp.type === 'date') exp.value = toISODateLocal(e);
+      else exp.value = (e.getMonth()+1).toString().padStart(2,'0') + '/' + e.getDate().toString().padStart(2,'0') + '/' + e.getFullYear();
+      if (insp){
+        insp.addEventListener('change', function(){
+          var d = insp.value ? new Date(insp.value) : new Date();
+          if (exp.type === 'date') exp.value = toISODateLocal(addDays(d,31));
+          else {
+            var ee = addDays(d,31);
+            exp.value = (ee.getMonth()+1).toString().padStart(2,'0') + '/' + ee.getDate().toString().padStart(2,'0') + '/' + ee.getFullYear();
+          }
+        });
+      }
+    }
+  });
+})();
+</script>
+
+<!-- S4 minimal date prefill (no UI changes) -->
+<script>
+(function(){
+  function toISODateLocal(d){
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,'0');
+    var day = String(d.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + day;
+  }
+  function addDays(d, n){ var e = new Date(d.getTime()); e.setDate(e.getDate()+n); return e; }
+  function findInputByLabel(labelText){
+    labelText = String(labelText).toLowerCase().trim();
+    var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
+    for (var i=0;i<labels.length;i++){
+      var l = labels[i];
+      if (!l.textContent) continue;
+      if (l.textContent.toLowerCase().indexOf(labelText) !== -1){
+        var forId = l.getAttribute('for');
+        if (forId){
+          var el = document.getElementById(forId);
+          if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return el;
+        }
+        var c = l.closest('.form-group, .row, .grid, div, section') || l.parentElement;
+        if (c){
+          var input = c.querySelector('input, textarea, select');
+          if (input) return input;
+        }
+      }
+    }
+    return null;
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    var insp = findInputByLabel('date inspected') || document.getElementById('inspection-date') || document.querySelector('input[name="inspection-date"],input[name="date_inspected"]');
+    var exp  = findInputByLabel('date expires') || document.getElementById('expiry-date') || document.querySelector('input[name="expiry-date"],input[name="date_expires"]');
+    if (insp && !insp.value){
+      var now = new Date();
+      if (insp.type === 'date') insp.value = toISODateLocal(now);
+      else insp.value = (now.getMonth()+1).toString().padStart(2,'0') + '/' + now.getDate().toString().padStart(2,'0') + '/' + now.getFullYear();
+    }
+    if (exp){
+      var base = insp && insp.value ? new Date(insp.value) : new Date();
+      if (!(base instanceof Date) || isNaN(base)) base = new Date();
+      var e = addDays(base, 31);
+      if (exp.type === 'date') exp.value = toISODateLocal(e);
+      else exp.value = (e.getMonth()+1).toString().padStart(2,'0') + '/' + e.getDate().toString().padStart(2,'0') + '/' + e.getFullYear();
+      if (insp){
+        insp.addEventListener('change', function(){
+          var d = insp.value ? new Date(insp.value) : new Date();
+          if (exp.type === 'date') exp.value = toISODateLocal(addDays(d,31));
+          else {
+            var ee = addDays(d,31);
+            exp.value = (ee.getMonth()+1).toString().padStart(2,'0') + '/' + ee.getDate().toString().padStart(2,'0') + '/' + ee.getFullYear();
+          }
+        });
+      }
+    }
+  });
+})();
+</script>
+
+<!-- ================================ -->
+<!-- TEMP DEBUG AUTOFILL (CMD+SHIFT+F on macOS) — REMOVE BEFORE PRODUCTION -->
+<script>
+(function(){
+  const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform) || navigator.userAgent.includes('Mac');
+
+  const PREFILL = {
+    repairs: "None-Prefilled Form for Debug",
+    tireSize: "315/80r22.5",
+    checklist: {
+      "Fuel leak": "pass",
+      "Exhaust leak": "pass",
+      "Audible air leak": "pass",
+      "Tire treads worn to wear limits": "pass",
+      "Damaged wheel or wheel component": "pass",
+      "Tire inflation less than required": "pass",
+      "Damage to tread or sidewall of tire": "pass",
+      "Compressor drive belt loose or damaged": "na",
+      "Spring brake is broken or malfunctions": "pass",
+      "Air line or fitting damaged or insecure": "pass",
+      "Air tank defective, damaged or insecure": "pass",
+      "Steering linkage is damaged or insecure": "pass",
+      "Fuel line or fitting damaged or insecure": "pass",
+      "Any component mount is damaged or insecure": "pass",
+      "Power steering component damaged or insecure": "pass",
+      "Retread or rebuilt tire is used on front axle": "pass",
+      "Inoperative service, parking or emergency brake": "pass",
+      "Insecure fuel tanks, fuel tank mounts or guards": "pass",
+      "Excessive discharge of fluids from air reservoir": "pass",
+      "Damage or deterioration of any suspension component": "pass",
+      "Power steering fluid is leaking, contaminated or low": "pass",
+      "Air tank drain or moisture ejector device inoperative": "pass",
+      "Loose, missing, damaged or ineffective wheel fastener": "pass",
+      "Exhaust system component insecure, damaged or perforated": "pass",
+      "Brake pushrod stroke is at or beyond the adjustment limit": "na",
+      "Air compressor, mounts or attachments damaged or defective": "pass",
+      "Any frame member or fastener is damaged, cracked or insecure": "pass",
+      "Air leak or malfunction of air suspension system or component": "pass",
+      "Wedge brake shoe movement exceeds manufacturer's specified limit": "na",
+      "Clearance between disc brake pads and rotor exceeds manufacturer's specified limit": "pass",
+      "Brake chamber, brake linkage or other brake component is defective, damaged or insecure": "pass",
+      "All push-out windows, emergency doors, and emergency door marking lights inspected and found to be operating normally": "pass"
+    },
+    lTagBrake: "Disc",
+    rTagBrake: "Disc",
+    lDriveBrake: "Disc",
+    lSteerBrake: "Disc",
+    rDriveBrake: "Disc",
+    rSteerBrake: "Disc"
+  };
+
+  function setValue(id, val){
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  }
+
+  function setChecklist(label, status){
+    const group = document.querySelector(`.option-boxes[data-name="${CSS.escape(label)}"]`);
+    if (!group) { console.warn('Prefill: checklist item not found:', label); return; }
+    const map = { pass:'ok', repair:'repaired', na:'na' };
+    const code = map[status] || 'ok';
+    group.querySelectorAll('.option-box').forEach(b=>b.classList.remove('selected'));
+    const target = group.querySelector(`.option-box[data-value="${code}"]`);
+    if (target) target.classList.add('selected');
+  }
+
+  function applyPrefill(){
+    try {
+      // Repairs & Tire
+      setValue('repairs-notes', PREFILL.repairs || '');
+      setValue('tire-size', PREFILL.tireSize || '');
+
+      // Toggle Disc Brakes to auto-set NA for pushrod & wedge and prefill "Disc" in stroke fields
+      const disc = document.getElementById('disc-brakes');
+      if (disc && !disc.checked){
+        disc.checked = true;
+        disc.dispatchEvent(new Event('change', { bubbles:true }));
+      }
+
+      // Ensure stroke inputs exactly match requested values
+      setValue('l-tag',   PREFILL.lTagBrake || '');
+      setValue('r-tag',   PREFILL.rTagBrake || '');
+      setValue('l-drive', PREFILL.lDriveBrake || '');
+      setValue('l-steer', PREFILL.lSteerBrake || '');
+      setValue('r-drive', PREFILL.rDriveBrake || '');
+      setValue('r-steer', PREFILL.rSteerBrake || '');
+
+      // Checklist statuses
+      if (PREFILL.checklist){
+        Object.entries(PREFILL.checklist).forEach(([label, st])=> setChecklist(label, st));
+      }
+
+      // Quick feedback banner
+      const box = document.getElementById('message-box');
+      if (box){
+        box.classList.remove('hidden','text-red-600');
+        box.classList.add('text-green-600');
+        box.textContent = 'Debug prefill applied.';
+        setTimeout(()=>{ box.classList.add('hidden'); }, 2000);
+      }
+    } catch(err){
+      console.error('Prefill failed', err);
+      alert('Prefill failed: ' + (err?.message || err));
+    }
+  }
+
+  // CMD+SHIFT+F on macOS
+  document.addEventListener('keydown', function(e){
+    if (!IS_MAC) return;
+    if (e.key && e.key.toLowerCase() === 'f' && e.metaKey && e.shiftKey){
+      e.preventDefault();
+      applyPrefill();
+    }
+  }, true);
+})();
+</script>
+<!-- END TEMP DEBUG AUTOFILL — REMOVE BEFORE PRODUCTION -->
+<!-- ================================ -->
+<!-- Clear any carried-over id for a truly new inspection -->
+<script defer>
+  (function () {
+    // If the URL does NOT have ?id=..., treat this as brand-new
+    var hasIdInQuery = new URL(window.location.href).searchParams.has('id');
+    if (!hasIdInQuery) {
+      try { sessionStorage.removeItem('__inspectionId'); } catch (e) {}
+      // Clear any hidden id field present on the page
+      var hidden = document.querySelector('#inspection-id, input[name="inspection_id"], input[name="id"]');
+      if (hidden) hidden.value = '';
+    }
+  })();
+</script>
+<script defer src="/js/submit-flow.js"></script>
+
+<!-- ======================= -->
+<!-- ADDED: viewer helpers   -->
+<!-- ======================= -->
+<script id="viewer-context-helpers">
+  (function () {
+    function toISODate(d) {
+      if (!d) return new Date().toISOString().slice(0,10);
+      const dt = new Date(d);
+      return Number.isNaN(dt.getTime()) ? new Date().toISOString().slice(0,10) : dt.toISOString().slice(0,10);
+    }
+    function numOrNull(n){ if(n==null) return null; const v=Number(String(n).replace(/,/g,'').trim()); return Number.isFinite(v)?v:null; }
+    function safeUnit(u){ return String(u||'Unit').replace(/[^\w\-]+/g,'_'); }
+
+    // Save context for viewer/Fleetio button
+    window.__setSchedule4ViewerContext = function ({ inspectionId, unitNumber, inspectionDate, odometer }) {
+      const payload = {
+        inspectionId: String(inspectionId||'').trim(),
+        unitNumber:   String(unitNumber||'').trim(),
+        inspectionDate: toISODate(inspectionDate),
+        odometer:     numOrNull(odometer)
+      };
+      try { sessionStorage.setItem('schedule4Data', JSON.stringify(payload)); } catch {}
+      return payload;
+    };
+
+    // Build pdf_viewer URL with all params
+    window.__buildPdfViewerUrl = function ({ inspectionId, unitNumber, inspectionDate, odometer, filename, src }) {
+      const fname = filename || `Schedule-4_Inspection_${safeUnit(unitNumber)}_${toISODate(inspectionDate)}.pdf`;
+      const qs = new URLSearchParams({
+        id: inspectionId || '',
+        unit: unitNumber || '',
+        odometer: odometer != null ? String(odometer) : '',
+        date: toISODate(inspectionDate),
+        filename: fname,
+        src: src || ''
+      });
+      return `/pdf_viewer.html?${qs.toString()}`;
+    };
+
+    // Public launcher — default opens in new tab; flip newTab=false to use same tab later
+    window.launchSchedule4Viewer = function ({
+      inspectionId, unitNumber, inspectionDate, odometer, pdfSrc, filename, newTab = true
+    }) {
+      const payload = window.__setSchedule4ViewerContext({ inspectionId, unitNumber, inspectionDate, odometer });
+      const href = window.__buildPdfViewerUrl({
+        inspectionId: payload.inspectionId,
+        unitNumber:   payload.unitNumber,
+        inspectionDate: payload.inspectionDate,
+        odometer:     payload.odometer,
+        filename,
+        src: pdfSrc
+      });
+      if (newTab) {
+        return window.open(href, '_blank', 'noopener,noreferrer');
+      } else {
+        window.location.assign(href);
+        return null;
+      }
+    };
+  })();
+</script>
+
+<!-- =============================================== -->
+<!-- ADDED: viewer intercept (no UI/behavior changes) -->
+<!-- =============================================== -->
+<script id="viewer-intercept">
+  (function() {
+    const OPEN_IN_NEW_TAB = true; // <— change to false later to open in same tab
+
+    function getEl(id){ return document.getElementById(id); }
+    function cleanNum(v){ if(v==null) return null; const n = Number(String(v).replace(/,/g,'')); return Number.isFinite(n)?n:null; }
+
+    function collectContext() {
+      // Unit # display value (same logic you use elsewhere)
+      const unitSel = getEl('unit-number');
+      const unitOther = getEl('unit-number-other');
+      const unitNumber = (unitSel && unitSel.value && unitSel.value!=='other')
+        ? (unitSel.options[unitSel.selectedIndex]?.textContent || '')
+        : (!unitOther?.classList.contains('hidden') ? (unitOther?.value || '') : '');
+
+      const odometer = cleanNum(getEl('odometer')?.value);
+      const inspectionDate = getEl('inspection-date')?.value || '';
+      return { unitNumber, odometer, inspectionDate };
+    }
+
+    function extractInspectionIdFromUrl(url) {
+      try {
+        const u = new URL(url, window.location.origin);
+        const id = u.searchParams.get('id'); // direct ?id= on pdf_viewer
+        if (id) return id;
+        const src = u.searchParams.get('src');
+        if (src) {
+          const s = new URL(src, window.location.origin);
+          return s.searchParams.get('id') || null;
+        }
+      } catch {}
+      return null;
+    }
+
+    function interceptHref(href) {
+      // Only touch pdf_viewer.html navigations
+      if (!href || href.indexOf('/pdf_viewer.html') === -1) return null;
+
+      const { unitNumber, odometer, inspectionDate } = collectContext();
+      const inspectionId = extractInspectionIdFromUrl(href) || (window.__lastInspectionId || '');
+
+      // If original href already had a src, keep it; otherwise leave empty (viewer will find the PDF on its own page)
+      let originalSrc = '';
+      try {
+        const u = new URL(href, window.location.origin);
+        originalSrc = u.searchParams.get('src') || '';
+      } catch {}
+
+      // Use filename if present on original href
+      let originalFilename = '';
+      try {
+        const u = new URL(href, window.location.origin);
+        originalFilename = u.searchParams.get('filename') || '';
+      } catch {}
+
+      const win = window.launchSchedule4Viewer({
+        inspectionId,
+        unitNumber,
+        inspectionDate,
+        odometer,
+        pdfSrc: originalSrc,
+        filename: originalFilename || undefined,
+        newTab: OPEN_IN_NEW_TAB
+      });
+
+      return win || true; // indicate we handled navigation
+    }
+
+    // Patch window.open
+    (function patchOpen(){
+      const _open = window.open;
+      window.open = function(url, target, features){
+        try {
+          const handled = interceptHref(url);
+          if (handled) return handled === true ? null : handled;
+        } catch {}
+        return _open.apply(window, arguments);
+      };
+    })();
+
+    // Intercept anchor clicks to pdf_viewer.html
+    document.addEventListener('click', function(e){
+      const a = e.target.closest && e.target.closest('a[href]');
+      if (!a) return;
+      const href = a.getAttribute('href') || '';
+      if (href.indexOf('/pdf_viewer.html') === -1) return;
+      const handled = interceptHref(href);
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    }, true);
+
+    // If your save/print code stores the inspection id globally, capture it
+    // (harmless if undefined; we only use it if present)
+    try {
+      const _setId = (id)=> { window.__lastInspectionId = id; };
+      window.addEventListener('message', function(ev){
+        if (!ev || !ev.data) return;
+        if (ev.data && ev.data.schedule4InspectionId) _setId(ev.data.schedule4InspectionId);
+      });
+    } catch {}
+  })();
+</script>
+
+</body>
+</html>
