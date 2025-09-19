@@ -4,15 +4,9 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
-// Force a Node serverless runtime (NOT Edge). Use 'nodejs' on Vercel (maps to Node 20).
-export const config = {
-  runtime: 'nodejs',
-  // These keys are supported by Vercel for Node functions; if your project prefers
-  // setting them in vercel.json under "functions", you can move them there instead.
-  regions: ['cle1'],
-  memory: 1024,       // MB
-  maxDuration: 60     // seconds
-};
+// Sparticuz recommended flags for serverless environments
+chromium.setHeadlessMode = true;
+chromium.setGraphicsMode = false;
 
 function json(res, status, obj) {
   res.status(status);
