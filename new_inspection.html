@@ -1282,7 +1282,19 @@ insp.addEventListener('blur', function(){
 </script>
 <!-- END TEMP DEBUG AUTOFILL — REMOVE BEFORE PRODUCTION -->
 <!-- ================================ -->
-
+<!-- Clear any carried-over id for a truly new inspection -->
+<script defer>
+  (function () {
+    // If the URL does NOT have ?id=..., treat this as brand-new
+    var hasIdInQuery = new URL(window.location.href).searchParams.has('id');
+    if (!hasIdInQuery) {
+      try { sessionStorage.removeItem('__inspectionId'); } catch (e) {}
+      // Clear any hidden id field present on the page
+      var hidden = document.querySelector('#inspection-id, input[name="inspection_id"], input[name="id"]');
+      if (hidden) hidden.value = '';
+    }
+  })();
+</script>
 <script defer src="/js/submit-flow.js"></script>
 
 <!-- ======================= -->
