@@ -3,39 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tisdale Employee App</title>
-  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Schedule 4s</title>
   <link rel="stylesheet" href="./css/tisdale-app.css" />
-  <script defer src="auth-guard.js"></script>
+  <style>
+    /* Ensure main can size iframe correctly without changing layout sizing elsewhere */
+    .main { min-height: 0; }
+    #contentFrame {
+      width: 100%;
+      height: calc(100vh - 56px);
+      border: 0;
+      display: block;
+      background: transparent;
+    }
+    @media (max-height: 520px) {
+      #contentFrame { height: 80vh; }
+    }
+  </style>
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-  <div class="brand-logo">
-    <img class="logo-light" src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines" />
-    <img class="logo-dark"  src="./assets/tisdale-logo-dark.svg"  alt="Tisdale Bus Lines" />
-  </div>
-</div>
-        
+        <div class="brand-logo">
+          <img class="logo-light" src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines" />
+          <img class="logo-dark"  src="./assets/tisdale-logo-dark.svg"  alt="Tisdale Bus Lines" />
+        </div>
       </div>
       <nav class="nav" id="nav">
-        <a class="active" href="#schedule4s" data-href="schedule4s.html">🧾 <span>Schedule 4s</span></a>
-        <!-- Future items can be added here -->
+        <a class="active" href="#schedule4s" data-href="schedule4s.html">📄 Schedule 4s</a>
       </nav>
     </aside>
 
     <header class="topbar">
-      <div class="title-wrap">
-        
-        <div class="page-title" id="pageTitle">Schedule 4s</div>
-      </div>
-      <div class="top-actions">
-        <button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button>
-      </div>
+      <div class="page-title" id="pageTitle">Schedule 4s</div>
+      <div class="spacer"></div>
+      <button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button>
     </header>
 
     <main class="main">
@@ -44,10 +46,20 @@
   </div>
 
   <script>
-    const frame = document.getElementById("contentFrame");
-const sanitizeTitle = (s) => s.replace(/^\W+/, "").trim();
+    const frame = document.getElementById('contentFrame');
     const pageTitle = document.getElementById('pageTitle');
-    frame.src = 'schedule4s.html';
+    const sanitizeTitle = (s) => s.replace(/^\W+/, '').trim();
+    function setSrc(href){
+      // Always resolve relative to current page to avoid path issues
+      try{
+        const u = new URL(href, window.location.href);
+        frame.src = u.toString();
+      }catch{
+        frame.src = href;
+      }
+    }
+    // Default route
+    setSrc('schedule4s.html');
 
     document.getElementById('nav').addEventListener('click', (e) => {
       const a = e.target.closest('a[data-href]');
@@ -55,7 +67,7 @@ const sanitizeTitle = (s) => s.replace(/^\W+/, "").trim();
       e.preventDefault();
       document.querySelectorAll('.nav a').forEach(x => x.classList.remove('active'));
       a.classList.add('active');
-      frame.src = a.dataset.href;
+      setSrc(a.dataset.href);
       pageTitle.textContent = sanitizeTitle(a.textContent);
     });
 
