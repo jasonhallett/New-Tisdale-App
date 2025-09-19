@@ -1,23 +1,16 @@
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
-// Keep Node runtime on the Node Lambda, not Edge.
-// If you later move to nodejs20.x, this will still work.
+// Function files must use "nodejs" (NOT "nodejs20.x")
 export const config = { runtime: 'nodejs' };
 
 async function launchBrowser() {
-  // Ensure Sparticuz uses the right mode for the platform
   const executablePath = await chromium.executablePath();
-
-  // Explicitly set modes from chromium instead of the static 'shell'
-  const headless = chromium.headless;           // <- safer than 'shell'
-  const args = [...chromium.args, '--font-render-hinting=none'];
-
   return puppeteer.launch({
-    args,
+    args: [...chromium.args, '--font-render-hinting=none'],
     defaultViewport: chromium.defaultViewport,
     executablePath,
-    headless,
+    headless: 'shell',
     ignoreHTTPSErrors: true,
   });
 }
@@ -35,66 +28,30 @@ export default async function handler(req, res) {
   } catch (_) {}
 
   const filename = body.filename || 'Schedule-4-Inspection.pdf';
-
-  // Build a robust absolute URL from the provided relative path
-  const baseUrl =
-    process.env.APP_BASE_URL ||
-    `https://${req.headers.host || 'app.tisdale.coach'}`;
-
+  const baseUrl = process.env.APP_BASE_URL || `https://${req.headers.host}`;
   const targetPath = body.path || '/output.html';
-  let targetUrl;
-  try {
-    // Handles leading/trailing slashes and query strings cleanly
-    targetUrl = new URL(targetPath, baseUrl).toString();
-  } catch {
-    // Fallback (very unlikely)
-    targetUrl = `${baseUrl}${targetPath}`;
-  }
+  const targetUrl = `${baseUrl}${targetPath}`;
 
-  let browser;
-  try {
-    browser = await launchBrowser();
-  } catch (err) {
-    console.error('[print] Browser launch failed:', err);
-    // Common env failure is a missing native library; surface a clear message.
-    return res.status(500).json({
-      error: 'Browser launch failed',
-      hint:
-        'Chromium failed to start in the serverless runtime. Ensure puppeteer-core + @sparticuz/chromium are installed and the Node runtime is correct.',
-      details: err.message,
-    });
-  }
-
+  const browser = await launchBrowser();
   try {
     const page = await browser.newPage();
 
     // Use PRINT CSS so .no-print is hidden and @page rules apply
     await page.emulateMediaType('print');
 
-    // Inject data BEFORE navigation so output.html can read from sessionStorage
+    // Inject data BEFORE navigation so output.html reads sessionStorage
     await page.evaluateOnNewDocument((data) => {
-      try {
-        sessionStorage.setItem('schedule4Data', JSON.stringify(data || {}));
-      } catch {}
+      try { sessionStorage.setItem('schedule4Data', JSON.stringify(data || {})); } catch {}
     }, body.data || {});
 
     // Navigate and wait for base render
-    try {
-      await page.goto(targetUrl, { waitUntil: ['load', 'networkidle0'], timeout: 45000 });
-    } catch (navErr) {
-      console.error('[print] Navigation failed:', targetUrl, navErr);
-      // Continue; we’ll still try to detect the page shell below
-    }
-
-    // Wait for the root shell your template uses
+    await page.goto(targetUrl, { waitUntil: ['load', 'networkidle0'] }).catch(() => {});
     await page.waitForSelector('#page', { timeout: 15000 }).catch(() => {});
 
     // Ensure web fonts are ready (prevents layout shifts)
     try {
-      await page.evaluate(() =>
-        (document.fonts && document.fonts.ready) ? document.fonts.ready : null
-      );
-    } catch {}
+      await page.evaluate(() => (document.fonts && document.fonts.ready) ? document.fonts.ready : null);
+    } catch (_) {}
 
     // Normalize & force-set checklist badges (✓ via SVG / R / N/A via text)
     await page.evaluate((data) => {
@@ -135,7 +92,7 @@ export default async function handler(req, res) {
 
         if (isPass(raw)) {
           badge.classList.add('status-pass');
-          badge.innerHTML = CHECK_SVG; // font-independent checkmark
+          badge.innerHTML = CHECK_SVG; // <-- SVG checkmark (font-independent)
         } else if (isRepair(raw)) {
           badge.classList.add('status-repair');
           badge.textContent = 'R';
@@ -166,7 +123,7 @@ export default async function handler(req, res) {
       format: 'Letter',
       printBackground: true,
       preferCSSPageSize: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 }
     });
 
     // Return pure binary
@@ -177,9 +134,9 @@ export default async function handler(req, res) {
     res.setHeader('Content-Length', String(pdfBuffer.length));
     res.end(pdfBuffer);
   } catch (err) {
-    console.error('[print] Render failed:', { targetUrl, err: err?.message });
-    res.status(500).json({ error: err.message, targetUrl });
+    console.error(err);
+    res.status(500).json({ error: err.message });
   } finally {
-    try { await browser?.close(); } catch {}
+    await browser.close();
   }
 }
