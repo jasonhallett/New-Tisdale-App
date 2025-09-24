@@ -144,6 +144,17 @@ a:hover{ text-decoration: underline; }
   display: none;
 }
 
+
+/* Visibility for toggle buttons */
+@media (max-width: 860px){
+  /* On phones: only left menuBtn (drawer); hide right collapseBtn to avoid layout issues */
+  #collapseBtn{ display: none; }
+}
+@media (min-width: 861px){
+  /* On desktop: both can show, but left menuBtn also collapses now */
+  /* If you want only the right button visible, uncomment the next line */
+  /* #menuBtn{ display:none; } */
+}
 /* ===== Responsive ===== */
 /* Mobile: sidebar becomes drawer; full-width topbar */
 @media (max-width: 860px){

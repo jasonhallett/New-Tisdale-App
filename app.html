@@ -81,11 +81,25 @@
       window.location.href = '/';
     });
 
-    // Drawer (mobile)
+    // Drawer (mobile) & collapse (desktop) — one button that "does the right thing"
+    const isDesktop = () => window.matchMedia('(min-width: 861px)').matches;
+    const toggleCollapsed = () => {
+      const next = !(localStorage.getItem(COLLAPSE_KEY) === '1');
+      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+      applyCollapsed(next);
+    };
+
     menuBtn.addEventListener('click', () => {
-      const isOpen = body.classList.toggle('drawer-open');
-      menuBtn.setAttribute('aria-expanded', String(isOpen));
-      if (isOpen) sidebar.querySelector('a')?.focus();
+      if (isDesktop()) {
+        // On desktop, this button collapses/expands the sidebar
+        toggleCollapsed();
+        menuBtn.setAttribute('aria-expanded', document.documentElement.classList.contains('sidebar-collapsed') ? 'false' : 'true');
+      } else {
+        // On mobile, it opens/closes the drawer
+        const isOpen = body.classList.toggle('drawer-open');
+        menuBtn.setAttribute('aria-expanded', String(isOpen));
+        if (isOpen) sidebar.querySelector('a')?.focus();
+      }
     });
     scrim.addEventListener('click', () => {
       body.classList.remove('drawer-open');
@@ -107,6 +121,7 @@
     };
     applyCollapsed(localStorage.getItem(COLLAPSE_KEY) === '1');
     collapseBtn.addEventListener('click', () => {
+      if (window.matchMedia('(max-width: 860px)').matches) return; // ignore on mobile
       const next = !(localStorage.getItem(COLLAPSE_KEY) === '1');
       localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
       applyCollapsed(next);
