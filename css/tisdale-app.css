@@ -100,7 +100,6 @@ a:hover{ text-decoration: underline; }
   background: color-mix(in srgb, var(--primary) 16%, transparent);
   border-color: color-mix(in srgb, var(--primary) 28%, var(--line));
 }
-.nav .icon{ width: 1.25rem; text-align: center; }
 .nav .label{ white-space: nowrap; }
 
 /* Topbar */
@@ -120,7 +119,6 @@ a:hover{ text-decoration: underline; }
 }
 .icon-btn:hover{ background: color-mix(in srgb, var(--primary) 10%, var(--surface)); }
 .title-wrap{ display:flex; align-items:center; gap:10px; min-width: 0; }
-.logo-top{ height: 22px; display:block; }
 .page-title{ font-weight: 700; font-size: clamp(1rem, 0.9rem + .6vw, 1.25rem); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .btn-ghost{
@@ -155,6 +153,19 @@ a:hover{ text-decoration: underline; }
   /* If you want only the right button visible, uncomment the next line */
   /* #menuBtn{ display:none; } */
 }
+
+/* Menu button visibility */
+@media (max-width: 860px){
+  #menuBtn{ display:inline-flex; }
+}
+@media (min-width: 861px){
+  #menuBtn{ display:none; }
+}
+
+/* Ensure sidebar is always visible on tablet/desktop */
+@media (min-width: 861px){
+  .sidebar{ transform: none !important; }
+}
 /* ===== Responsive ===== */
 /* Mobile: sidebar becomes drawer; full-width topbar */
 @media (max-width: 860px){
@@ -176,16 +187,6 @@ a:hover{ text-decoration: underline; }
 }
 
 /* Desktop collapse: compact 'pocket' menu */
-.sidebar-collapsed .sidebar{
-  width: var(--sidebar-w-collapsed);
-  padding-left: 8px; padding-right: 8px;
-}
-.sidebar-collapsed .app{
-  grid-template-columns: var(--sidebar-w-collapsed) 1fr;
-}
-.sidebar-collapsed .brand .logo{ max-width: 40px; }
-.sidebar-collapsed .nav .label{ display:none; }
-.sidebar-collapsed .nav a{ justify-content: center; }
 
 /* ===== Tables / Controls / Cards (light, clean) ===== */
 .table{ width:100%; border-collapse: collapse; background: transparent; }

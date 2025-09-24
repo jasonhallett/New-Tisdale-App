@@ -21,7 +21,6 @@
 
       <nav class="nav" id="nav">
         <a class="active" href="#schedule4s" data-href="schedule4s.html" aria-current="page">
-          <span class="icon" aria-hidden="true">🧾</span>
           <span class="label">Schedule 4s</span>
         </a>
         <!-- Future items -->
@@ -30,13 +29,10 @@
 
     <!-- Topbar -->
     <header class="topbar">
-      <button id="menuBtn" class="icon-btn" aria-label="Toggle menu" aria-expanded="false" aria-controls="sidebar">☰</button>
-      <div class="title-wrap">
-        <img class="logo-top" src="./assets/tisdale-logo-light.svg" alt="" />
-        <div class="page-title" id="pageTitle">Schedule 4s</div>
+      <button id="menuBtn" class="icon-btn" aria-label="Toggle menu" aria-expanded="false" aria-controls="sidebar">Menu</button>
+      <div class="title-wrap"> <div class="page-title" id="pageTitle">Schedule 4s</div>
       </div>
       <div class="top-actions">
-        <button class="btn-ghost" id="collapseBtn" title="Collapse sidebar">⟨⟩</button>
         <button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button>
       </div>
     </header>
@@ -57,8 +53,7 @@
     const sidebar = document.getElementById('sidebar');
     const scrim = document.getElementById('scrim');
     const menuBtn = document.getElementById('menuBtn');
-    const collapseBtn = document.getElementById('collapseBtn');
-
+    const 
     frame.src = 'schedule4s.html';
 
     // Nav routing
@@ -81,19 +76,15 @@
       window.location.href = '/';
     });
 
-    // Drawer (mobile) & collapse (desktop) — one button that "does the right thing"
-    const isDesktop = () => window.matchMedia('(min-width: 861px)').matches;
-    const toggleCollapsed = () => {
-      const next = !(localStorage.getItem(COLLAPSE_KEY) === '1');
-      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
-      applyCollapsed(next);
-    };
-
+    // Drawer (mobile only)
+    const isMobile = () => window.matchMedia('(max-width: 860px)').matches;
     menuBtn.addEventListener('click', () => {
-      if (isDesktop()) {
-        // On desktop, this button collapses/expands the sidebar
-        toggleCollapsed();
-        menuBtn.setAttribute('aria-expanded', document.documentElement.classList.contains('sidebar-collapsed') ? 'false' : 'true');
+      if (!isMobile()) return; // do nothing on tablet/desktop
+      const isOpen = body.classList.toggle('drawer-open');
+      menuBtn.setAttribute('aria-expanded', String(isOpen));
+      if (isOpen) sidebar.querySelector('a')?.focus();
+    });
+            menuBtn.setAttribute('aria-expanded', document.documentElement.classList.contains('sidebar-collapsed') ? 'false' : 'true');
       } else {
         // On mobile, it opens/closes the drawer
         const isOpen = body.classList.toggle('drawer-open');
@@ -115,17 +106,12 @@
     });
 
     // Sidebar collapse (desktop)
-    const COLLAPSE_KEY = 'tbl:sidebarCollapsed';
-    const applyCollapsed = (v) => {
+        const applyCollapsed = (v) => {
       document.documentElement.classList.toggle('sidebar-collapsed', v);
     };
     applyCollapsed(localStorage.getItem(COLLAPSE_KEY) === '1');
-    collapseBtn.addEventListener('click', () => {
-      if (window.matchMedia('(max-width: 860px)').matches) return; // ignore on mobile
-      const next = !(localStorage.getItem(COLLAPSE_KEY) === '1');
-      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
-      applyCollapsed(next);
-    });
+          localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+          });
   </script>
 </body>
 </html>
