@@ -268,6 +268,10 @@ input:focus, select:focus, textarea:focus{
 
 /* ===== Desktop-only compact tuning for Schedule 4 grid ===== */
 @media (min-width: 861px){
+    #grid {
+    width: 85%;
+    margin: 0 auto;
+  }
   /* Make compact tables tighter on desktop */
   .table.compact th, .table.compact td{
     padding: 5px 8px;
@@ -286,14 +290,15 @@ input:focus, select:focus, textarea:focus{
 
   /* Softer hover on big grids */
   .table.compact tbody tr:hover td{ background: color-mix(in srgb, var(--primary) 4%, transparent); }
+  
 }
 
 /* ===== Mobile tweaks for Schedule 4 grid ===== */
 @media (max-width: 640px) {
   #grid { width: 100%; table-layout: fixed; }
   .col-odo, .col-tech, .col-loc { display: none; }
-  .col-date { width: 56%; }
-  .col-unit { width: 28%; }
-  .col-view { width: 16%; text-align: right; }
+  .col-date { width: 50%; }
+  .col-unit { width: 25%; }
+  .col-view { width: 25%; text-align: right; }
   .table.compact th, .table.compact td { padding: 8px 10px; }
 }
