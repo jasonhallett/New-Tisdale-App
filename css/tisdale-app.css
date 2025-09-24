@@ -38,6 +38,10 @@
   --topbar-h: 56px;
   --sidebar-w: 260px;
   --sidebar-w-collapsed: 72px;
+
+  /* Success colors */
+  --success: #059669; /* emerald-600 */
+  --success-hover: #10b981; /* emerald-500 */
 }
 
 *,
@@ -249,6 +253,14 @@ input:focus, select:focus, textarea:focus{
 }
 .btn:hover{ filter: brightness(1.04); }
 .btn:active{ transform: translateY(1px); }
+.btn.primary {
+  background-color: var(--success);
+  color: white;
+}
+
+.btn.primary:hover {
+  background-color: var(--success-hover);
+}
 .btn-ghost{
   background: transparent; color: var(--text);
   border: 1px solid var(--line);
