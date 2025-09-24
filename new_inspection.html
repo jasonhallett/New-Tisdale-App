@@ -92,7 +92,7 @@
           <select id="unit-number" name="unit-number" class="rounded-md">
             <option value="">Select a vehicle…</option>
           </select>
-          <input type="text" id="unit-number-other" name="unit-number-other" class="rounded-md mt-2 hidden" placeholder="Enter Unit #"/>
+          <input type="text" id="unit-number-other" name="unit-number-other" class="rounded-md mt-2 hidden" placeholder="Enter Unit #"disabled/>
         </div>
         <div class="form-group">
           <label for="license-plate" class="block text-sm">Licence Plate</label>
@@ -724,9 +724,11 @@
         
         if (unitSelect.value === 'other') {
           otherInput.classList.remove('hidden');
+          otherInput.disabled = false;
           otherInput.focus();
         } else {
-          otherInput.classList.add('hidden');
+          otherInput.classList.add('hidden'); 
+          otherInput.disabled = true;
           otherInput.value = ''; // Clear the input when hidden
         }
 
@@ -1125,7 +1127,7 @@ insp.addEventListener('blur', function(){
   function addDays(d, n){ var e = new Date(d.getTime()); e.setDate(e.getDate()+n); return e; }
   function findInputByLabel(labelText){
     labelText = String(labelText).toLowerCase().trim();
-    var labels = Array.prototype.slice.call
+    var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
     for (var i=0;i<labels.length;i++){
       var l = labels[i];
       if (!l.textContent) continue;
@@ -1373,9 +1375,7 @@ insp.addEventListener('blur', function(){
 <!-- =============================================== -->
 <script id="viewer-intercept">
   (function() {
-    const OPEN_IN_NEW_TAB = true; // <— change to false later to open in same tab
-
-    function getEl(id){ return document.getElementById(id); }
+    const OPEN
     function cleanNum(v){ if(v==null) return null; const n = Number(String(v).replace(/,/g,'')); return Number.isFinite(n)?n:null; }
 
     function collectContext() {
