@@ -13,14 +13,14 @@
 </head>
 <body>
   <div class="app">
-    <!-- Sidebar (collapsible & mobile-drawer) -->
+    <!-- Sidebar -->
     <aside class="sidebar" id="sidebar" aria-label="Primary">
       <div class="brand">
         <img class="logo" src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines" />
       </div>
 
       <nav class="nav" id="nav">
-        <a class="active" href="#schedule4s" data-href="schedule4s.html" aria-current="page">
+        <a class="active" href="#schedule4s" data-href="./schedule4s.html" aria-current="page">
           <span class="label">Schedule 4s</span>
         </a>
         <!-- Future items -->
@@ -29,9 +29,13 @@
 
     <!-- Topbar -->
     <header class="topbar">
+      <!-- Visible only on phones via CSS; opens drawer -->
       <button id="menuBtn" class="icon-btn" aria-label="Toggle menu" aria-expanded="false" aria-controls="sidebar">Menu</button>
-      <div class="title-wrap"> <div class="page-title" id="pageTitle">Schedule 4s</div>
+
+      <div class="title-wrap">
+        <div class="page-title" id="pageTitle">Schedule 4s</div>
       </div>
+
       <div class="top-actions">
         <button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button>
       </div>
@@ -45,27 +49,31 @@
   </div>
 
   <script>
-    // Initial load
-    const frame = document.getElementById('contentFrame');
+    // Elements
+    const frame     = document.getElementById('contentFrame');
     const pageTitle = document.getElementById('pageTitle');
-    const nav = document.getElementById('nav');
-    const body = document.body;
-    const sidebar = document.getElementById('sidebar');
-    const scrim = document.getElementById('scrim');
-    const menuBtn = document.getElementById('menuBtn');
-    const 
-    frame.src = 'schedule4s.html';
+    const nav       = document.getElementById('nav');
+    const body      = document.body;
+    const sidebar   = document.getElementById('sidebar');
+    const scrim     = document.getElementById('scrim');
+    const menuBtn   = document.getElementById('menuBtn');
 
-    // Nav routing
+    // Initial page
+    frame.src = './schedule4s.html';
+
+    // Nav routing (single-page shell)
     nav.addEventListener('click', (e) => {
       const a = e.target.closest('a[data-href]');
       if (!a) return;
       e.preventDefault();
+
       document.querySelectorAll('.nav a').forEach(x => x.classList.remove('active'));
       a.classList.add('active');
+
       frame.src = a.dataset.href;
       pageTitle.textContent = a.textContent.trim();
-      // Close drawer on mobile if open
+
+      // Close drawer on mobile
       body.classList.remove('drawer-open');
       menuBtn.setAttribute('aria-expanded', 'false');
     });
@@ -76,27 +84,22 @@
       window.location.href = '/';
     });
 
-    // Drawer (mobile only)
+    // Drawer (phones only)
     const isMobile = () => window.matchMedia('(max-width: 860px)').matches;
+
     menuBtn.addEventListener('click', () => {
       if (!isMobile()) return; // do nothing on tablet/desktop
       const isOpen = body.classList.toggle('drawer-open');
       menuBtn.setAttribute('aria-expanded', String(isOpen));
       if (isOpen) sidebar.querySelector('a')?.focus();
     });
-            menuBtn.setAttribute('aria-expanded', document.documentElement.classList.contains('sidebar-collapsed') ? 'false' : 'true');
-      } else {
-        // On mobile, it opens/closes the drawer
-        const isOpen = body.classList.toggle('drawer-open');
-        menuBtn.setAttribute('aria-expanded', String(isOpen));
-        if (isOpen) sidebar.querySelector('a')?.focus();
-      }
-    });
+
     scrim.addEventListener('click', () => {
       body.classList.remove('drawer-open');
       menuBtn.setAttribute('aria-expanded', 'false');
       menuBtn.focus();
     });
+
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && body.classList.contains('drawer-open')) {
         body.classList.remove('drawer-open');
@@ -104,14 +107,6 @@
         menuBtn.focus();
       }
     });
-
-    // Sidebar collapse (desktop)
-        const applyCollapsed = (v) => {
-      document.documentElement.classList.toggle('sidebar-collapsed', v);
-    };
-    applyCollapsed(localStorage.getItem(COLLAPSE_KEY) === '1');
-          localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
-          });
   </script>
 </body>
 </html>
