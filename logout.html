@@ -4,14 +4,38 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Logged Out – TBL Internal App</title>
+  <link rel="stylesheet" href="./css/tisdale-app.css" />
   <style>
-    :root { --bg:#0b1320; --card:#121a2b; --ink:#e8eefc; --ink-muted:#9fb1d7; --border:#20304d; }
-    html, body { margin:0; padding:0; height:100%; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial, sans-serif; background:var(--bg); color:var(--ink);}
-    .wrap { min-height:100%; display:grid; place-items:center; padding:24px; }
-    .card { width:min(560px, 92vw); background:linear-gradient(180deg, #121a2b 0%, #0f1626 100%); border:1px solid var(--border); border-radius:16px; padding:24px; text-align:center; }
-    .muted { color:var(--ink-muted); margin-top:8px; }
-    a.btn { display:inline-block; margin-top:16px; border-radius:10px; padding:10px 14px; text-decoration:none; color:var(--ink); border:1px solid var(--border); background:#0b1a2e;}
-    a.btn:hover { border-color:#2a3b63; }
+    html, body { 
+      height: 100%; 
+      margin: 0;
+    }
+    .logout-container {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      background: var(--surface);
+    }
+    .logout-card {
+      background: var(--surface);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-sm);
+      width: 100%;
+      max-width: 400px;
+      padding: 2rem;
+      text-align: center;
+    }
+    .logout-title {
+      margin: 0 0 0.5rem 0;
+      color: var(--text);
+      font-weight: 600;
+    }
+    .logout-message {
+      color: var(--muted);
+      margin-bottom: 1.5rem;
+    }
   </style>
   <script>
     // Call server to clear HttpOnly cookie; ignore errors
@@ -21,10 +45,10 @@
   </script>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1 style="margin:0 0 6px 0;">You’re logged out</h1>
-      <div class="muted">Your session cookie has been cleared.</div>
+  <div class="logout-container">
+    <div class="logout-card">
+      <h1 class="logout-title">You're logged out</h1>
+      <div class="logout-message">Your session cookie has been cleared.</div>
       <a href="/" class="btn">Back to Login</a>
     </div>
   </div>

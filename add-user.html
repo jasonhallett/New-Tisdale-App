@@ -4,35 +4,80 @@
   <meta charset="UTF-8" />
   <title>Add / Manage Users</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- No color styling. Keep it neutral/minimal to match new_inspection.html -->
+  <link rel="stylesheet" href="./css/tisdale-app.css" />
   <style>
-    :root { --gap: 12px; }
-    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-    .container { max-width: 960px; margin: 0 auto; padding: 16px; }
-    h1, h2, h3 { margin: 0 0 8px; }
-    p { margin: 0 0 12px; }
-    fieldset { border: 1px solid #ccc; border-radius: 6px; padding: 12px; margin: 0 0 16px; }
-    legend { padding: 0 6px; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
-    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--gap); }
-    .row-1 { display: grid; grid-template-columns: 1fr; gap: var(--gap); }
-    label { display: block; margin-bottom: 4px; font-size: 14px; }
-    input[type="text"], input[type="email"], input[type="tel"], input[type="password"], select, textarea {
-      width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #bbb; border-radius: 4px; font-size: 14px;
+    .container { 
+      max-width: 960px; 
+      margin: 0 auto; 
+      padding: var(--sp-4);
     }
-    .roles { display: flex; flex-wrap: wrap; gap: 12px; }
-    .role { display: inline-flex; align-items: center; gap: 6px; }
-    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    button { padding: 8px 14px; border: 1px solid #bbb; background: #f6f6f6; border-radius: 4px; cursor: pointer; }
-    button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .hidden { display: none; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
-    .divider { height: 1px; background: #e5e5e5; margin: 16px 0; }
-    .note { font-size: 12px; opacity: 0.9; }
-    .status { font-size: 13px; }
+    .row { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: var(--sp-3);
+    }
+    .row-3 { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr 1fr; 
+      gap: var(--sp-3);
+    }
+    .roles { 
+      display: flex; 
+      flex-wrap: wrap; 
+      gap: var(--sp-3);
+    }
+    .role { 
+      display: inline-flex; 
+      align-items: center; 
+      gap: var(--sp-2);
+    }
+    .actions { 
+      display: flex; 
+      gap: var(--sp-3); 
+      align-items: center; 
+      flex-wrap: wrap;
+      margin-top: var(--sp-3);
+    }
+    .divider { 
+      height: 1px; 
+      background: var(--line); 
+      margin: var(--sp-4) 0; 
+    }
+    .note { 
+      font-size: 0.875rem; 
+      color: var(--muted);
+    }
+    .status { 
+      font-size: 0.875rem;
+      color: var(--text);
+    }
+    fieldset {
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      padding: var(--sp-4);
+      margin: 0 0 var(--sp-4);
+    }
+    legend {
+      padding: 0 var(--sp-2);
+      color: var(--text);
+      font-weight: 500;
+    }
+    .mono { 
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+    }
+    input[readonly] {
+      background: var(--surface-alt);
+      color: var(--muted);
+    }
+    pre {
+      background: var(--surface-alt);
+      padding: var(--sp-3);
+      border-radius: var(--r-sm);
+    }
   </style>
 </head>
-<body>
+<body class="bg-gray-100">
   <div class="container">
     <h1>Add / Manage Users</h1>
     <p class="note">Neutral UI. No colors. Matches the plain look/feel of <code>new_inspection.html</code>.</p>
