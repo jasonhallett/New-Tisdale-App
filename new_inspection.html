@@ -719,11 +719,19 @@
         }
       }
 
-      unitSelect.addEventListener('change', async ()=>{
-        if (unitSelect.value==='other'){
-          unitSelect.classList.add('hidden'); unitOtherInput.classList.remove('hidden'); unitOtherInput.focus(); return;
+      unitSelect.addEventListener('change', async () => {
+        const otherInput = document.getElementById('unit-number-other');
+        
+        if (unitSelect.value === 'other') {
+          otherInput.classList.remove('hidden');
+          otherInput.focus();
+        } else {
+          otherInput.classList.add('hidden');
+          otherInput.value = ''; // Clear the input when hidden
         }
-        const picked = vehicleIndex.get(unitSelect.value); if(!picked) return;
+
+        const picked = vehicleIndex.get(unitSelect.value); 
+        if (!picked) return;
         if (picked.licensePlate) licensePlateInput.value = picked.licensePlate;
 
         try{
@@ -1117,7 +1125,7 @@ insp.addEventListener('blur', function(){
   function addDays(d, n){ var e = new Date(d.getTime()); e.setDate(e.getDate()+n); return e; }
   function findInputByLabel(labelText){
     labelText = String(labelText).toLowerCase().trim();
-    var labels = Array.prototype.slice.call(document.querySelectorAll('label'));
+    var labels = Array.prototype.slice.call
     for (var i=0;i<labels.length;i++){
       var l = labels[i];
       if (!l.textContent) continue;
