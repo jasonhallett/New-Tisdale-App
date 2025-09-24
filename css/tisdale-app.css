@@ -314,3 +314,7 @@ input:focus, select:focus, textarea:focus{
   .col-view { width: 25%; text-align: right; }
   .table.compact th, .table.compact td { padding: 8px 10px; }
 }
+
+.hidden {
+  display: none !important;
+}
