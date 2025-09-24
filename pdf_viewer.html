@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     html, body { height:100%; }
-    body { margin:0; background:#0b0b0c; }
+    body { margin:0; background:#f3f4f6; } /* Changed from #0b0b0c to match bg-gray-100 */
     .toolbar { position:sticky; top:0; z-index:50; }
   </style>
 
@@ -26,11 +26,11 @@
   })();
   </script>
 </head>
-<body class="text-white">
+<body class="bg-gray-100 text-gray-900"> <!-- Changed from text-white and added bg-gray-100 -->
   <!-- Toolbar -->
-  <header class="toolbar w-full bg-black/60 backdrop-blur supports-[backdrop-filter]:bg-black/40 border-b border-white/10">
+  <header class="toolbar w-full bg-white shadow"> <!-- Changed from black/60 to white with shadow -->
     <div class="max-w-screen-xl mx-auto px-4 py-2 flex items-center gap-2">
-      <a href="/" class="text-sm text-white/70 hover:text-white">← Back</a>
+      <a href="/" class="text-sm text-gray-600 hover:text-gray-900">← Back</a> <!-- Updated text colors -->
       <div class="ml-auto flex items-center gap-2">
         <button id="btnPrint" class="btn">Download PDF</button>
         <button id="btnFleetio" class="btn !bg-emerald-600 hover:!bg-emerald-500">Create Fleetio Work Order</button>
@@ -40,8 +40,8 @@
   </header>
 
   <!-- Viewer -->
-  <main class="h-[calc(100%-56px)]">
-    <iframe id="pdfFrame" class="w-full h-full bg-neutral-900" title="PDF Preview"></iframe>
+  <main class="h-[calc(100%-56px)] p-4"> <!-- Added padding -->
+    <iframe id="pdfFrame" class="w-full h-full bg-white shadow-sm rounded-lg" title="PDF Preview"></iframe> <!-- Updated styling -->
   </main>
 
   <script>
