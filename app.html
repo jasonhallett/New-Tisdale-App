@@ -2,73 +2,67 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tisdale Employee App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Tisdale</title>
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/tisdale-app.css" />
   <script defer src="auth-guard.js"></script>
-
-  <!-- Frame sizing so the inner page isn’t a tiny box -->
-  <style>
-    /* Ensure grid area can shrink/scroll properly */
-    .main { min-height: 0; }
-
-    /* Make iframe fill the available space (desktop & mobile) */
-    #contentFrame {
-      width: 100%;
-      height: calc(100vh - 56px); /* topbar row is 56px per the theme */
-      border: 0;
-      display: block;
-      background: transparent;
-    }
-
-    /* On very short viewports, allow a bit more room */
-    @media (max-height: 520px) {
-      #contentFrame { height: 80vh; }
-    }
-  </style>
 </head>
 <body>
   <div class="app">
-    <aside class="sidebar">
+    <!-- Sidebar (collapsible & mobile-drawer) -->
+    <aside class="sidebar" id="sidebar" aria-label="Primary">
       <div class="brand">
-        <div class="brand-logo">
-          <!-- Use your actual filenames so alt text doesn’t appear -->
-          <img class="logo-light" src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines (Light)" />
-          <img class="logo-dark"  src="./assets/tisdale-logo-dark.svg"  alt="Tisdale Bus Lines (Dark)"  />
-        </div>
-        <div class="brand-title small-muted">Tisdale Employee App</div>
+        <img class="logo" src="./assets/tisdale-logo-light.svg" alt="Tisdale Bus Lines" />
       </div>
+
       <nav class="nav" id="nav">
-        <a class="active" href="#schedule4s" data-href="schedule4s.html">🧾 <span>Schedule 4s</span></a>
-        <!-- Future items can be added here -->
+        <a class="active" href="#schedule4s" data-href="schedule4s.html" aria-current="page">
+          <span class="icon" aria-hidden="true">🧾</span>
+          <span class="label">Schedule 4s</span>
+        </a>
+        <!-- Future items -->
       </nav>
     </aside>
 
+    <!-- Topbar -->
     <header class="topbar">
+      <button id="menuBtn" class="icon-btn" aria-label="Toggle menu" aria-expanded="false" aria-controls="sidebar">☰</button>
       <div class="title-wrap">
-        <div class="app-title">Tisdale Employee App</div>
+        <img class="logo-top" src="./assets/tisdale-logo-light.svg" alt="" />
         <div class="page-title" id="pageTitle">Schedule 4s</div>
       </div>
       <div class="top-actions">
+        <button class="btn-ghost" id="collapseBtn" title="Collapse sidebar">⟨⟩</button>
         <button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button>
       </div>
     </header>
 
-    <main class="main">
+    <!-- Main -->
+    <main class="main" id="main">
       <iframe id="contentFrame" title="Content"></iframe>
+      <button class="scrim" id="scrim" aria-label="Close menu"></button>
     </main>
   </div>
 
   <script>
+    // Initial load
     const frame = document.getElementById('contentFrame');
     const pageTitle = document.getElementById('pageTitle');
+    const nav = document.getElementById('nav');
+    const body = document.body;
+    const sidebar = document.getElementById('sidebar');
+    const scrim = document.getElementById('scrim');
+    const menuBtn = document.getElementById('menuBtn');
+    const collapseBtn = document.getElementById('collapseBtn');
+
     frame.src = 'schedule4s.html';
 
-    document.getElementById('nav').addEventListener('click', (e) => {
+    // Nav routing
+    nav.addEventListener('click', (e) => {
       const a = e.target.closest('a[data-href]');
       if (!a) return;
       e.preventDefault();
@@ -76,11 +70,46 @@
       a.classList.add('active');
       frame.src = a.dataset.href;
       pageTitle.textContent = a.textContent.trim();
+      // Close drawer on mobile if open
+      body.classList.remove('drawer-open');
+      menuBtn.setAttribute('aria-expanded', 'false');
     });
 
+    // Logout
     document.getElementById('logoutBtn').addEventListener('click', async () => {
       try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {}
       window.location.href = '/';
+    });
+
+    // Drawer (mobile)
+    menuBtn.addEventListener('click', () => {
+      const isOpen = body.classList.toggle('drawer-open');
+      menuBtn.setAttribute('aria-expanded', String(isOpen));
+      if (isOpen) sidebar.querySelector('a')?.focus();
+    });
+    scrim.addEventListener('click', () => {
+      body.classList.remove('drawer-open');
+      menuBtn.setAttribute('aria-expanded', 'false');
+      menuBtn.focus();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && body.classList.contains('drawer-open')) {
+        body.classList.remove('drawer-open');
+        menuBtn.setAttribute('aria-expanded', 'false');
+        menuBtn.focus();
+      }
+    });
+
+    // Sidebar collapse (desktop)
+    const COLLAPSE_KEY = 'tbl:sidebarCollapsed';
+    const applyCollapsed = (v) => {
+      document.documentElement.classList.toggle('sidebar-collapsed', v);
+    };
+    applyCollapsed(localStorage.getItem(COLLAPSE_KEY) === '1');
+    collapseBtn.addEventListener('click', () => {
+      const next = !(localStorage.getItem(COLLAPSE_KEY) === '1');
+      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+      applyCollapsed(next);
     });
   </script>
 </body>
