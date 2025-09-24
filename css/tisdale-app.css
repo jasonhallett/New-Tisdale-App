@@ -1,7 +1,7 @@
 /* Tisdale App — Light theme only, professional UI
    - Single light logo
-   - Collapsible sidebar (desktop)
-   - Mobile drawer ('pocket' menu)
+   - Mobile drawer menu on phones
+   - Sidebar always visible on tablet/desktop
    - Clean tables/forms/buttons
 */
 
@@ -142,30 +142,6 @@ a:hover{ text-decoration: underline; }
   display: none;
 }
 
-
-/* Visibility for toggle buttons */
-@media (max-width: 860px){
-  /* On phones: only left menuBtn (drawer); hide right collapseBtn to avoid layout issues */
-  #collapseBtn{ display: none; }
-}
-@media (min-width: 861px){
-  /* On desktop: both can show, but left menuBtn also collapses now */
-  /* If you want only the right button visible, uncomment the next line */
-  /* #menuBtn{ display:none; } */
-}
-
-/* Menu button visibility */
-@media (max-width: 860px){
-  #menuBtn{ display:inline-flex; }
-}
-@media (min-width: 861px){
-  #menuBtn{ display:none; }
-}
-
-/* Ensure sidebar is always visible on tablet/desktop */
-@media (min-width: 861px){
-  .sidebar{ transform: none !important; }
-}
 /* ===== Responsive ===== */
 /* Mobile: sidebar becomes drawer; full-width topbar */
 @media (max-width: 860px){
@@ -186,7 +162,18 @@ a:hover{ text-decoration: underline; }
   body.drawer-open .scrim{ display:block; }
 }
 
-/* Desktop collapse: compact 'pocket' menu */
+/* Menu button visibility */
+@media (max-width: 860px){
+  #menuBtn{ display:inline-flex; }
+}
+@media (min-width: 861px){
+  #menuBtn{ display:none; }
+}
+
+/* Ensure sidebar is always visible on tablet/desktop */
+@media (min-width: 861px){
+  .sidebar{ transform: none !important; }
+}
 
 /* ===== Tables / Controls / Cards (light, clean) ===== */
 .table{ width:100%; border-collapse: collapse; background: transparent; }
@@ -279,7 +266,29 @@ input:focus, select:focus, textarea:focus{
 .search input{ border:none; outline:none; background:transparent; width:100%; color:var(--text); font:inherit; }
 .search input::placeholder{ color: var(--muted); }
 
-/* Mobile tweaks for Schedule 4 grid */
+/* ===== Desktop-only compact tuning for Schedule 4 grid ===== */
+@media (min-width: 861px){
+  /* Make compact tables tighter on desktop */
+  .table.compact th, .table.compact td{
+    padding: 5px 8px;
+    line-height: 1.35;
+  }
+  .table.compact th{ font-size: 12px; }
+  .table.compact td{ font-size: 13px; }
+
+  /* Tighter column widths for desktop */
+  .table.compact .col-date { width: 170px; }
+  .table.compact .col-unit { width: 110px; }
+  .table.compact .col-odo  { width: 120px; }
+  .table.compact .col-tech { max-width: 100px; }
+  .table.compact .col-loc  { max-width: 320px; }
+  .table.compact .col-view { width: 48px; }
+
+  /* Softer hover on big grids */
+  .table.compact tbody tr:hover td{ background: color-mix(in srgb, var(--primary) 4%, transparent); }
+}
+
+/* ===== Mobile tweaks for Schedule 4 grid ===== */
 @media (max-width: 640px) {
   #grid { width: 100%; table-layout: fixed; }
   .col-odo, .col-tech, .col-loc { display: none; }
