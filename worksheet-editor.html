@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Worksheet Editor</title>
   <link rel="stylesheet" href="./css/tisdale-app.css" />
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
 <body>
   <section class="container" style="padding:14px 16px 18px;">
@@ -15,11 +14,12 @@
           <label for="worksheetSelect">Worksheet:</label>
           <select id="worksheetSelect"></select>
           <button class="btn" id="newWorksheetBtn">New Worksheet</button>
+          <button class="btn" id="setDefaultBtn">Set as Default</button>
         </div>
-        <button class="btn" id="saveBtn">Save Changes</button>
+        <button class="btn" id="saveAllBtn">Save All</button>
       </div>
 
-      <div id="sectionsContainer" class="sections"></div>
+      <div id="sectionsContainer"></div>
 
       <div style="margin-top:16px;">
         <button class="btn" id="addSectionBtn">+ Add Section</button>

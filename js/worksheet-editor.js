@@ -1,17 +1,19 @@
 let currentWorksheetId = null;
-let worksheetData = { sections: [] };
+let worksheetData = { id:null, name:'', sections: [] };
 
 async function loadWorksheets() {
   const res = await fetch('/api/worksheets');
   const worksheets = await res.json();
   const select = document.getElementById('worksheetSelect');
   select.innerHTML = worksheets.map(ws =>
-    `<option value="${ws.id}">${ws.name}</option>`
+    `<option value="${ws.id}" ${ws.is_default ? 'selected' : ''}>
+       ${ws.name}${ws.is_default ? ' (Default)' : ''}
+     </option>`
   ).join('');
   if (worksheets.length) {
-    currentWorksheetId = worksheets[0].id;
+    currentWorksheetId = worksheets.find(ws => ws.is_default)?.id || worksheets[0].id;
     select.value = currentWorksheetId;
-    loadWorksheet(currentWorksheetId);
+    await loadWorksheet(currentWorksheetId);
   }
 }
 
@@ -24,106 +26,140 @@ async function loadWorksheet(id) {
 function renderSections() {
   const container = document.getElementById('sectionsContainer');
   container.innerHTML = '';
-  worksheetData.sections.forEach(section => {
+  worksheetData.sections.forEach((section, si) => {
     const sectionDiv = document.createElement('div');
     sectionDiv.className = 'section card';
     sectionDiv.dataset.id = section.id;
     sectionDiv.innerHTML = `
-      <div class="section-header">
-        <input class="section-title" value="${section.title}" />
-        <button class="btn-small addFieldBtn">+ Add Field</button>
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <input class="section-title" value="${section.section_name}" data-index="${si}" />
+        <button class="btn-small addRowBtn" data-index="${si}">+ Add Row</button>
       </div>
-      <div class="fields" data-section="${section.id}">
-        ${section.fields.map(f => `
-          <div class="field" data-id="${f.id}">
-            <input class="field-label" value="${f.label}" />
-            <button class="btn-small deleteFieldBtn">×</button>
-          </div>
-        `).join('')}
-      </div>
+      <table class="table compact">
+        <thead>
+          <tr>
+            <th>Bus Number(s)</th>
+            <th>Pickup</th>
+            <th>Dropoff</th>
+            <th>Pickup Time AM/PM</th>
+            <th>D/S IN AM</th>
+            <th>N/S OUT AM</th>
+            <th>D/S OUT PM</th>
+            <th>N/S IN PM</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${section.rows.map((r,ri) => `
+            <tr data-id="${r.id}">
+              <td contenteditable="true">${r.bus_number_default||''}</td>
+              <td contenteditable="true">${r.pickup_default||''}</td>
+              <td contenteditable="true">${r.dropoff_default||''}</td>
+              <td contenteditable="true">${r.pickup_time_default||''}</td>
+              <td contenteditable="true">${r.ds_in_am_default||0}</td>
+              <td contenteditable="true">${r.ns_out_am_default||0}</td>
+              <td contenteditable="true">${r.ds_out_pm_default||0}</td>
+              <td contenteditable="true">${r.ns_in_pm_default||0}</td>
+              <td><a href="#" class="btn-link-sm deleteRowBtn" data-sindex="${si}" data-rindex="${ri}">Delete</a></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
     `;
     container.appendChild(sectionDiv);
-
-    // Make fields sortable
-    new Sortable(sectionDiv.querySelector('.fields'), {
-      animation: 150,
-      onEnd: savePositions
-    });
   });
-
-  // Make sections sortable
-  new Sortable(container, {
-    animation: 150,
-    handle: '.section-header',
-    onEnd: savePositions
-  });
-}
-
-function savePositions() {
-  // Collect positions from DOM
-  worksheetData.sections = Array.from(document.querySelectorAll('.section')).map((sec, i) => ({
-    id: sec.dataset.id,
-    title: sec.querySelector('.section-title').value,
-    position: i,
-    fields: Array.from(sec.querySelectorAll('.field')).map((f, j) => ({
-      id: f.dataset.id,
-      label: f.querySelector('.field-label').value,
-      position: j
-    }))
-  }));
 }
 
 document.getElementById('addSectionBtn').addEventListener('click', () => {
-  worksheetData.sections.push({ id: 'new-' + Date.now(), title: 'New Section', fields: [] });
+  worksheetData.sections.push({
+    id: 'new-'+Date.now(),
+    section_name: 'New Section',
+    rows: []
+  });
   renderSections();
 });
 
-document.getElementById('sectionsContainer').addEventListener('click', e => {
-  if (e.target.classList.contains('addFieldBtn')) {
-    const sectionDiv = e.target.closest('.section');
-    const sectionId = sectionDiv.dataset.id;
-    const section = worksheetData.sections.find(s => s.id == sectionId);
-    section.fields.push({ id: 'new-' + Date.now(), label: 'New Field' });
+document.getElementById('sectionsContainer').addEventListener('click', (e) => {
+  if (e.target.classList.contains('addRowBtn')) {
+    const sindex = e.target.dataset.index;
+    worksheetData.sections[sindex].rows.push({
+      id: 'new-'+Date.now(),
+      bus_number_default:'',
+      pickup_default:'',
+      dropoff_default:'',
+      pickup_time_default:'',
+      ds_in_am_default:0,
+      ns_out_am_default:0,
+      ds_out_pm_default:0,
+      ns_in_pm_default:0
+    });
     renderSections();
   }
-  if (e.target.classList.contains('deleteFieldBtn')) {
-    const fieldDiv = e.target.closest('.field');
-    const sectionDiv = e.target.closest('.section');
-    const sectionId = sectionDiv.dataset.id;
-    const section = worksheetData.sections.find(s => s.id == sectionId);
-    section.fields = section.fields.filter(f => f.id != fieldDiv.dataset.id);
+  if (e.target.classList.contains('deleteRowBtn')) {
+    const sindex = e.target.dataset.sindex;
+    const rindex = e.target.dataset.rindex;
+    worksheetData.sections[sindex].rows.splice(rindex,1);
     renderSections();
   }
 });
 
-document.getElementById('saveBtn').addEventListener('click', async () => {
-  savePositions();
+document.getElementById('saveAllBtn').addEventListener('click', async () => {
+  document.querySelectorAll('.section').forEach((secDiv, si) => {
+    const sec = worksheetData.sections[si];
+    sec.section_name = secDiv.querySelector('.section-title').value;
+    const trs = secDiv.querySelectorAll('tbody tr');
+    trs.forEach((tr,ri) => {
+      const tds = tr.querySelectorAll('td');
+      sec.rows[ri] = {
+        ...sec.rows[ri],
+        bus_number_default: tds[0].innerText.trim(),
+        pickup_default: tds[1].innerText.trim(),
+        dropoff_default: tds[2].innerText.trim(),
+        pickup_time_default: tds[3].innerText.trim(),
+        ds_in_am_default: parseInt(tds[4].innerText.trim())||0,
+        ns_out_am_default: parseInt(tds[5].innerText.trim())||0,
+        ds_out_pm_default: parseInt(tds[6].innerText.trim())||0,
+        ns_in_pm_default: parseInt(tds[7].innerText.trim())||0
+      };
+    });
+  });
   await fetch('/api/worksheets', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: currentWorksheetId, sections: worksheetData.sections })
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(worksheetData)
   });
   alert('Worksheet saved ✅');
+  loadWorksheets();
 });
 
-document.getElementById('worksheetSelect').addEventListener('change', e => {
+document.getElementById('worksheetSelect').addEventListener('change', async (e) => {
   currentWorksheetId = e.target.value;
-  loadWorksheet(currentWorksheetId);
+  await loadWorksheet(currentWorksheetId);
 });
 
 document.getElementById('newWorksheetBtn').addEventListener('click', async () => {
-  const name = prompt('Enter new worksheet name:');
+  const name = prompt('Enter worksheet name:');
   if (!name) return;
   const res = await fetch('/api/worksheets', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ name })
   });
   const newWs = await res.json();
   await loadWorksheets();
   document.getElementById('worksheetSelect').value = newWs.id;
   currentWorksheetId = newWs.id;
-  loadWorksheet(currentWorksheetId);
+  await loadWorksheet(currentWorksheetId);
+});
+
+document.getElementById('setDefaultBtn').addEventListener('click', async () => {
+  if (!currentWorksheetId) return;
+  await fetch('/api/worksheets', {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ id: currentWorksheetId, setDefault:true })
+  });
+  await loadWorksheets();
 });
 
 loadWorksheets();
