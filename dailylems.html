@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CoteGold Daily LEM</title>
+  <link rel="stylesheet" href="./css/tisdale-app.css" />
+</head>
+<body>
+  <section class="container" style="padding:14px 16px 18px;">
+    <div class="card">
+      <div class="toolbar" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px;">
+        <div class="search" style="max-width: 500px; min-width: 300px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input id="q" aria-label="Search" placeholder="Filter by Date or Bus Count…" />
+        </div>
+        <div class="toolbar-buttons" style="display: flex; gap: 8px;">
+          <button class="btn" id="newBtn">New Daily LEM</button>
+        </div>
+      </div>
+      <table class="table compact" id="grid">
+        <thead>
+          <tr>
+            <th class="col-date" align="left">Date</th>
+            <th class="col-driveronly" align="left"># Buses (Driver Only)</th>
+            <th class="col-driverbus" align="left"># Buses (Driver &amp; Bus)</th>
+            <th class="col-view" align="center">View</th>
+            <th class="col-edit" align="center">Edit</th>
+            <th class="col-delete" align="center">Delete</th>
+            <th class="col-email" align="center">Email</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+  <script type="module" src="./js/dailylems.js"></script>
+</body>
+</html>
