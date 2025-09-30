@@ -24,10 +24,26 @@ async function loadWorksheet(id) {
   renderSections();
 }
 
-function syncSectionNames() {
+function syncSectionsFromDOM() {
   document.querySelectorAll('.section').forEach((secDiv, si) => {
-    const titleInput = secDiv.querySelector('.section-title');
-    if (titleInput) worksheetData.sections[si].section_name = titleInput.value;
+    const sec = worksheetData.sections[si];
+    sec.section_name = secDiv.querySelector('.section-title').value;
+    const trs = secDiv.querySelectorAll('tbody tr');
+    sec.rows = Array.from(trs).map((tr, ri) => {
+      const tds = tr.querySelectorAll('td');
+      return {
+        id: sec.rows[ri]?.id || 'new-' + Date.now(),
+        bus_number_default: tds[0].innerText.trim(),
+        pickup_default: tds[1].innerText.trim(),
+        dropoff_default: tds[2].innerText.trim(),
+        pickup_time_default: tds[3].innerText.trim(),
+        ds_in_am_default: parseInt(tds[4].innerText.trim()) || 0,
+        ns_out_am_default: parseInt(tds[5].innerText.trim()) || 0,
+        ds_out_pm_default: parseInt(tds[6].innerText.trim()) || 0,
+        ns_in_pm_default: parseInt(tds[7].innerText.trim()) || 0,
+        position: ri
+      };
+    });
   });
 }
 
@@ -37,7 +53,6 @@ function renderSections() {
   worksheetData.sections.forEach((section, si) => {
     const sectionDiv = document.createElement('div');
     sectionDiv.className = 'section card mb-4';
-    sectionDiv.dataset.id = section.id;
     sectionDiv.innerHTML = `
       <div class="section-header flex justify-between items-center mb-2">
         <input class="section-title border border-gray-300 rounded-md p-1" value="${section.section_name}" data-index="${si}" />
@@ -68,9 +83,7 @@ function renderSections() {
               <td contenteditable="true">${r.ns_out_am_default || 0}</td>
               <td contenteditable="true">${r.ds_out_pm_default || 0}</td>
               <td contenteditable="true">${r.ns_in_pm_default || 0}</td>
-              <td>
-                <a href="#" class="btn-link-sm deleteRowBtn" data-sindex="${si}" data-rindex="${ri}">Delete</a>
-              </td>
+              <td><a href="#" class="btn-link-sm deleteRowBtn" data-sindex="${si}" data-rindex="${ri}">Delete</a></td>
             </tr>
           `).join('')}
         </tbody>
@@ -81,15 +94,13 @@ function renderSections() {
 }
 
 document.getElementById('addSectionBtn').addEventListener('click', () => {
-  // open modal
   document.getElementById('newSectionModal').classList.remove('hidden');
   document.getElementById('newSectionName').value = '';
-  setTimeout(() => document.getElementById('newSectionName').focus(), 50);
 });
 
 document.getElementById('sectionsContainer').addEventListener('click', (e) => {
   if (e.target.classList.contains('addRowBtn')) {
-    syncSectionNames();
+    syncSectionsFromDOM();
     const sindex = e.target.dataset.index;
     worksheetData.sections[sindex].rows.push({
       id: 'new-' + Date.now(),
@@ -106,7 +117,7 @@ document.getElementById('sectionsContainer').addEventListener('click', (e) => {
   }
 
   if (e.target.classList.contains('deleteRowBtn')) {
-    syncSectionNames();
+    syncSectionsFromDOM();
     const sindex = e.target.dataset.sindex;
     const rindex = e.target.dataset.rindex;
     worksheetData.sections[sindex].rows.splice(rindex, 1);
@@ -115,58 +126,35 @@ document.getElementById('sectionsContainer').addEventListener('click', (e) => {
 });
 
 document.getElementById('saveAllBtn').addEventListener('click', async () => {
-  // sync DOM → data model
-  syncSectionNames();
-  document.querySelectorAll('.section').forEach((secDiv, si) => {
-    const sec = worksheetData.sections[si];
-    sec.position = si;
-    const trs = secDiv.querySelectorAll('tbody tr');
-    sec.rows = Array.from(trs).map((tr, ri) => {
-      const tds = tr.querySelectorAll('td');
-      return {
-        id: sec.rows[ri]?.id || 'new-' + Date.now(),
-        bus_number_default: tds[0].innerText.trim(),
-        pickup_default: tds[1].innerText.trim(),
-        dropoff_default: tds[2].innerText.trim(),
-        pickup_time_default: tds[3].innerText.trim(),
-        ds_in_am_default: parseInt(tds[4].innerText.trim()) || 0,
-        ns_out_am_default: parseInt(tds[5].innerText.trim()) || 0,
-        ds_out_pm_default: parseInt(tds[6].innerText.trim()) || 0,
-        ns_in_pm_default: parseInt(tds[7].innerText.trim()) || 0,
-        position: ri
-      };
-    });
-  });
+  syncSectionsFromDOM();
+  worksheetData.sections.forEach((s, i) => (s.position = i));
 
-  await fetch('/api/worksheets', {
+  const res = await fetch('/api/worksheets', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(worksheetData)
   });
 
-  alert('Worksheet saved ✅');
-  loadWorksheets();
-});
-
-document.getElementById('worksheetSelect').addEventListener('change', async (e) => {
-  currentWorksheetId = e.target.value;
-  await loadWorksheet(currentWorksheetId);
+  if (res.ok) {
+    alert('Worksheet saved ✅');
+    await loadWorksheets();
+  } else {
+    const err = await res.json();
+    alert('Save failed: ' + err.error);
+  }
 });
 
 // Worksheet Modal
 const worksheetModal = document.getElementById('newWorksheetModal');
-const worksheetInput = document.getElementById('newWorksheetName');
 document.getElementById('newWorksheetBtn').addEventListener('click', () => {
   worksheetModal.classList.remove('hidden');
-  worksheetInput.value = '';
-  setTimeout(() => worksheetInput.focus(), 50);
 });
 document.getElementById('cancelNewWorksheet').addEventListener('click', () => {
   worksheetModal.classList.add('hidden');
 });
 document.getElementById('confirmNewWorksheet').addEventListener('click', async () => {
-  const name = worksheetInput.value.trim();
-  if (!name) return alert('Please enter a name');
+  const name = document.getElementById('newWorksheetName').value.trim();
+  if (!name) return alert('Enter a name');
   const res = await fetch('/api/worksheets', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -182,13 +170,12 @@ document.getElementById('confirmNewWorksheet').addEventListener('click', async (
 
 // Section Modal
 const sectionModal = document.getElementById('newSectionModal');
-const sectionInput = document.getElementById('newSectionName');
 document.getElementById('cancelNewSection').addEventListener('click', () => {
   sectionModal.classList.add('hidden');
 });
 document.getElementById('confirmNewSection').addEventListener('click', () => {
-  const name = sectionInput.value.trim();
-  if (!name) return alert('Please enter a name');
+  const name = document.getElementById('newSectionName').value.trim();
+  if (!name) return alert('Enter a name');
   worksheetData.sections.push({
     id: 'new-' + Date.now(),
     section_name: name,
@@ -206,6 +193,11 @@ document.getElementById('setDefaultBtn').addEventListener('click', async () => {
     body: JSON.stringify({ id: currentWorksheetId, setDefault: true })
   });
   await loadWorksheets();
+});
+
+document.getElementById('worksheetSelect').addEventListener('change', async (e) => {
+  currentWorksheetId = e.target.value;
+  await loadWorksheet(currentWorksheetId);
 });
 
 loadWorksheets();
