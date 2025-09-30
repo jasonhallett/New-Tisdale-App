@@ -3,7 +3,7 @@
 export const config = { runtime: 'nodejs' };
 
 import crypto from 'crypto';
-import { sql } from './db.js';
+import { sql } from '../db.js';
 
 // helpers
 function toPHCScrypt(password) {

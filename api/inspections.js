@@ -3,7 +3,7 @@
 export const config = { runtime: 'nodejs' };
 
 import crypto from 'crypto';
-import { sql, parseDataUrl } from '../db.js';
+import { sql, parseDataUrl } from './db.js';
 import { getAuthIdentity } from '../auth.js';
 
 export default async function handler(req, res) {

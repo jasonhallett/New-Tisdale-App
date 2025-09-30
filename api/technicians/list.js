@@ -1,6 +1,6 @@
 // /api/technicians/list.js — list active technicians for dropdown
 export const config = { runtime: 'nodejs' };
-import { sql } from './db.js';
+import { sql } from '../db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {

@@ -1,7 +1,7 @@
 // /api/technicians/signature.js — Update saved signature for current technician
 export const config = { runtime: 'nodejs' };
 
-import { sql, parseDataUrl } from '../../db.js';
+import { sql, parseDataUrl } from '../db.js';
 import { getAuthIdentity } from '../../auth.js';
 
 export default async function handler(req, res) {

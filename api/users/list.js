@@ -1,6 +1,6 @@
 // /api/users/list.js — GET list users; filter by role(s) via ?role=TECHNICIAN,ADMIN
 export const config = { runtime: 'nodejs' };
-import { sql } from './db.js';
+import { sql } from '../db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
