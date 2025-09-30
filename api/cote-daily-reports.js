@@ -1,4 +1,4 @@
-// /api/dailylems.js
+// /api/cote-daily-reports.js
 import { neon } from '@neondatabase/serverless';
 
 const sql = neon(process.env.DATABASE_URL);
@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const { rows } = await sql`
         SELECT id, date, buses_driver_only, buses_driver_bus
-        FROM daily_lems
+        FROM cote-daily-reports
         ORDER BY date DESC
         LIMIT 50
       `;

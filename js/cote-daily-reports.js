@@ -1,7 +1,7 @@
-// /js/dailylems.js
-async function fetchDailyLEMs() {
+// /js/cote-daily-reports.js
+async function fetchcote-daily-reports() {
   try {
-    const res = await fetch('/api/dailylems?limit=50');
+    const res = await fetch('/api/cote-daily-reports?limit=50');
     if (!res.ok) throw new Error(`Failed to load Daily LEMs (${res.status})`);
     const data = await res.json();
     renderGrid(data);
@@ -30,4 +30,4 @@ function renderGrid(rows) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', fetchDailyLEMs);
+document.addEventListener('DOMContentLoaded', fetchcote-daily-reports);
