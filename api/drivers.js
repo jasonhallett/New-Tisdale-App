@@ -3,14 +3,14 @@ import { sql } from './db.js';
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      const { rows } = await sql`SELECT * FROM drivers ORDER BY id`;
+      const rows = await sql`SELECT * FROM drivers ORDER BY id`;
       return res.status(200).json(rows);
     }
 
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const { first_name, last_name } = body;
-      const { rows } = await sql`
+      const rows = await sql`
         INSERT INTO drivers (first_name, last_name)
         VALUES (${first_name}, ${last_name})
         RETURNING *`;
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     if (req.method === 'PUT') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const { id, first_name, last_name } = body;
-      const { rows } = await sql`
+      const rows = await sql`
         UPDATE drivers
         SET first_name=${first_name}, last_name=${last_name}
         WHERE id=${id}
