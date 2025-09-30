@@ -3,7 +3,7 @@ import { sql } from './db.js';   // because db.js is in the same folder
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      const { rows } = await sql`SELECT * FROM buses ORDER BY id`;
+      const rows = await sql`SELECT * FROM buses ORDER BY id`;
       return res.status(200).json(rows);
     }
 
