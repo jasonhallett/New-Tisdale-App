@@ -62,3 +62,12 @@ document.querySelector('#grid').addEventListener('click', async (e) => {
 });
 
 document.addEventListener('DOMContentLoaded', fetchBuses);
+
+// Search filter
+document.getElementById('searchInput').addEventListener('input', () => {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('#grid tbody tr').forEach(tr => {
+    const text = tr.innerText.toLowerCase();
+    tr.style.display = text.includes(q) ? '' : 'none';
+  });
+});
