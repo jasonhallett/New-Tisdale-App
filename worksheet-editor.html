@@ -1,1 +1,27 @@
-<!-- Worksheet Editor HTML page -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Worksheet Editor</title>
+  <link rel="stylesheet" href="./css/tisdale-app.css" />
+</head>
+<body>
+  <section class="container" style="padding:14px 16px 18px;">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2>Worksheet Templates</h2>
+        <button class="btn" id="newTemplateBtn">New Template</button>
+      </div>
+      <div id="templatesList"></div>
+      <div id="editor" style="margin-top:24px;display:none;">
+        <h3 id="templateName"></h3>
+        <button class="btn" id="addSectionBtn">+ Add Section</button>
+        <div id="sections"></div>
+        <button class="btn primary" id="saveTemplateBtn" style="margin-top:16px;">Save Template</button>
+      </div>
+    </div>
+  </section>
+  <script type="module" src="./js/worksheet-editor.js"></script>
+</body>
+</html>

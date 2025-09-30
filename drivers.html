@@ -1,1 +1,31 @@
-<!-- Drivers management HTML page -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drivers</title>
+  <link rel="stylesheet" href="./css/tisdale-app.css" />
+</head>
+<body>
+  <section class="container" style="padding:14px 16px 18px;">
+    <div class="card">
+      <div class="toolbar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2>Drivers</h2>
+        <button class="btn" id="newBtn">New Driver</button>
+      </div>
+      <table class="table compact" id="grid">
+        <thead>
+          <tr>
+            <th>First Name</th>
+            <th>Last Name</th>
+            <th style="width:100px;">Edit</th>
+            <th style="width:100px;">Delete</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+  <script type="module" src="./js/drivers.js"></script>
+</body>
+</html>
