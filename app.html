@@ -27,7 +27,7 @@
         <!-- Parent: Cote Daily Reports -->
         <div class="nav-group">
           <div class="nav-group-title">Cote Daily Reports</div>
-          <a href="#cote-reports" data-href="./cote-daily-reports.html">
+          <a href="#cote-reports" data-href="./dailylems.html">
             <span class="label">Daily Reports</span>
           </a>
           <div class="nav-subtitle">Setup</div>
@@ -49,16 +49,9 @@
 
     <!-- Topbar -->
     <header class="topbar">
-      <!-- Visible only on phones via CSS; opens drawer -->
       <button id="menuBtn" class="icon-btn" aria-label="Toggle menu" aria-expanded="false" aria-controls="sidebar">Menu</button>
-
-      <div class="title-wrap">
-        <div class="page-title" id="pageTitle">Schedule 4s</div>
-      </div>
-
-      <div class="top-actions">
-        <button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button>
-      </div>
+      <div class="title-wrap"><div class="page-title" id="pageTitle">Schedule 4s</div></div>
+      <div class="top-actions"><button class="btn-ghost" id="logoutBtn" title="Logout">Logout</button></div>
     </header>
 
     <!-- Main -->
@@ -69,7 +62,6 @@
   </div>
 
   <script>
-    // Elements
     const frame     = document.getElementById('contentFrame');
     const pageTitle = document.getElementById('pageTitle');
     const nav       = document.getElementById('nav');
@@ -78,37 +70,28 @@
     const scrim     = document.getElementById('scrim');
     const menuBtn   = document.getElementById('menuBtn');
 
-    // Initial page
     frame.src = './schedule4s.html';
 
-    // Nav routing (single-page shell)
     nav.addEventListener('click', (e) => {
       const a = e.target.closest('a[data-href]');
       if (!a) return;
       e.preventDefault();
-
       document.querySelectorAll('.nav a').forEach(x => x.classList.remove('active'));
       a.classList.add('active');
-
       frame.src = a.dataset.href;
       pageTitle.textContent = a.textContent.trim();
-
-      // Close drawer on mobile
       body.classList.remove('drawer-open');
       menuBtn.setAttribute('aria-expanded', 'false');
     });
 
-    // Logout
     document.getElementById('logoutBtn').addEventListener('click', async () => {
       try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {}
       window.location.href = '/';
     });
 
-    // Drawer (phones only)
     const isMobile = () => window.matchMedia('(max-width: 860px)').matches;
-
     menuBtn.addEventListener('click', () => {
-      if (!isMobile()) return; // do nothing on tablet/desktop
+      if (!isMobile()) return;
       const isOpen = body.classList.toggle('drawer-open');
       menuBtn.setAttribute('aria-expanded', String(isOpen));
       if (isOpen) sidebar.querySelector('a')?.focus();
