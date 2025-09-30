@@ -12,7 +12,8 @@ export default async function handler(req, res) {
       const { first_name, last_name } = body;
       const { rows } = await sql`
         INSERT INTO drivers (first_name, last_name)
-        VALUES (${first_name}, ${last_name}) RETURNING *`;
+        VALUES (${first_name}, ${last_name})
+        RETURNING *`;
       return res.status(201).json(rows[0]);
     }
 
@@ -22,13 +23,14 @@ export default async function handler(req, res) {
       const { rows } = await sql`
         UPDATE drivers
         SET first_name=${first_name}, last_name=${last_name}
-        WHERE id=${id} RETURNING *`;
+        WHERE id=${id}
+        RETURNING *`;
       return res.status(200).json(rows[0]);
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('Drivers API error:', err);
-    return res.status(500).json({ error: 'Server error', detail: err.message });
+    return res.status(500).json({ error: err.message || 'Server error' });
   }
 }
