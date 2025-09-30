@@ -29,7 +29,10 @@
 
   <!-- Modal: New Worksheet -->
   <div id="newWorksheetModal" class="fixed inset-0 z-50 hidden">
+    <!-- Greyed-out backdrop -->
     <div class="absolute inset-0 bg-black/50"></div>
+
+    <!-- Centered modal -->
     <div class="relative mx-auto mt-24 w-[92%] max-w-md">
       <div class="bg-white rounded-xl shadow-xl p-5">
         <h3 class="text-lg font-semibold mb-1">Create New Worksheet</h3>
@@ -43,12 +46,8 @@
           class="mt-1 w-full border border-gray-300 rounded-md p-2"
         />
         <div class="mt-4 flex justify-end gap-2">
-          <button type="button" id="cancelNewWorksheet" class="btn">
-            Cancel
-          </button>
-          <button type="button" id="confirmNewWorksheet" class="btn">
-            Create
-          </button>
+          <button type="button" id="cancelNewWorksheet" class="btn">Cancel</button>
+          <button type="button" id="confirmNewWorksheet" class="btn">Create</button>
         </div>
       </div>
     </div>

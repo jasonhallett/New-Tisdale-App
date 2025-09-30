@@ -156,7 +156,14 @@ const modalConfirm = document.getElementById('confirmNewWorksheet');
 document.getElementById('newWorksheetBtn').addEventListener('click', () => {
   modal.classList.remove('hidden');
   modalInput.value = '';
-  modalInput.focus();
+  setTimeout(() => modalInput.focus(), 50);
+});
+
+// Backdrop click closes modal
+modal.addEventListener('click', (e) => {
+  if (e.target === modal) {
+    modal.classList.add('hidden');
+  }
 });
 
 modalCancel.addEventListener('click', () => {
@@ -177,6 +184,12 @@ modalConfirm.addEventListener('click', async () => {
   document.getElementById('worksheetSelect').value = newWs.id;
   currentWorksheetId = newWs.id;
   await loadWorksheet(currentWorksheetId);
+});
+
+// Keyboard shortcuts
+modalInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') modalConfirm.click();
+  if (e.key === 'Escape') modalCancel.click();
 });
 
 document.getElementById('setDefaultBtn').addEventListener('click', async () => {
