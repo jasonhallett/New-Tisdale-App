@@ -1,7 +1,7 @@
 // /api/schedule4s/get.js — return a single Schedule 4 by id
 export const config = { runtime: 'nodejs' };
 
-import { sql } from '../../db.js';
+import { sql } from './db.js';
 
 export default async function handler(req, res) {
   try {

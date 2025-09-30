@@ -2,7 +2,7 @@
 export const config = { runtime: 'nodejs' };
 
 import crypto from 'crypto';
-import { sql } from '../../db.js';
+import { sql } from './db.js';
 import { signJWT, setSessionCookie } from '../../auth.js';
 
 function parsePHC(phc) {

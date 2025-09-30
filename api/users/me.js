@@ -1,7 +1,7 @@
 // /api/users/me.js — return current authenticated user, incl. roles and optional technician profile
 export const config = { runtime: 'nodejs' };
 
-import { sql } from '../../db.js';
+import { sql } from './db.js';
 import { getAuthIdentity } from '../../auth.js';
 
 export default async function handler(req, res) {

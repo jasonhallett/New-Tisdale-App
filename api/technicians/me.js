@@ -1,7 +1,7 @@
 // /api/technicians/me.js — Authenticated profile for current technician
 export const config = { runtime: 'nodejs' };
 
-import { sql } from '../../db.js';
+import { sql } from './db.js';
 import { getAuthIdentity } from '../../auth.js';
 
 function toDataUrl(mime, buf) {

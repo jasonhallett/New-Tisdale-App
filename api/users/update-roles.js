@@ -1,6 +1,6 @@
 // /api/users/update-roles.js — PATCH/POST update roles for a user
 export const config = { runtime: 'nodejs' };
-import { sql } from '../../db.js';
+import { sql } from './db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'PATCH' && req.method !== 'POST') {

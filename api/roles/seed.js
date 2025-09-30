@@ -1,6 +1,6 @@
 // /api/roles/seed.js — POST idempotent seed
 export const config = { runtime: 'nodejs' };
-import { sql } from '../../db.js';
+import { sql } from './db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
