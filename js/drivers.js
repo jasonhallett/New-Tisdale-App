@@ -5,22 +5,28 @@ async function fetchDrivers() {
     renderGrid(rows);
   } catch (err) {
     console.error('Fetch drivers failed:', err);
+    document.querySelector('#grid tbody').innerHTML =
+      `<tr><td colspan="3">Unable to load drivers.</td></tr>`;
   }
+}
+
+function htmlesc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => (
+    { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]
+  ));
 }
 
 function renderGrid(rows) {
   const tbody = document.querySelector('#grid tbody');
-  tbody.innerHTML = '';
-  for (const row of rows) {
-    const tr = document.createElement('tr');
-    tr.dataset.id = row.id;
-    tr.innerHTML = `
-      <td contenteditable="false">${row.first_name}</td>
-      <td contenteditable="false">${row.last_name}</td>
-      <td><button class="btn-small editBtn">Edit</button></td>
-    `;
-    tbody.appendChild(tr);
-  }
+  tbody.innerHTML = rows.map(row => {
+    return `<tr data-id="${htmlesc(row.id)}">
+      <td>${htmlesc(row.first_name)}</td>
+      <td>${htmlesc(row.last_name)}</td>
+      <td class="col-view">
+        <a href="#" class="btn-link-sm editBtn">Edit</a>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 document.getElementById('addBtn').addEventListener('click', () => {
@@ -29,22 +35,31 @@ document.getElementById('addBtn').addEventListener('click', () => {
   tr.innerHTML = `
     <td contenteditable="true"></td>
     <td contenteditable="true"></td>
-    <td><button class="btn-small saveBtn">Save</button></td>
+    <td class="col-view">
+      <a href="#" class="btn-link-sm saveBtn">Save</a>
+      <a href="#" class="btn-link-sm cancelBtn">Cancel</a>
+    </td>
   `;
-  tbody.appendChild(tr);
+  tbody.prepend(tr);
 });
 
 document.querySelector('#grid').addEventListener('click', async (e) => {
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  const tr = btn.closest('tr');
+  const a = e.target.closest('a');
+  if (!a) return;
+  e.preventDefault();
+  const tr = a.closest('tr');
   const id = tr.dataset.id;
 
-  if (btn.classList.contains('editBtn')) {
-    tr.querySelectorAll('td[contenteditable]').forEach(td => td.setAttribute('contenteditable', 'true'));
-    btn.textContent = 'Save';
-    btn.classList.replace('editBtn', 'saveEditBtn');
-  } else if (btn.classList.contains('saveEditBtn')) {
+  if (a.classList.contains('editBtn')) {
+    // Make row editable
+    tr.children[0].setAttribute('contenteditable', 'true');
+    tr.children[1].setAttribute('contenteditable', 'true');
+    tr.querySelector('.col-view').innerHTML = `
+      <a href="#" class="btn-link-sm saveEditBtn">Save</a>
+      <a href="#" class="btn-link-sm cancelBtn">Cancel</a>
+    `;
+  }
+  else if (a.classList.contains('saveEditBtn')) {
     const first = tr.children[0].textContent.trim();
     const last = tr.children[1].textContent.trim();
     await fetch('/api/drivers', {
@@ -53,7 +68,8 @@ document.querySelector('#grid').addEventListener('click', async (e) => {
       body: JSON.stringify({ id, first_name: first, last_name: last })
     });
     fetchDrivers();
-  } else if (btn.classList.contains('saveBtn')) {
+  }
+  else if (a.classList.contains('saveBtn')) {
     const first = tr.children[0].textContent.trim();
     const last = tr.children[1].textContent.trim();
     await fetch('/api/drivers', {
@@ -62,6 +78,9 @@ document.querySelector('#grid').addEventListener('click', async (e) => {
       body: JSON.stringify({ first_name: first, last_name: last })
     });
     fetchDrivers();
+  }
+  else if (a.classList.contains('cancelBtn')) {
+    fetchDrivers(); // reload, discard changes
   }
 });
 
