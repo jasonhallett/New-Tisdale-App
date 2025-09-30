@@ -3,7 +3,7 @@ import { sql } from './db.js';
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      const rows = await sql`SELECT * FROM supervisors ORDER BY id`;
+      const rows = await sql`SELECT * FROM supervisors ORDER BY first_name ASC`;
       return res.status(200).json(rows);
     }
 
