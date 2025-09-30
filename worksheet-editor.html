@@ -6,7 +6,7 @@
   <title>Worksheet Editor</title>
   <link rel="stylesheet" href="./css/tisdale-app.css" />
 </head>
-<body>
+<body class="bg-gray-100">
   <section class="container p-4">
     <div class="card">
       <div class="toolbar flex justify-between items-center gap-4 mb-4">
@@ -29,10 +29,7 @@
 
   <!-- Modal: New Worksheet -->
   <div id="newWorksheetModal" class="fixed inset-0 z-50 hidden">
-    <!-- Greyed-out backdrop -->
     <div class="absolute inset-0 bg-black/50"></div>
-
-    <!-- Centered modal -->
     <div class="relative mx-auto mt-24 w-[92%] max-w-md">
       <div class="bg-white rounded-xl shadow-xl p-5">
         <h3 class="text-lg font-semibold mb-1">Create New Worksheet</h3>
@@ -48,6 +45,29 @@
         <div class="mt-4 flex justify-end gap-2">
           <button type="button" id="cancelNewWorksheet" class="btn">Cancel</button>
           <button type="button" id="confirmNewWorksheet" class="btn">Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: New Section -->
+  <div id="newSectionModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="relative mx-auto mt-24 w-[92%] max-w-md">
+      <div class="bg-white rounded-xl shadow-xl p-5">
+        <h3 class="text-lg font-semibold mb-1">Create New Section</h3>
+        <p class="text-sm text-gray-600 mb-3">
+          Enter the name of the section below.
+        </p>
+        <label for="newSectionName" class="block text-sm font-medium">Section Name</label>
+        <input
+          type="text"
+          id="newSectionName"
+          class="mt-1 w-full border border-gray-300 rounded-md p-2"
+        />
+        <div class="mt-4 flex justify-end gap-2">
+          <button type="button" id="cancelNewSection" class="btn">Cancel</button>
+          <button type="button" id="confirmNewSection" class="btn">Create</button>
         </div>
       </div>
     </div>

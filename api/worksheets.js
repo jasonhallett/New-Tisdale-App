@@ -58,16 +58,13 @@ export default async function handler(req, res) {
       if (!id) return res.status(400).json({ error: 'Missing id' });
       if (!sections) return res.status(400).json({ error: 'Missing sections' });
 
-      // update worksheet name
       await sql`UPDATE cote_daily_worksheets SET name=${name} WHERE id=${id}`;
 
-      // wipe old sections + rows
       await sql`
         DELETE FROM cote_daily_rows
         WHERE section_id IN (SELECT id FROM cote_daily_sections WHERE worksheet_id=${id})`;
       await sql`DELETE FROM cote_daily_sections WHERE worksheet_id=${id}`;
 
-      // reinsert all sections + rows
       for (let i = 0; i < sections.length; i++) {
         const s = sections[i];
         const newSec = await sql`
