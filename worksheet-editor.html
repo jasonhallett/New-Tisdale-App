@@ -5,20 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Worksheet Editor</title>
   <link rel="stylesheet" href="./css/tisdale-app.css" />
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
 <body>
   <section class="container" style="padding:14px 16px 18px;">
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <h2>Worksheet Templates</h2>
-        <button class="btn" id="newTemplateBtn">New Template</button>
+      <div class="toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <label for="worksheetSelect">Worksheet:</label>
+          <select id="worksheetSelect"></select>
+          <button class="btn" id="newWorksheetBtn">New Worksheet</button>
+        </div>
+        <button class="btn" id="saveBtn">Save Changes</button>
       </div>
-      <div id="templatesList"></div>
-      <div id="editor" style="margin-top:24px;display:none;">
-        <h3 id="templateName"></h3>
+
+      <div id="sectionsContainer" class="sections"></div>
+
+      <div style="margin-top:16px;">
         <button class="btn" id="addSectionBtn">+ Add Section</button>
-        <div id="sections"></div>
-        <button class="btn primary" id="saveTemplateBtn" style="margin-top:16px;">Save Template</button>
       </div>
     </div>
   </section>
