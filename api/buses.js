@@ -1,4 +1,4 @@
-import { sql } from './db.js';
+import { sql } from './db.js';   // because db.js is in the same folder
 
 export default async function handler(req, res) {
   try {
@@ -11,9 +11,7 @@ export default async function handler(req, res) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const { unit_number } = body;
       const { rows } = await sql`
-        INSERT INTO buses (unit_number)
-        VALUES (${unit_number})
-        RETURNING *`;
+        INSERT INTO buses (unit_number) VALUES (${unit_number}) RETURNING *`;
       return res.status(201).json(rows[0]);
     }
 
@@ -21,10 +19,7 @@ export default async function handler(req, res) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const { id, unit_number } = body;
       const { rows } = await sql`
-        UPDATE buses
-        SET unit_number=${unit_number}
-        WHERE id=${id}
-        RETURNING *`;
+        UPDATE buses SET unit_number=${unit_number} WHERE id=${id} RETURNING *`;
       return res.status(200).json(rows[0]);
     }
 
