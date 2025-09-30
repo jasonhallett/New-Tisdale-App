@@ -1,1 +1,1 @@
-// Supervisors JS
+// Supervisors CRUD API

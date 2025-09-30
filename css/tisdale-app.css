@@ -106,6 +106,38 @@ a:hover{ text-decoration: underline; }
 }
 .nav .label{ white-space: nowrap; }
 
+.nav-group {
+  margin-top: 12px;
+}
+.nav-group-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 12px 8px 4px;
+}
+.nav-subtitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 8px 8px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.nav-group a {
+  padding-left: 22px;
+}
+.nav-group a:hover {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.nav-group a.active {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--line));
+}
+
+
+
 /* Topbar */
 .topbar{
   grid-area: topbar;

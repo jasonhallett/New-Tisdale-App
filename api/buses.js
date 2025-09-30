@@ -1,1 +1,1 @@
-// Buses JS
+// Buses CRUD API
