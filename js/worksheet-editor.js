@@ -29,14 +29,14 @@ function renderSections() {
   container.innerHTML = '';
   worksheetData.sections.forEach((section, si) => {
     const sectionDiv = document.createElement('div');
-    sectionDiv.className = 'section card';
+    sectionDiv.className = 'section card mb-4';
     sectionDiv.dataset.id = section.id;
     sectionDiv.innerHTML = `
-      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <input class="section-title" value="${section.section_name}" data-index="${si}" />
+      <div class="section-header flex justify-between items-center mb-2">
+        <input class="section-title border border-gray-300 rounded-md p-1" value="${section.section_name}" data-index="${si}" />
         <button class="btn-small addRowBtn" data-index="${si}">+ Add Row</button>
       </div>
-      <table class="table compact">
+      <table class="table compact w-full">
         <thead>
           <tr>
             <th>Bus Number(s)</th>
@@ -147,20 +147,20 @@ document.getElementById('worksheetSelect').addEventListener('change', async (e) 
   await loadWorksheet(currentWorksheetId);
 });
 
-// Modal logic for creating new worksheet
+// Modal logic
 const modal = document.getElementById('newWorksheetModal');
 const modalInput = document.getElementById('newWorksheetName');
 const modalCancel = document.getElementById('cancelNewWorksheet');
 const modalConfirm = document.getElementById('confirmNewWorksheet');
 
 document.getElementById('newWorksheetBtn').addEventListener('click', () => {
-  modal.style.display = 'flex';
+  modal.classList.remove('hidden');
   modalInput.value = '';
   modalInput.focus();
 });
 
 modalCancel.addEventListener('click', () => {
-  modal.style.display = 'none';
+  modal.classList.add('hidden');
 });
 
 modalConfirm.addEventListener('click', async () => {
@@ -172,7 +172,7 @@ modalConfirm.addEventListener('click', async () => {
     body: JSON.stringify({ name })
   });
   const newWs = await res.json();
-  modal.style.display = 'none';
+  modal.classList.add('hidden');
   await loadWorksheets();
   document.getElementById('worksheetSelect').value = newWs.id;
   currentWorksheetId = newWs.id;

@@ -7,10 +7,10 @@
   <link rel="stylesheet" href="./css/tisdale-app.css" />
 </head>
 <body>
-  <section class="container" style="padding:14px 16px 18px;">
+  <section class="container p-4">
     <div class="card">
-      <div class="toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;">
-        <div style="display:flex;align-items:center;gap:8px;">
+      <div class="toolbar flex justify-between items-center gap-4 mb-4">
+        <div class="flex items-center gap-2">
           <label for="worksheetSelect">Worksheet:</label>
           <select id="worksheetSelect"></select>
           <button class="btn" id="newWorksheetBtn">New Worksheet</button>
@@ -21,23 +21,35 @@
 
       <div id="sectionsContainer"></div>
 
-      <div style="margin-top:16px;">
+      <div class="mt-4">
         <button class="btn" id="addSectionBtn">+ Add Section</button>
       </div>
     </div>
   </section>
 
   <!-- Modal: New Worksheet -->
-  <div id="newWorksheetModal" class="modal"
-       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999;
-              align-items:center;justify-content:center;">
-    <div class="card" style="max-width:400px;width:90%;padding:20px;position:relative;">
-      <h3 style="margin-bottom:12px;">New Worksheet</h3>
-      <input id="newWorksheetName" type="text" placeholder="Enter worksheet name"
-             class="input" style="width:100%;margin-bottom:12px;" />
-      <div style="display:flex;justify-content:flex-end;gap:8px;">
-        <button class="btn" id="cancelNewWorksheet">Cancel</button>
-        <button class="btn" id="confirmNewWorksheet">Create</button>
+  <div id="newWorksheetModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="relative mx-auto mt-24 w-[92%] max-w-md">
+      <div class="bg-white rounded-xl shadow-xl p-5">
+        <h3 class="text-lg font-semibold mb-1">Create New Worksheet</h3>
+        <p class="text-sm text-gray-600 mb-3">
+          Enter the name of your new worksheet below.
+        </p>
+        <label for="newWorksheetName" class="block text-sm font-medium">Worksheet Name</label>
+        <input
+          type="text"
+          id="newWorksheetName"
+          class="mt-1 w-full border border-gray-300 rounded-md p-2"
+        />
+        <div class="mt-4 flex justify-end gap-2">
+          <button type="button" id="cancelNewWorksheet" class="btn">
+            Cancel
+          </button>
+          <button type="button" id="confirmNewWorksheet" class="btn">
+            Create
+          </button>
+        </div>
       </div>
     </div>
   </div>
