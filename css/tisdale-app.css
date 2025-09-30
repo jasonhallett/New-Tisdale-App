@@ -350,3 +350,47 @@ input:focus, select:focus, textarea:focus{
 .hidden {
   display: none !important;
 }
+
+/* ===== Modals (global) =====
+   Framework-independent popups with grey backdrop and centered panel.
+   Toggle visibility by adding/removing the `.open` class on `.modal`.
+*/
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.modal.open { display: flex; }
+.modal .backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.50);
+}
+.modal .panel {
+  position: relative;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+  width: min(92vw, 420px);
+  padding: 20px;
+  border: 1px solid var(--line);
+}
+.modal .panel h3 {
+  margin: 0 0 6px;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.modal .panel p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: .925rem;
+}
+.modal .actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Contenteditable grid cell hint */
+td[contenteditable="true"] { background: #fffef7; outline: none; }
+td[contenteditable="true"]:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 35%, transparent); }

@@ -6,57 +6,58 @@
   <title>Worksheet Editor</title>
   <link rel="stylesheet" href="./css/tisdale-app.css"/>
 </head>
-<body class="bg-gray-100">
-  <section class="container p-4">
-    <div class="card">
-      <div class="toolbar flex justify-between items-center gap-4 mb-4">
-        <div class="flex items-center gap-2">
-          <label for="worksheetSelect">Worksheet:</label>
-          <select id="worksheetSelect"></select>
-          <button class="btn" id="newWorksheetBtn">New Worksheet</button>
-          <button class="btn" id="setDefaultBtn">Set as Default</button>
+<body>
+  <div class="app">
+    <!-- Sidebar/Topbar are in app.html; this page is intended to load inside the iframe or main content -->
+    <main class="main" style="background:none;">
+      <section class="container" style="padding:14px 16px 18px;">
+        <div class="card">
+          <div class="toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <label for="worksheetSelect">Worksheet:</label>
+              <select id="worksheetSelect"></select>
+              <button class="btn" id="newWorksheetBtn">New Worksheet</button>
+              <button class="btn" id="setDefaultBtn">Set as Default</button>
+            </div>
+            <button class="btn primary" id="saveAllBtn">Save All</button>
+          </div>
+
+          <div id="sectionsContainer"></div>
+
+          <div style="margin-top:16px;">
+            <button class="btn" id="addSectionBtn">+ Add Section</button>
+          </div>
         </div>
-        <button class="btn" id="saveAllBtn">Save All</button>
-      </div>
+      </section>
+    </main>
+  </div>
 
-      <div id="sectionsContainer"></div>
-
-      <div class="mt-4">
-        <button class="btn" id="addSectionBtn">+ Add Section</button>
-      </div>
-    </div>
-  </section>
-
-  <!-- Modal: New Worksheet (matches your Samsara style) -->
-  <div id="newWorksheetModal" class="fixed inset-0 z-50 hidden" aria-modal="true" role="dialog">
-    <div id="newWorksheetBackdrop" class="absolute inset-0 bg-black/50"></div>
-    <div class="relative mx-auto mt-24 w-[92%] max-w-md">
-      <div class="bg-white rounded-xl shadow-xl p-5">
-        <h3 class="text-lg font-semibold mb-1">Create New Worksheet</h3>
-        <p class="text-sm text-gray-600 mb-3">Enter the name of your new worksheet below.</p>
-        <label class="block text-sm font-medium" for="newWorksheetName">Worksheet Name</label>
-        <input id="newWorksheetName" type="text" class="mt-1 w-full border border-gray-300 rounded-md p-2" />
-        <div class="mt-4 flex justify-end gap-2">
-          <button id="cancelNewWorksheet" class="btn" type="button">Cancel</button>
-          <button id="confirmNewWorksheet" class="btn" type="button">Create</button>
-        </div>
+  <!-- Modal: New Worksheet -->
+  <div id="newWorksheetModal" class="modal" aria-modal="true" role="dialog">
+    <div class="backdrop" data-close="true"></div>
+    <div class="panel">
+      <h3>Create New Worksheet</h3>
+      <p>Enter the name of your new worksheet below.</p>
+      <label class="block text-sm font-medium" for="newWorksheetName">Worksheet Name</label>
+      <input id="newWorksheetName" type="text"/>
+      <div class="actions">
+        <button id="cancelNewWorksheet" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="confirmNewWorksheet" class="btn" type="button">Create</button>
       </div>
     </div>
   </div>
 
-  <!-- Modal: New Section (same style) -->
-  <div id="newSectionModal" class="fixed inset-0 z-50 hidden" aria-modal="true" role="dialog">
-    <div id="newSectionBackdrop" class="absolute inset-0 bg-black/50"></div>
-    <div class="relative mx-auto mt-24 w-[92%] max-w-md">
-      <div class="bg-white rounded-xl shadow-xl p-5">
-        <h3 class="text-lg font-semibold mb-1">Create New Section</h3>
-        <p class="text-sm text-gray-600 mb-3">Enter the name of the section below.</p>
-        <label class="block text-sm font-medium" for="newSectionName">Section Name</label>
-        <input id="newSectionName" type="text" class="mt-1 w-full border border-gray-300 rounded-md p-2" />
-        <div class="mt-4 flex justify-end gap-2">
-          <button id="cancelNewSection" class="btn" type="button">Cancel</button>
-          <button id="confirmNewSection" class="btn" type="button">Create</button>
-        </div>
+  <!-- Modal: New Section -->
+  <div id="newSectionModal" class="modal" aria-modal="true" role="dialog">
+    <div class="backdrop" data-close="true"></div>
+    <div class="panel">
+      <h3>Create New Section</h3>
+      <p>Enter the name of the section below.</p>
+      <label class="block text-sm font-medium" for="newSectionName">Section Name</label>
+      <input id="newSectionName" type="text"/>
+      <div class="actions">
+        <button id="cancelNewSection" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="confirmNewSection" class="btn" type="button">Create</button>
       </div>
     </div>
   </div>

@@ -2,34 +2,58 @@
 let currentWorksheetId = null;
 let worksheetData = { id: null, name: '', sections: [] };
 
+// ===== Modal helpers (now using global CSS: .modal + .open) =====
+function openModal(id, focusId) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  modal.classList.add('open');
+  if (focusId) setTimeout(() => document.getElementById(focusId)?.focus(), 30);
+}
+function closeModal(id) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  modal.classList.remove('open');
+}
+// Backdrop click closes
+['newWorksheetModal','newSectionModal'].forEach(mid => {
+  const modal = document.getElementById(mid);
+  modal?.addEventListener('click', (e) => {
+    if (e.target.dataset.close === 'true' || e.target.classList.contains('backdrop')) closeModal(mid);
+  });
+});
+
 // ===== Utilities =====
 function assert(ok, msg) { if (!ok) throw new Error(msg); }
 
-// Build a clean payload purely from the DOM (so we never lose edits)
+// Build payload purely from DOM
 function buildPayloadFromDOM() {
-  const name = document.querySelector('#worksheetSelect option:checked')?.textContent?.replace(' (Default)', '') || worksheetData.name || 'Untitled';
+  const select = document.getElementById('worksheetSelect');
+  const selectedOption = select?.options?.[select.selectedIndex];
+  const nameFromSelect = selectedOption ? selectedOption.textContent.replace(' (Default)','') : (worksheetData.name || 'Untitled');
+
   const sections = [];
   document.querySelectorAll('#sectionsContainer .section').forEach((secDiv, si) => {
-    const section_name = secDiv.querySelector('.section-title').value.trim() || `Section ${si+1}`;
+    const section_name = secDiv.querySelector('.section-title')?.value?.trim() || `Section ${si+1}`;
     const rows = [];
     secDiv.querySelectorAll('tbody tr').forEach((tr, ri) => {
       const tds = tr.querySelectorAll('td');
       rows.push({
         id: tr.dataset.id || `new-${Date.now()}-${ri}`,
-        bus_number_default: tds[0].innerText.trim(),
-        pickup_default:     tds[1].innerText.trim(),
-        dropoff_default:    tds[2].innerText.trim(),
-        pickup_time_default:tds[3].innerText.trim(),
-        ds_in_am_default:   parseInt(tds[4].innerText.trim() || '0', 10),
-        ns_out_am_default:  parseInt(tds[5].innerText.trim() || '0', 10),
-        ds_out_pm_default:  parseInt(tds[6].innerText.trim() || '0', 10),
-        ns_in_pm_default:   parseInt(tds[7].innerText.trim() || '0', 10),
+        bus_number_default: tds[0]?.innerText.trim() || '',
+        pickup_default:     tds[1]?.innerText.trim() || '',
+        dropoff_default:    tds[2]?.innerText.trim() || '',
+        pickup_time_default:tds[3]?.innerText.trim() || '',
+        ds_in_am_default:   parseInt(tds[4]?.innerText.trim() || '0', 10),
+        ns_out_am_default:  parseInt(tds[5]?.innerText.trim() || '0', 10),
+        ds_out_pm_default:  parseInt(tds[6]?.innerText.trim() || '0', 10),
+        ns_in_pm_default:   parseInt(tds[7]?.innerText.trim() || '0', 10),
         position: ri
       });
     });
     sections.push({ id: secDiv.dataset.id || `new-${Date.now()}-${si}`, section_name, position: si, rows });
   });
-  return { id: currentWorksheetId, name, sections };
+
+  return { id: currentWorksheetId, name: nameFromSelect, sections };
 }
 
 // ===== Loaders =====
@@ -42,14 +66,12 @@ async function loadWorksheets() {
   const worksheets = await res.json();
   const select = document.getElementById('worksheetSelect');
 
-  // Populate dropdown
   select.innerHTML = worksheets.map(ws =>
     `<option value="${ws.id}" ${ws.is_default ? 'selected' : ''}>
        ${ws.name}${ws.is_default ? ' (Default)' : ''}
      </option>`).join('');
 
   if (!worksheets.length) {
-    // No worksheets yet → open New Worksheet modal automatically
     openModal('newWorksheetModal', 'newWorksheetName');
     return;
   }
@@ -78,14 +100,15 @@ function renderSections() {
     worksheetData = { id: currentWorksheetId, name: worksheetData?.name || '', sections: [] };
   }
 
-  worksheetData.sections.forEach((section, si) => {
+  worksheetData.sections.forEach((section) => {
     const sectionDiv = document.createElement('div');
-    sectionDiv.className = 'section card mb-4';
+    sectionDiv.className = 'section card';
+    sectionDiv.style.marginBottom = '16px';
     sectionDiv.dataset.id = section.id || '';
     sectionDiv.innerHTML = `
-      <div class="section-header flex justify-between items-center mb-2">
-        <input class="section-title border border-gray-300 rounded-md p-1" value="${section.section_name || ''}" />
-        <button class="btn-small addRowBtn">+ Add Row</button>
+      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <input class="section-title" value="${section.section_name || ''}" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;"/>
+        <button class="btn btn-ghost addRowBtn">+ Add Row</button>
       </div>
       <table class="table compact w-full">
         <thead>
@@ -104,10 +127,10 @@ function renderSections() {
         <tbody>
           ${(section.rows || []).map((r) => `
             <tr data-id="${r.id || ''}">
-              <td contenteditable="true">${r.bus_number_default || ''}</td>
-              <td contenteditable="true">${r.pickup_default || ''}</td>
-              <td contenteditable="true">${r.dropoff_default || ''}</td>
-              <td contenteditable="true">${r.pickup_time_default || ''}</td>
+              <td contenteditable="true">${r.bus_number_default ?? ''}</td>
+              <td contenteditable="true">${r.pickup_default ?? ''}</td>
+              <td contenteditable="true">${r.dropoff_default ?? ''}</td>
+              <td contenteditable="true">${r.pickup_time_default ?? ''}</td>
               <td contenteditable="true">${r.ds_in_am_default ?? 0}</td>
               <td contenteditable="true">${r.ns_out_am_default ?? 0}</td>
               <td contenteditable="true">${r.ds_out_pm_default ?? 0}</td>
@@ -122,53 +145,18 @@ function renderSections() {
   });
 }
 
-// ===== Modals (exact behavior as your existing modals) =====
-function openModal(id, focusId) {
-  const modal = document.getElementById(id);
-  modal.classList.remove('hidden');
-  if (focusId) {
-    const input = document.getElementById(focusId);
-    setTimeout(() => input?.focus(), 50);
-  }
-}
+// ===== Events =====
 
-function closeModal(id) {
-  document.getElementById(id).classList.add('hidden');
-}
-
-// Backdrop click closes
-['newWorksheetModal', 'newSectionModal'].forEach(modalId => {
-  const modal = document.getElementById(modalId);
-  modal?.addEventListener('click', (e) => {
-    // Only close if the click is on the backdrop (the absolute overlay or the outer container), not the card
-    if (e.target.id === modalId || e.target.id === `${modalId.replace('Modal','')}Backdrop`) {
-      closeModal(modalId);
-    }
-  });
-});
-
-// ===== Event wiring =====
-document.getElementById('newWorksheetBtn').addEventListener('click', () => {
-  openModal('newWorksheetModal', 'newWorksheetName');
-});
-
-document.getElementById('cancelNewWorksheet').addEventListener('click', () => {
-  closeModal('newWorksheetModal');
-});
-
+// New Worksheet modal
+document.getElementById('newWorksheetBtn').addEventListener('click', () => openModal('newWorksheetModal', 'newWorksheetName'));
+document.getElementById('cancelNewWorksheet').addEventListener('click', () => closeModal('newWorksheetModal'));
 document.getElementById('confirmNewWorksheet').addEventListener('click', async () => {
   const name = document.getElementById('newWorksheetName').value.trim();
   if (!name) return alert('Enter a name');
   const res = await fetch('/api/worksheets', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name })
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
   });
-  if (!res.ok) {
-    const t = await res.text();
-    alert(`Create failed: ${t}`);
-    return;
-  }
+  if (!res.ok) { alert(`Create failed: ${await res.text()}`); return; }
   const newWs = await res.json();
   closeModal('newWorksheetModal');
   await loadWorksheets();
@@ -178,43 +166,27 @@ document.getElementById('confirmNewWorksheet').addEventListener('click', async (
 });
 
 // New Section modal
-document.getElementById('addSectionBtn').addEventListener('click', () => {
-  openModal('newSectionModal', 'newSectionName');
-});
-
-document.getElementById('cancelNewSection').addEventListener('click', () => {
-  closeModal('newSectionModal');
-});
-
+document.getElementById('addSectionBtn').addEventListener('click', () => openModal('newSectionModal', 'newSectionName'));
+document.getElementById('cancelNewSection').addEventListener('click', () => closeModal('newSectionModal'));
 document.getElementById('confirmNewSection').addEventListener('click', () => {
   const name = document.getElementById('newSectionName').value.trim();
   if (!name) return alert('Enter a section name');
-  // Build from DOM to avoid wiping names
   const payload = buildPayloadFromDOM();
   payload.sections.push({ id: `new-${Date.now()}`, section_name: name, position: payload.sections.length, rows: [] });
-  // Replace in-memory and re-render
   worksheetData = { ...worksheetData, sections: payload.sections };
   closeModal('newSectionModal');
   renderSections();
 });
 
-// Row add/delete using event delegation
+// Row add/delete
 document.getElementById('sectionsContainer').addEventListener('click', (e) => {
   if (e.target.classList.contains('addRowBtn')) {
     const payload = buildPayloadFromDOM();
-    // Find section index by DOM order
     const secDiv = e.target.closest('.section');
     const index = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
     payload.sections[index].rows.push({
-      id: `new-${Date.now()}`,
-      bus_number_default: '',
-      pickup_default: '',
-      dropoff_default: '',
-      pickup_time_default: '',
-      ds_in_am_default: 0,
-      ns_out_am_default: 0,
-      ds_out_pm_default: 0,
-      ns_in_pm_default: 0,
+      id: `new-${Date.now()}`, bus_number_default: '', pickup_default: '', dropoff_default: '',
+      pickup_time_default: '', ds_in_am_default: 0, ns_out_am_default: 0, ds_out_pm_default: 0, ns_in_pm_default: 0,
       position: payload.sections[index].rows.length
     });
     worksheetData = { ...worksheetData, sections: payload.sections };
@@ -225,7 +197,7 @@ document.getElementById('sectionsContainer').addEventListener('click', (e) => {
   if (e.target.classList.contains('deleteRowBtn')) {
     e.preventDefault();
     const payload = buildPayloadFromDOM();
-    const secDiv = e.target.closest('.section');
+    const secDiv = e.target.closest('section, .section');
     const secIndex = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
     const tr = e.target.closest('tr');
     const rowIndex = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
@@ -236,53 +208,45 @@ document.getElementById('sectionsContainer').addEventListener('click', (e) => {
   }
 });
 
-// Save All → always build from DOM to guarantee we send what you see
+// Save All
 document.getElementById('saveAllBtn').addEventListener('click', async () => {
   try {
-    assert(currentWorksheetId, 'No worksheet selected');
+    if (!currentWorksheetId) throw new Error('No worksheet selected');
     const payload = buildPayloadFromDOM();
-    payload.id = currentWorksheetId; // ensure we send the id we’re editing
+    payload.id = currentWorksheetId;
 
     const res = await fetch('/api/worksheets', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
+    if (!res.ok) throw new Error(await res.text());
 
-    if (!res.ok) {
-      const t = await res.text();
-      throw new Error(t);
-    }
-
+    const serverWs = await res.json();
+    worksheetData = serverWs;
     alert('Worksheet saved ✅');
-    await loadWorksheet(currentWorksheetId);
+    renderSections();
   } catch (err) {
     console.error(err);
     alert(`Save failed: ${err.message}`);
   }
 });
 
+// Set Default
 document.getElementById('setDefaultBtn').addEventListener('click', async () => {
   if (!currentWorksheetId) return;
   const res = await fetch('/api/worksheets', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: currentWorksheetId, setDefault: true })
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: currentWorksheetId, setDefault: true })
   });
-  if (!res.ok) {
-    const t = await res.text();
-    alert(`Set default failed: ${t}`);
-    return;
-  }
+  if (!res.ok) { alert(`Set default failed: ${await res.text()}`); return; }
   await loadWorksheets();
 });
 
+// Worksheet switch
 document.getElementById('worksheetSelect').addEventListener('change', async (e) => {
   currentWorksheetId = e.target.value;
   await loadWorksheet(currentWorksheetId);
 });
 
-// Keyboard: Enter confirms, Escape cancels in active modal
+// Keyboard shortcuts inside modals
 ['newWorksheetName','newSectionName'].forEach(id => {
   const el = document.getElementById(id);
   el.addEventListener('keydown', (e) => {
