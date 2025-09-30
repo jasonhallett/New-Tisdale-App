@@ -26,6 +26,22 @@
       </div>
     </div>
   </section>
+
+  <!-- Modal: New Worksheet -->
+  <div id="newWorksheetModal" class="modal"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999;
+              align-items:center;justify-content:center;">
+    <div class="card" style="max-width:400px;width:90%;padding:20px;position:relative;">
+      <h3 style="margin-bottom:12px;">New Worksheet</h3>
+      <input id="newWorksheetName" type="text" placeholder="Enter worksheet name"
+             class="input" style="width:100%;margin-bottom:12px;" />
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn" id="cancelNewWorksheet">Cancel</button>
+        <button class="btn" id="confirmNewWorksheet">Create</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="./js/worksheet-editor.js"></script>
 </body>
 </html>
