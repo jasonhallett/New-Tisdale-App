@@ -1,6 +1,6 @@
 // /js/daily-report.js
-// Supervisor in header, compact row height, comfortable time widths,
-// and force-close MultiSelect panels to avoid phantom "No matches" boxes.
+// Supervisor in header, compact MultiSelect height, smoother scrolling,
+// and the previous fixes (phantom panel, 24h time, section totals).
 import { MultiSelect } from './controls/multiselect.js';
 
 (function(){
@@ -12,33 +12,53 @@ import { MultiSelect } from './controls/multiselect.js';
     console.error(msg);
   };
 
-  // Inject page-local styles so we don't touch global CSS
+  // Throttle helper
+  const throttle = (fn, wait=100) => {
+    let last = 0, t;
+    return (...args) => {
+      const now = Date.now();
+      if (now - last >= wait) {
+        last = now; fn(...args);
+      } else {
+        clearTimeout(t);
+        t = setTimeout(()=>{ last = Date.now(); fn(...args); }, wait - (now - last));
+      }
+    };
+  };
+
+  // Inject page-local styles so we don’t touch global CSS
   function injectPageStyles(){
     if (document.getElementById('daily-report-local-css')) return;
     const css = `
       /* Compact table rows for worksheet */
+      .table.compact { contain: paint; transform: translateZ(0); }
       .table.compact th,
       .table.compact td { padding: 6px 8px; vertical-align: middle; }
 
-      /* Keep inputs/selects short and consistent */
+      /* Inputs/selects consistent short height */
       .table.compact input[type="number"],
       .table.compact input[type="text"],
-      .table.compact select { height: 32px; line-height: 30px; }
+      .table.compact select { height: 28px; line-height: 26px; font-size: 14px; }
 
-      /* Time field: readable yet tight */
+      /* Time field: readable but tight */
       .time24 { display: flex; align-items: center; gap: 2px; }
-      .time24 .time-select { width: 3.8ch !important; min-width: 3.8ch; text-align: center; padding: 2px 4px; }
+      .time24 .time-select { width: 4.2ch !important; min-width: 4.2ch; text-align: center; padding: 2px 4px; height: 28px; line-height: 26px; }
       .time24 .time-sep { padding: 0 2px; }
 
-      /* MultiSelect sizing inside table rows */
-      .table.compact .ms-root,
-      .table.compact .ms-input { min-height: 32px; height: 32px; }
+      /* --- MultiSelect tune-up (height + density) --- */
+      .table.compact .ms-root { min-height: 28px; height: 28px; }
+      .table.compact .ms-input { min-height: 28px; height: 28px; padding: 2px 6px; }
+      .table.compact .ms-input input { height: 24px; line-height: 24px; padding: 0 2px; }
       .table.compact .ms-chips { gap: 4px; }
-      .table.compact .ms-chip { padding: 1px 6px; }
+      .table.compact .ms-chip { padding: 0 6px; font-size: 12px; border-radius: 10px; }
+      .table.compact .ms-toggle { height: 28px; width: 28px; min-width: 28px; }
 
-      /* Make sure a closed panel never occupies space */
-      .ms-panel { max-height: 220px; overflow: auto; }
+      /* Panel: smaller and never occupying space when closed */
+      .ms-panel { max-height: 180px; overflow: auto; }
       .ms-panel[aria-hidden="true"] { display: none !important; }
+
+      /* Reduce heavy shadows during scroll (helps low-end GPUs) */
+      .card { will-change: transform; }
     `;
     const style = document.createElement('style');
     style.id = 'daily-report-local-css';
@@ -145,7 +165,6 @@ import { MultiSelect } from './controls/multiselect.js';
     // ----- MultiSelect helpers -----
     function closeMS(ms){
       try{ ms?.close?.(); }catch{}
-      // Also mark the panel hidden if our control uses aria-hidden
       const root = ms?.root || null;
       if (root){
         const panel = root.querySelector?.('.ms-panel');
@@ -156,7 +175,7 @@ import { MultiSelect } from './controls/multiselect.js';
     function buildHeaderBusMulti(container, preselected){
       const opts = master.buses.map(b => ({ value:b.number, label:b.number }));
       const ms = new MultiSelect(container, { options: opts, selected: preselected||[], placeholder:'Bus #' });
-      closeMS(ms); // avoid phantom panel on load
+      closeMS(ms);
       return ms;
     }
     function buildWorksheetBusMulti(container, preselected){
@@ -166,6 +185,14 @@ import { MultiSelect } from './controls/multiselect.js';
       closeMS(ms);
       return ms;
     }
+
+    // Close any open panels during scroll to avoid reflow jank
+    const closeAllPanelsOnScroll = throttle(() => {
+      document.querySelectorAll('.ms-panel').forEach(p => {
+        p.setAttribute('aria-hidden','true');
+      });
+    }, 150);
+    window.addEventListener('scroll', closeAllPanelsOnScroll, { passive: true });
 
     // Header grid
     function driverOptionsHTML(selectedId){
@@ -389,6 +416,7 @@ import { MultiSelect } from './controls/multiselect.js';
       });
     }
 
+    // Header confirm (kept as-is)
     $('#confirmHeaderBtn')?.addEventListener('click', async () => {
       reportState.report_date = $('#reportDate')?.value || null;
       reportState.worksheet_id = $('#worksheetSelect')?.value || null;
@@ -511,8 +539,7 @@ import { MultiSelect } from './controls/multiselect.js';
         }
 
         // Final safety: close any panels that might have opened during hydration
-        $all('.ws-buses').forEach(cell => cell._ms && closeMS(cell._ms));
-        $all('.drv-buses').forEach(cell => cell._ms && closeMS(cell._ms));
+        document.querySelectorAll('.ms-panel').forEach(p => p.setAttribute('aria-hidden','true'));
       }catch(err){
         bootError('Failed to initialize Daily Report. Check console and API routes.');
         console.error(err);
