@@ -14,21 +14,30 @@
       grid-template-areas: "main";
       min-height: 100vh;
     }
-    /* Visual for locked cells */
+
+    /* Compact table look (pairs with the JS-rendered <table class="table compact">) */
+    table.compact { border-collapse: collapse; width: 100%; }
+    table.compact th, table.compact td { padding: 6px 8px; font-size: 14px; line-height: 1.2; }
+
+    /* Visual for locked cells (Bus # and the four D/S & N/S columns) */
     td.locked{
       background: #f3f4f6;
       color: #334155;
       cursor: not-allowed;
+      user-select: none;
     }
     td.locked:focus{ outline: none; box-shadow: none; }
-    /* Time input sizing so table stays compact */
-    td .time24{
-      width: 120px;
-      min-width: 110px;
-      max-width: 140px;
-      padding: 6px 8px;
-      font: inherit;
-    }
+
+    /* 24h time selector (HH : MM) that the JS renders */
+    .time24{ display:inline-flex; align-items:center; gap:2px; }
+    .time-select{ width:58px; min-width:54px; padding:4px 6px; font:inherit; }
+    .time-sep{ opacity:.6; }
+
+    /* Slightly tighter card + toolbar spacing */
+    .card { padding: 14px; }
+    .toolbar { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:16px; }
+    .section.card { padding: 10px 12px; }
+    .section-header { margin-bottom: 6px; }
   </style>
 </head>
 <body>
@@ -37,7 +46,7 @@
     <main class="main" style="background:none;">
       <section class="container" style="padding:14px 16px 18px;">
         <div class="card">
-          <div class="toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;">
+          <div class="toolbar">
             <div style="display:flex;align-items:center;gap:8px;">
               <label for="worksheetSelect">Worksheet:</label>
               <select id="worksheetSelect"></select>
