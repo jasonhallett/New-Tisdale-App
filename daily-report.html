@@ -20,6 +20,7 @@
     .time24{ display:inline-flex; align-items:center; gap:2px; }
     .time-select { width:58px; min-width:54px; padding:4px 6px; font:inherit; }
     .time-sep{ opacity:.6; }
+    #bootError{ color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; padding:8px 10px; border-radius:8px; display:none; margin-bottom:10px; }
   </style>
 </head>
 <body>
@@ -27,6 +28,7 @@
     <main class="main" style="background:none;">
       <section class="container" style="padding:14px 16px 18px;">
         <div class="card">
+          <div id="bootError"></div>
           <div class="toolbar">
             <h2>Daily Report</h2>
             <div class="pill"><span id="statusText" class="muted">Not saved</span></div>
@@ -92,6 +94,7 @@
     </main>
   </div>
 
-  <script type="module" src="../public/js/daily-report.js"></script>
+  <!-- Use /js/ path to match the rest of the app -->
+  <script type="module" src="../js/daily-report.js"></script>
 </body>
 </html>
