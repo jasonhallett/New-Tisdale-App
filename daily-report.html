@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Daily Report</title>
+  <link rel="stylesheet" href="../css/tisdale-app.css"/>
+  <style>
+    .app.editor-standalone{ display:grid; grid-template-columns:1fr; grid-template-rows:auto 1fr; grid-template-areas:"main"; min-height:100vh; }
+    .card{ padding:14px; }
+    .grid-3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
+    .stack{ display:flex; flex-direction:column; gap:6px; }
+    .toolbar{ display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    .table.compact{ border-collapse:collapse; width:100%; }
+    .table.compact th, .table.compact td{ padding:6px 8px; font-size:14px; line-height:1.2; }
+    .btn-link-sm{ font-size:12px; text-decoration:underline; cursor:pointer; }
+    .invalid{ outline:2px solid #dc2626; background:#fef2f2; }
+    .muted{ color:#64748b; }
+    .pill{ display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:999px; background:#f1f5f9; }
+    .time24{ display:inline-flex; align-items:center; gap:2px; }
+    .time-select { width:58px; min-width:54px; padding:4px 6px; font:inherit; }
+    .time-sep{ opacity:.6; }
+  </style>
+</head>
+<body>
+  <div class="app editor-standalone">
+    <main class="main" style="background:none;">
+      <section class="container" style="padding:14px 16px 18px;">
+        <div class="card">
+          <div class="toolbar">
+            <h2>Daily Report</h2>
+            <div class="pill"><span id="statusText" class="muted">Not saved</span></div>
+          </div>
+
+          <!-- Header / Top Section -->
+          <div class="grid-3" style="margin-bottom:12px;">
+            <div class="stack">
+              <label for="reportDate">Date</label>
+              <input id="reportDate" type="date"/>
+            </div>
+            <div class="stack">
+              <label for="worksheetSelect">Worksheet</label>
+              <select id="worksheetSelect"></select>
+              <div class="muted" id="defaultWorksheetHint"></div>
+            </div>
+            <div class="stack">
+              <label for="otherHeader">Other Header Info (draft)</label>
+              <input id="otherHeader" type="text" placeholder="e.g., Dispatcher, Weather, Notes"/>
+            </div>
+          </div>
+
+          <!-- Drivers Grid -->
+          <div class="stack" style="margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h3>Drivers on Duty</h3>
+              <button class="btn btn-ghost" id="addDriverRowBtn">+ Add Driver</button>
+            </div>
+            <table class="table compact" id="driversTable">
+              <colgroup>
+                <col style="width:40%"/>
+                <col style="width:30%"/>
+                <col style="width:20%"/>
+                <col style="width:10%"/>
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Driver Name</th>
+                  <th>Bus Number(s) (comma-separated)</th>
+                  <th>Workday Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <!-- Lock-in & Load Worksheet -->
+          <div class="toolbar" style="margin:12px 0;">
+            <button class="btn" id="confirmHeaderBtn">Confirm Header</button>
+            <div class="muted">Once confirmed, inputs below unlock and bus entries will be limited to assigned buses.</div>
+          </div>
+
+          <!-- Worksheet Input Area -->
+          <div id="worksheetArea"></div>
+
+          <div style="margin-top:14px; display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn" id="saveDraftBtn">Save Draft</button>
+            <button class="btn primary" id="saveSubmitBtn">Save & Submit</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="../public/js/daily-report.js"></script>
+</body>
+</html>
