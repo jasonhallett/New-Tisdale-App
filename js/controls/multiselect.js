@@ -1,17 +1,7 @@
 // /js/controls/multiselect.js
 // Reusable token-based multi-select with searchable dropdown.
 // Blue-themed; dropdown chevron on the right; chips have individual X removal.
-// API:
-//   const ms = new MultiSelect(container, { options:[{value:'106',label:'106'}], selected:['105'], placeholder:'Bus #' });
-//   ms.get();                // -> ['105']
-//   ms.set(['107']);         // programmatic set
-//   ms.updateOptions([...]); // replace list
-//   ms.onChange(fn);         // subscribe to changes
-//
-// Notes:
-// - Click the field OR the chevron to open/close.
-// - Selecting an option clears the search input but keeps dropdown open for multi-pick.
-// - Keyboard: ↑/↓ navigate, Enter selects, Esc closes, Backspace removes last chip when search empty.
+// Fix: first click now opens AND renders options immediately.
 
 const STYLE_ID = 'ms-token-select-styles';
 function injectStyles(){
@@ -81,22 +71,28 @@ export class MultiSelect{
     this.el.appendChild(this.toggleBtn);
     this.el.appendChild(this.dd);
 
-    // events
+    // Open on container click (and render immediately)
     this.el.addEventListener('click', (e) => {
       if (e.target === this.toggleBtn) return; // handled below
-      this.open();
+      this.open(true);     // <-- force-render on open
       this.input.focus();
     });
+
+    // Chevron toggles open/close (force render on open)
     this.toggleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.isOpen ? this.close() : this.open(true);
+      this.isOpen ? this.close() : this.open(true); // <-- force-render
       if (this.isOpen) this.input.focus();
+    });
+
+    // Also ensure focusing the input opens & renders (covers keyboard/tab focus)
+    this.input.addEventListener('focus', () => {
+      if (!this.isOpen) this.open(true); // <-- force-render
     });
 
     this.input.addEventListener('input', () => this.renderDropdown());
     this.input.addEventListener('keydown', (e)=>{
       if (e.key === 'Backspace' && !this.input.value && this.selected.size){
-        // delete last token
         const last = Array.from(this.selected).pop();
         this.remove(last);
       } else if (e.key === 'ArrowDown'){
@@ -111,12 +107,13 @@ export class MultiSelect{
       }
     });
 
+    // Close when clicking outside
     document.addEventListener('click', (e)=>{
       if (!this.el.contains(e.target)) this.close();
     });
   }
 
-  // public API
+  // Public API
   updateOptions(options){ this.options = Array.isArray(options) ? options : []; this.renderDropdown(true); }
   onChange(fn){ if (typeof fn === 'function') this.onChangeHandlers.push(fn); }
   emit(){ this.onChangeHandlers.forEach(fn => fn(this.get())); }
@@ -137,7 +134,7 @@ export class MultiSelect{
     this.render();
     this.emit();
     // keep dropdown open for multi-select flow
-    this.open();
+    this.open(); // already open; safe
   }
   remove(v){
     v = String(v);
@@ -147,7 +144,7 @@ export class MultiSelect{
     this.emit();
   }
 
-  // internals
+  // Internals
   filterOptions(){
     const q = this.input.value.trim().toLowerCase();
     const sel = this.selected;
@@ -174,14 +171,13 @@ export class MultiSelect{
       this.chipsWrap.appendChild(chip);
     });
 
-    // dropdown
     if (this.isOpen) this.renderDropdown(true);
   }
 
   renderDropdown(forceOpen=false){
-    const list = this.filterOptions();
     if (!forceOpen && !this.isOpen) return;
 
+    const list = this.filterOptions();
     if (!list.length){
       this.dd.innerHTML = `<div class="ms-empty">No matches</div>`;
     } else {
@@ -191,12 +187,11 @@ export class MultiSelect{
           <div class="ms-label">${o.label ?? o.value}</div>
         </div>
       `).join('');
-      // wire clicks
       this.dd.querySelectorAll('.ms-opt').forEach(el => {
         el.addEventListener('click', (e)=>{
           const v = el.getAttribute('data-value');
-          this.add(v);        // this will also clear the input
-          this.input.focus(); // keep focus for subsequent picks
+          this.add(v);        // clears input
+          this.input.focus(); // keep picking
         });
       });
     }
@@ -227,7 +222,7 @@ export class MultiSelect{
     this.isOpen = true;
     this.el.classList.add('open');
     this.showDropdown();
-    if (force) this.renderDropdown(true);
+    if (force) this.renderDropdown(true); // <-- ensure we render when opening
   }
   close(){
     this.isOpen = false;
