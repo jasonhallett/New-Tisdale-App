@@ -25,6 +25,43 @@ function closeModal(id) {
 // ===== Utilities =====
 function assert(ok, msg) { if (!ok) throw new Error(msg); }
 
+// Convert many time formats to 24h "HH:MM"
+function to24h(value){
+  if(!value) return '';
+  let s = String(value).trim();
+  // If already HH:MM 24h, normalize zero padding
+  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if(m24){
+    let h = parseInt(m24[1],10);
+    let m = parseInt(m24[2],10);
+    if(Number.isNaN(h) || Number.isNaN(m)) return '';
+    h = (h+24)%24;
+    m = Math.min(Math.max(m,0),59);
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  }
+  // Handle 12h with AM/PM
+  const m12 = s.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
+  if(m12){
+    let h = parseInt(m12[1],10);
+    let m = parseInt(m12[2],10);
+    const ap = m12[3].toUpperCase();
+    if(ap === 'AM'){
+      if(h===12) h = 0;
+    } else { // PM
+      if(h!==12) h += 12;
+    }
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  }
+  // If only hour given like "7" or "19"
+  const mh = s.match(/^(\d{1,2})$/);
+  if(mh){
+    let h = parseInt(mh[1],10);
+    h = (h+24)%24;
+    return `${String(h).padStart(2,'0')}:00`;
+  }
+  return s; // last resort
+}
+
 // Build payload purely from DOM
 function buildPayloadFromDOM() {
   const select = document.getElementById('worksheetSelect');
@@ -37,12 +74,13 @@ function buildPayloadFromDOM() {
     const rows = [];
     secDiv.querySelectorAll('tbody tr').forEach((tr, ri) => {
       const tds = tr.querySelectorAll('td');
+      const timeInput = tds[3]?.querySelector('input[type="time"]');
       rows.push({
         id: tr.dataset.id || `new-${Date.now()}-${ri}`,
         bus_number_default: tds[0]?.innerText.trim() || '',
         pickup_default:     tds[1]?.innerText.trim() || '',
         dropoff_default:    tds[2]?.innerText.trim() || '',
-        pickup_time_default:tds[3]?.innerText.trim() || '',
+        pickup_time_default: timeInput ? to24h(timeInput.value) : to24h(tds[3]?.innerText.trim() || ''),
         ds_in_am_default:   parseInt(tds[4]?.innerText.trim() || '0', 10),
         ns_out_am_default:  parseInt(tds[5]?.innerText.trim() || '0', 10),
         ds_out_pm_default:  parseInt(tds[6]?.innerText.trim() || '0', 10),
@@ -116,7 +154,7 @@ function renderSections() {
             <th>Bus Number(s)</th>
             <th>Pickup</th>
             <th>Dropoff</th>
-            <th>Pickup Time AM/PM</th>
+            <th>Pickup Time (24h)</th>
             <th>D/S IN AM</th>
             <th>N/S OUT AM</th>
             <th>D/S OUT PM</th>
@@ -125,19 +163,21 @@ function renderSections() {
           </tr>
         </thead>
         <tbody>
-          ${(section.rows || []).map((r) => `
+          ${(section.rows || []).map((r) => {
+            const t24 = to24h(r.pickup_time_default ?? '');
+            return `
             <tr data-id="${r.id || ''}">
-              <td contenteditable="true">${r.bus_number_default ?? ''}</td>
+              <td class="locked" tabindex="-1">${r.bus_number_default ?? ''}</td>
               <td contenteditable="true">${r.pickup_default ?? ''}</td>
               <td contenteditable="true">${r.dropoff_default ?? ''}</td>
-              <td contenteditable="true">${r.pickup_time_default ?? ''}</td>
-              <td contenteditable="true">${r.ds_in_am_default ?? 0}</td>
-              <td contenteditable="true">${r.ns_out_am_default ?? 0}</td>
-              <td contenteditable="true">${r.ds_out_pm_default ?? 0}</td>
-              <td contenteditable="true">${r.ns_in_pm_default ?? 0}</td>
+              <td><input type="time" class="time24" value="${t24}"></td>
+              <td class="locked" tabindex="-1">${r.ds_in_am_default ?? 0}</td>
+              <td class="locked" tabindex="-1">${r.ns_out_am_default ?? 0}</td>
+              <td class="locked" tabindex="-1">${r.ds_out_pm_default ?? 0}</td>
+              <td class="locked" tabindex="-1">${r.ns_in_pm_default ?? 0}</td>
               <td><a href="#" class="btn-link-sm deleteRowBtn">Delete</a></td>
-            </tr>
-          `).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     `;

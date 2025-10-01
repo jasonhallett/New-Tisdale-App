@@ -5,9 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Worksheet Editor</title>
   <link rel="stylesheet" href="./css/tisdale-app.css"/>
+  <style>
+    /* Keep this page centered instead of reserving the sidebar column */
+    .app.editor-standalone{
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr;
+      grid-template-areas: "main";
+      min-height: 100vh;
+    }
+    /* Visual for locked cells */
+    td.locked{
+      background: #f3f4f6;
+      color: #334155;
+      cursor: not-allowed;
+    }
+    td.locked:focus{ outline: none; box-shadow: none; }
+    /* Time input sizing so table stays compact */
+    td .time24{
+      width: 120px;
+      min-width: 110px;
+      max-width: 140px;
+      padding: 6px 8px;
+      font: inherit;
+    }
+  </style>
 </head>
 <body>
-  <div class="app">
+  <div class="app editor-standalone">
     <!-- Sidebar/Topbar are in app.html; this page is intended to load inside the iframe or main content -->
     <main class="main" style="background:none;">
       <section class="container" style="padding:14px 16px 18px;">
