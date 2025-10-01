@@ -1,23 +1,40 @@
 // /js/worksheet-editor.js
+// Adds:
+//  - Inline row duplication (Action → "Dup")
+//  - Drag-to-reorder rows within a section (HTML5 DnD)
+// Keeps:
+//  - Strict 24h time selects (HH/MM)
+//  - Locked columns (Bus #, D/S & N/S)
+//  - "Note" column persisted as note_default
+//  - Compact table styling + column widths
 
-// ===== Inline compact styles (keeps the table tight across pages) =====
+// ===== Inline compact + DnD styles =====
 (function ensureCompactStyles(){
   const id = 'worksheet-editor-compact-styles';
   if (document.getElementById(id)) return;
   const css = `
     table.compact { border-collapse: collapse; }
     table.compact th, table.compact td { padding: 6px 8px; font-size: 14px; line-height: 1.2; }
-    td.locked { background: #f3f4f6; color: #334155; cursor: not-allowed; }
+
+    td.locked { background: #f3f4f6; color: #334155; cursor: not-allowed; user-select: none; }
     td.locked:focus { outline: none; box-shadow: none; }
 
-    /* Time selects */
-    .time24 { display: inline-flex; align-items: center; gap: 2px; }
-    .time-select { width: 58px; min-width: 54px; padding: 4px 6px; font: inherit; }
-    .time-sep { opacity: .6; }
+    .time24 { display:inline-flex; align-items:center; gap:2px; }
+    .time-select { width:58px; min-width:54px; padding:4px 6px; font:inherit; }
+    .time-sep { opacity:.6; }
 
-    /* Make the whole card tighter */
     .section.card { padding: 10px 12px; }
     .section-header { margin-bottom: 6px !important; }
+
+    /* Drag visuals */
+    tbody tr[draggable="true"] { cursor: grab; }
+    tbody tr.dragging { opacity: .45; }
+    tbody tr.drop-before { box-shadow: 0 -2px 0 0 #3b82f6 inset; } /* top blue line */
+    tbody tr.drop-after  { box-shadow: 0  2px 0 0 #3b82f6 inset; } /* bottom blue line */
+
+    /* Action links */
+    .btn-link-sm { font-size: 12px; text-decoration: underline; cursor: pointer; }
+    .action-cell { display:flex; gap:8px; align-items:center; justify-content:flex-start; }
   `;
   const style = document.createElement('style');
   style.id = id;
@@ -28,6 +45,14 @@
 // ===== State =====
 let currentWorksheetId = null;
 let worksheetData = { id: null, name: '', sections: [] };
+
+// Track drag state
+const dragState = {
+  srcSecIdx: null,
+  srcRowIdx: null,
+  overTR: null,
+  overPos: null, // 'before' | 'after'
+};
 
 // ===== Modal helpers =====
 function openModal(id, focusId) {
@@ -41,7 +66,6 @@ function closeModal(id) {
   if (!modal) return;
   modal.classList.remove('open');
 }
-// Backdrop click closes
 ['newWorksheetModal','newSectionModal'].forEach(mid => {
   const modal = document.getElementById(mid);
   modal?.addEventListener('click', (e) => {
@@ -53,7 +77,6 @@ function closeModal(id) {
 function to24h(value){
   if(!value) return '';
   let s = String(value).trim();
-  // If already HH:MM 24h
   const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
   if(m24){
     let h = parseInt(m24[1],10);
@@ -63,17 +86,12 @@ function to24h(value){
     m = Math.min(Math.max(m,0),59);
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   }
-  // Handle 12h with AM/PM
   const m12 = s.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
   if(m12){
     let h = parseInt(m12[1],10);
     let m = parseInt(m12[2],10);
     const ap = m12[3].toUpperCase();
-    if(ap === 'AM'){
-      if(h===12) h = 0;
-    } else {
-      if(h!==12) h += 12;
-    }
+    if(ap === 'AM'){ if(h===12) h = 0; } else { if(h!==12) h += 12; }
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   }
   const mh = s.match(/^(\d{1,2})$/);
@@ -84,13 +102,11 @@ function to24h(value){
   }
   return s;
 }
-
 function hhmmParts(hhmm){
   const x = to24h(hhmm || '') || '00:00';
   const [h,m] = x.split(':');
   return { h: h.padStart(2,'0'), m: m.padStart(2,'0') };
 }
-
 function makeHourOptions(selected){
   let out = '';
   for(let h=0; h<=23; h++){
@@ -116,7 +132,7 @@ function getTimeFromCell(td){
   return `${h}:${m}`;
 }
 
-// Build payload purely from DOM (reads time and note from cells)
+// Build payload from current DOM (reflects current visual order)
 function buildPayloadFromDOM() {
   const select = document.getElementById('worksheetSelect');
   const selectedOption = select?.options?.[select.selectedIndex];
@@ -126,7 +142,8 @@ function buildPayloadFromDOM() {
   document.querySelectorAll('#sectionsContainer .section').forEach((secDiv, si) => {
     const section_name = secDiv.querySelector('.section-title')?.value?.trim() || `Section ${si+1}`;
     const rows = [];
-    secDiv.querySelectorAll('tbody tr').forEach((tr, ri) => {
+    const trs = secDiv.querySelectorAll('tbody tr');
+    trs.forEach((tr, ri) => {
       const tds = tr.querySelectorAll('td');
       rows.push({
         id: tr.dataset.id || `new-${Date.now()}-${ri}`,
@@ -184,6 +201,33 @@ async function loadWorksheet(id) {
 }
 
 // ===== Render =====
+function rowHTML(r){
+  const t24 = to24h(r.pickup_time_default ?? '');
+  const { h, m } = hhmmParts(t24);
+  return `
+    <tr data-id="${r.id || ''}" draggable="true">
+      <td class="locked" tabindex="-1">${r.bus_number_default ?? ''}</td>
+      <td contenteditable="true">${r.pickup_default ?? ''}</td>
+      <td contenteditable="true">${r.dropoff_default ?? ''}</td>
+      <td>
+        <div class="time24">
+          <select class="time-select time-hh" aria-label="Hour (00-23)">${makeHourOptions(h)}</select>
+          <span class="time-sep">:</span>
+          <select class="time-select time-mm" aria-label="Minute (00-59)">${makeMinuteOptions(m)}</select>
+        </div>
+      </td>
+      <td contenteditable="true">${r.note_default ?? ''}</td>
+      <td class="locked" tabindex="-1">${r.ds_in_am_default ?? 0}</td>
+      <td class="locked" tabindex="-1">${r.ns_out_am_default ?? 0}</td>
+      <td class="locked" tabindex="-1">${r.ds_out_pm_default ?? 0}</td>
+      <td class="locked" tabindex="-1">${r.ns_in_pm_default ?? 0}</td>
+      <td class="action-cell">
+        <a href="#" class="btn-link-sm duplicateRowBtn" title="Duplicate row">Dup</a>
+        <a href="#" class="btn-link-sm deleteRowBtn" title="Delete row">Delete</a>
+      </td>
+    </tr>`;
+}
+
 function renderSections() {
   const container = document.getElementById('sectionsContainer');
   container.innerHTML = '';
@@ -204,15 +248,15 @@ function renderSections() {
       </div>
       <table class="table compact w-full">
         <colgroup>
-          <col style="width:8%"/>    <!-- Bus Number(s) (narrower) -->
-          <col style="width:15%"/>   <!-- Pickup (wider) -->
-          <col style="width:15%"/>   <!-- Dropoff (wider) -->
-          <col style="width:8%"/>    <!-- Time (narrower) -->
-          <col style="width:8%"/>   <!-- Note -->
-          <col style="width:6%"/>    <!-- D/S IN AM -->
-          <col style="width:6%"/>    <!-- N/S OUT AM -->
-          <col style="width:6%"/>    <!-- D/S OUT PM -->
-          <col style="width:6%"/>    <!-- N/S IN PM -->
+          <col style="width:9%"/>    <!-- Bus Number(s) -->
+          <col style="width:17%"/>   <!-- Pickup -->
+          <col style="width:17%"/>   <!-- Dropoff -->
+          <col style="width:9%"/>    <!-- Time -->
+          <col style="width:12%"/>   <!-- Note -->
+          <col style="width:8%"/>    <!-- D/S IN AM -->
+          <col style="width:8%"/>    <!-- N/S OUT AM -->
+          <col style="width:8%"/>    <!-- D/S OUT PM -->
+          <col style="width:8%"/>    <!-- N/S IN PM -->
           <col style="width:4%"/>    <!-- Action -->
         </colgroup>
         <thead>
@@ -230,29 +274,7 @@ function renderSections() {
           </tr>
         </thead>
         <tbody>
-          ${(section.rows || []).map((r) => {
-            const t24 = to24h(r.pickup_time_default ?? '');
-            const { h, m } = hhmmParts(t24);
-            return `
-            <tr data-id="${r.id || ''}">
-              <td class="locked" tabindex="-1">${r.bus_number_default ?? ''}</td>
-              <td contenteditable="true">${r.pickup_default ?? ''}</td>
-              <td contenteditable="true">${r.dropoff_default ?? ''}</td>
-              <td>
-                <div class="time24">
-                  <select class="time-select time-hh" aria-label="Hour (00-23)">${makeHourOptions(h)}</select>
-                  <span class="time-sep">:</span>
-                  <select class="time-select time-mm" aria-label="Minute (00-59)">${makeMinuteOptions(m)}</select>
-                </div>
-              </td>
-              <td contenteditable="true">${r.note_default ?? ''}</td>
-              <td class="locked" tabindex="-1">${r.ds_in_am_default ?? 0}</td>
-              <td class="locked" tabindex="-1">${r.ns_out_am_default ?? 0}</td>
-              <td class="locked" tabindex="-1">${r.ds_out_pm_default ?? 0}</td>
-              <td class="locked" tabindex="-1">${r.ns_in_pm_default ?? 0}</td>
-              <td><a href="#" class="btn-link-sm deleteRowBtn">Delete</a></td>
-            </tr>`;
-          }).join('')}
+          ${(section.rows || []).map(rowHTML).join('')}
         </tbody>
       </table>
     `;
@@ -293,8 +315,11 @@ document.getElementById('confirmNewSection').addEventListener('click', () => {
   renderSections();
 });
 
-// Row add/delete
-document.getElementById('sectionsContainer').addEventListener('click', (e) => {
+// Sections container shared handlers
+const sectionsEl = document.getElementById('sectionsContainer');
+
+sectionsEl.addEventListener('click', (e) => {
+  // Add Row (button in section header)
   if (e.target.classList.contains('addRowBtn')) {
     const payload = buildPayloadFromDOM();
     const secDiv = e.target.closest('.section');
@@ -317,10 +342,11 @@ document.getElementById('sectionsContainer').addEventListener('click', (e) => {
     return;
   }
 
+  // Delete Row
   if (e.target.classList.contains('deleteRowBtn')) {
     e.preventDefault();
     const payload = buildPayloadFromDOM();
-    const secDiv = e.target.closest('section, .section');
+    const secDiv = e.target.closest('.section');
     const secIndex = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
     const tr = e.target.closest('tr');
     const rowIndex = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
@@ -328,7 +354,107 @@ document.getElementById('sectionsContainer').addEventListener('click', (e) => {
     payload.sections[secIndex].rows.forEach((r, i) => r.position = i);
     worksheetData = { ...worksheetData, sections: payload.sections };
     renderSections();
+    return;
   }
+
+  // Duplicate Row
+  if (e.target.classList.contains('duplicateRowBtn')) {
+    e.preventDefault();
+    const payload = buildPayloadFromDOM();
+    const secDiv = e.target.closest('.section');
+    const secIndex = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
+    const tr = e.target.closest('tr');
+    const rowIndex = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
+
+    const src = payload.sections[secIndex].rows[rowIndex];
+    const copy = { ...src, id: `new-${Date.now()}`, position: rowIndex + 1 };
+    payload.sections[secIndex].rows.splice(rowIndex + 1, 0, copy);
+
+    // reindex positions
+    payload.sections[secIndex].rows.forEach((r, i) => r.position = i);
+
+    worksheetData = { ...worksheetData, sections: payload.sections };
+    renderSections();
+    return;
+  }
+});
+
+// ---- Drag & Drop within a section ----
+function clearDropIndicators() {
+  document.querySelectorAll('tbody tr').forEach(tr => {
+    tr.classList.remove('drop-before', 'drop-after');
+  });
+}
+
+sectionsEl.addEventListener('dragstart', (e) => {
+  const tr = e.target.closest('tr[draggable="true"]');
+  if (!tr) return;
+  const secDiv = tr.closest('.section');
+  dragState.srcSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
+  dragState.srcRowIdx = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
+
+  tr.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', 'row'); } catch {}
+});
+
+sectionsEl.addEventListener('dragend', (e) => {
+  const tr = e.target.closest('tr[draggable="true"]');
+  if (tr) tr.classList.remove('dragging');
+  clearDropIndicators();
+  dragState.srcSecIdx = dragState.srcRowIdx = null;
+  dragState.overTR = dragState.overPos = null;
+});
+
+sectionsEl.addEventListener('dragover', (e) => {
+  const tr = e.target.closest('tbody tr');
+  if (!tr) return;
+  const secDiv = tr.closest('.section');
+
+  // Only allow reordering within same section
+  const overSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
+  if (dragState.srcSecIdx == null || overSecIdx !== dragState.srcSecIdx) return;
+
+  e.preventDefault(); // allow drop
+  const rect = tr.getBoundingClientRect();
+  const y = e.clientY - rect.top;
+  const pos = y < rect.height / 2 ? 'before' : 'after';
+
+  if (dragState.overTR !== tr || dragState.overPos !== pos) {
+    clearDropIndicators();
+    tr.classList.add(pos === 'before' ? 'drop-before' : 'drop-after');
+    dragState.overTR = tr;
+    dragState.overPos = pos;
+  }
+});
+
+sectionsEl.addEventListener('drop', (e) => {
+  const tr = e.target.closest('tbody tr');
+  if (!tr) return;
+  const secDiv = tr.closest('.section');
+  const overSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
+  if (dragState.srcSecIdx == null || overSecIdx !== dragState.srcSecIdx) return;
+
+  e.preventDefault();
+
+  const payload = buildPayloadFromDOM();
+  const rows = payload.sections[overSecIdx].rows;
+
+  const targetIdx = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
+  let insertIdx = targetIdx;
+  if (dragState.overPos === 'after') insertIdx = targetIdx + 1;
+
+  const [moved] = rows.splice(dragState.srcRowIdx, 1);
+
+  // Adjust insert index if we removed a row above the target
+  if (dragState.srcRowIdx < targetIdx) insertIdx -= 1;
+  rows.splice(insertIdx, 0, moved);
+
+  // reindex positions
+  rows.forEach((r, i) => r.position = i);
+
+  worksheetData = { ...worksheetData, sections: payload.sections };
+  renderSections();
 });
 
 // Save All
