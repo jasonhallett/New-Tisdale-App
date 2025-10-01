@@ -1,8 +1,5 @@
 // /js/daily-report.js
-// MultiSelect + live Totals; FIXES:
-// - Save Draft works even before "Confirm Header" (reads UI directly)
-// - Send raw objects/arrays to API (no JSON.stringify on header/drivers/sections)
-// - Defensive normalization if fields somehow arrive as strings
+// MultiSelect + live Totals; robust date handling (no timezone shifts)
 import { MultiSelect } from './controls/multiselect.js';
 
 (function(){
@@ -20,14 +17,11 @@ import { MultiSelect } from './controls/multiselect.js';
       report_date: null,
       worksheet_id: null,
       header: { other: '' },
-      drivers: [], // [{driver_id, name, buses:[string], status_id}]
+      drivers: [],
       sections: []
     };
 
-    let master = {
-      drivers: [], // {id, name}
-      buses: []    // {id, number}
-    };
+    let master = { drivers: [], buses: [] };
 
     const $ = (sel, root=document) => root.querySelector(sel);
     const $all = (sel, root=document) => Array.from(root.querySelectorAll(sel));
@@ -78,24 +72,23 @@ import { MultiSelect } from './controls/multiselect.js';
     async function loadDrivers(){
       const res = await fetch('/api/drivers');
       if(!res.ok) throw new Error(await res.text());
-      const rows = await res.json(); // [{id, first_name, last_name}]
+      const rows = await res.json();
       master.drivers = rows.map(r => ({ id:r.id, name:[r.first_name, r.last_name].filter(Boolean).join(' ').trim() }))
                            .sort((a,b)=>a.name.localeCompare(b.name));
     }
     async function loadBuses(){
       const res = await fetch('/api/buses');
       if(!res.ok) throw new Error(await res.text());
-      const rows = await res.json(); // [{id, unit_number}]
+      const rows = await res.json();
       master.buses = rows.map(b => ({ id:b.id, number:String(b.unit_number) }))
                          .sort((a,b)=>a.number.localeCompare(b.number));
     }
     async function loadStatuses(){
       const res = await fetch('/api/workday-status');
       if(!res.ok) throw new Error(await res.text());
-      return await res.json(); // [{id,name}]
+      return await res.json();
     }
 
-    // ----- Custom control builders -----
     function buildHeaderBusMulti(container, preselected){
       const opts = master.buses.map(b => ({ value:b.number, label:b.number }));
       const ms = new MultiSelect(container, { options: opts, selected: preselected||[], placeholder:'Bus #' });
@@ -108,7 +101,6 @@ import { MultiSelect } from './controls/multiselect.js';
       return ms;
     }
 
-    // Header grid
     function driverOptionsHTML(selectedId){
       return master.drivers.map(d => `<option value="${d.id}" ${String(selectedId)===String(d.id)?'selected':''}>${d.name}</option>`).join('');
     }
@@ -141,7 +133,6 @@ import { MultiSelect } from './controls/multiselect.js';
       } else {
         tbody.insertAdjacentHTML('beforeend', driverRowHTML(statuses, {}));
       }
-      // hydrate MultiSelects
       $all('.drv-buses', tbody).forEach((cell, idx) => {
         const pre = prefillDrivers?.[idx]?.buses || [];
         const ms = buildHeaderBusMulti(cell, pre);
@@ -177,7 +168,6 @@ import { MultiSelect } from './controls/multiselect.js';
       }).filter(d => d.driver_id || (d.buses && d.buses.length));
     }
 
-    // ===== Totals helpers (per section) =====
     function computeSectionTotals(card){
       const rows = $all('tbody tr', card);
       let s1=0, s2=0, s3=0, s4=0;
@@ -212,12 +202,10 @@ import { MultiSelect } from './controls/multiselect.js';
       });
     }
 
-    // Worksheet rendering
     function rowInputHTML(r, entry){
       const t24 = to24h(r.pickup_time_default||''); const [hh0,mm0]=(t24||'00:00').split(':');
       const hh = entry?.pickup_time?.split(':')[0] ?? hh0 ?? '00';
       const mm = entry?.pickup_time?.split(':')[1] ?? mm0 ?? '00';
-      const pre = entry?.bus_numbers || (Array.isArray(entry?.buses)?entry.buses:null) || String(r.bus_number_default||'').split(',').map(s=>s.trim()).filter(Boolean);
       return `<tr>
         <td><div class="ws-buses" data-ms></div></td>
         <td contenteditable="true" class="inp-pickup">${entry?.pickup ?? r.pickup_default ?? ''}</td>
@@ -290,7 +278,6 @@ import { MultiSelect } from './controls/multiselect.js';
         const ws = await res.json();
         reportState.sections = ws.sections || [];
         area.innerHTML = reportState.sections.map(sectionInputHTML).join('');
-        // hydrate row bus multiselects with allowed options and bind totals
         let secIdx=0;
         $all('.card', area).forEach((card) => {
           const tbody = card.querySelector('tbody');
@@ -313,7 +300,6 @@ import { MultiSelect } from './controls/multiselect.js';
     async function renderFromReport(){
       const area = $('#worksheetArea');
       area.innerHTML = (reportState.sections||[]).map(sectionInputHTML).join('');
-      // hydrate controls with existing selections and bind totals
       let secIdx=0;
       $all('.card', area).forEach((card) => {
         const tbody = card.querySelector('tbody');
@@ -330,7 +316,6 @@ import { MultiSelect } from './controls/multiselect.js';
       });
     }
 
-    // Header confirm
     $('#confirmHeaderBtn')?.addEventListener('click', async () => {
       reportState.report_date = $('#reportDate')?.value || null;
       reportState.worksheet_id = $('#worksheetSelect')?.value || null;
@@ -370,8 +355,9 @@ import { MultiSelect } from './controls/multiselect.js';
     }
 
     function normalizeStateForSave(){
-      // Fill from UI even if header wasn't confirmed
-      reportState.report_date = $('#reportDate')?.value || reportState.report_date;
+      // Normalize date to YYYY-MM-DD for <input type="date"> and DB
+      const raw = $('#reportDate')?.value || reportState.report_date || '';
+      reportState.report_date = String(raw).slice(0,10); // avoid timezone issues
       reportState.worksheet_id = $('#worksheetSelect')?.value || reportState.worksheet_id;
       reportState.header = typeof reportState.header === 'string' ? safeParse(reportState.header, {}) : (reportState.header || {});
       reportState.drivers = Array.isArray(reportState.drivers) ? reportState.drivers
@@ -384,7 +370,6 @@ import { MultiSelect } from './controls/multiselect.js';
     }
 
     async function saveReport(submit=false){
-      // Always capture latest UI
       snapshotDrivers();
       snapshotWorksheetInputs();
       normalizeStateForSave();
@@ -398,11 +383,11 @@ import { MultiSelect } from './controls/multiselect.js';
 
       const payload = {
         id: reportState.id,
-        report_date: reportState.report_date,
+        report_date: reportState.report_date, // YYYY-MM-DD
         worksheet_id: reportState.worksheet_id,
-        header: reportState.header,     // RAW object
-        drivers: reportState.drivers,   // RAW array
-        sections: reportState.sections, // RAW array
+        header: reportState.header,
+        drivers: reportState.drivers,
+        sections: reportState.sections,
         submitted: !!submit
       };
 
@@ -431,14 +416,16 @@ import { MultiSelect } from './controls/multiselect.js';
         await Promise.all([loadDrivers(), loadBuses(), loadWorksheets()]);
         const params = qs();
         const today = new Date(); const yyyy=today.getFullYear(); const mm=String(today.getMonth()+1).padStart(2,'0'); const dd=String(today.getDate()).padStart(2,'0');
-        const dateEl = $('#reportDate'); if (dateEl) dateEl.value = params.date || `${yyyy}-${mm}-${dd}`;
+        const dateEl = $('#reportDate'); 
+        if (dateEl) dateEl.value = params.date || `${yyyy}-${mm}-${dd}`;
 
         if (params.id){
           const res = await fetch(`/api/daily-report?id=${params.id}`);
           if (res.ok){
             const r = await res.json();
             reportState = { id:r.id, report_date:r.report_date, worksheet_id:r.worksheet_id, header:r.header||{other:''}, drivers:r.drivers||[], sections:r.sections||[] };
-            if (dateEl) dateEl.value = r.report_date;
+            // Normalize to YYYY-MM-DD for the input control (avoid TZ)
+            if (dateEl) dateEl.value = String(r.report_date || '').slice(0,10);
             const wsSel = $('#worksheetSelect'); if (wsSel) wsSel.value = String(r.worksheet_id);
             const other = $('#otherHeader'); if (other) other.value = r.header?.other || '';
             await initDriversTable(reportState.drivers);

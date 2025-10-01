@@ -3,7 +3,24 @@ const gridBody = document.querySelector('#grid tbody');
 const qInput = document.querySelector('#q');
 const newBtn = document.querySelector('#newBtn');
 
-function fmtDate(iso){ try { return new Date(iso).toLocaleDateString(); } catch { return iso; } }
+// Format a date-only value WITHOUT timezone shifts.
+// Accepts: 'YYYY-MM-DD', Date, or ISO string; returns localized or fallback.
+function fmtDate(d) {
+  if (!d) return '';
+  // Prefer a date-only string if we can extract it
+  const s = String(d);
+  const isoDay = s.slice(0, 10); // 'YYYY-MM-DD' from 'YYYY-MM-DD...' or leave as-is if shorter
+  if (/^\d{4}-\d{2}-\d{2}$/.test(isoDay)) {
+    // Pretty print without constructing Date (avoid TZ)
+    const [y, m, dd] = isoDay.split('-');
+    // Simple readable format e.g., Oct 1, 2025
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${monthNames[parseInt(m,10)-1]} ${parseInt(dd,10)}, ${y}`;
+  }
+  // Fallback to locale if we didn't have a parseable date-only string
+  try { return new Date(s).toLocaleDateString(); } catch { return s; }
+}
+
 function uniq(arr){ return Array.from(new Set(arr)); }
 
 async function fetchList(){
