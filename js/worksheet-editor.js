@@ -2,7 +2,7 @@
 let currentWorksheetId = null;
 let worksheetData = { id: null, name: '', sections: [] };
 
-// ===== Modal helpers (global CSS .modal + .open) =====
+// ===== Modal helpers (now using global CSS: .modal + .open) =====
 function openModal(id, focusId) {
   const modal = document.getElementById(id);
   if (!modal) return;
@@ -14,6 +14,7 @@ function closeModal(id) {
   if (!modal) return;
   modal.classList.remove('open');
 }
+// Backdrop click closes
 ['newWorksheetModal','newSectionModal'].forEach(mid => {
   const modal = document.getElementById(mid);
   modal?.addEventListener('click', (e) => {
@@ -24,8 +25,7 @@ function closeModal(id) {
 // ===== Utilities =====
 function assert(ok, msg) { if (!ok) throw new Error(msg); }
 
-// Build payload purely from DOM (only editable fields are captured)
-// Locked fields are forced to defaults ('' or 0).
+// Build payload purely from DOM
 function buildPayloadFromDOM() {
   const select = document.getElementById('worksheetSelect');
   const selectedOption = select?.options?.[select.selectedIndex];
@@ -39,20 +39,14 @@ function buildPayloadFromDOM() {
       const tds = tr.querySelectorAll('td');
       rows.push({
         id: tr.dataset.id || `new-${Date.now()}-${ri}`,
-        // LOCKED (do not allow defaults here)
-        bus_number_default: '',
-
-        // EDITABLE defaults
-        pickup_default:      tds[1]?.innerText.trim() || '',
-        dropoff_default:     tds[2]?.innerText.trim() || '',
-        pickup_time_default: tds[3]?.innerText.trim() || '',
-
-        // LOCKED numeric columns (always 0 in template)
-        ds_in_am_default:   0,
-        ns_out_am_default:  0,
-        ds_out_pm_default:  0,
-        ns_in_pm_default:   0,
-
+        bus_number_default: tds[0]?.innerText.trim() || '',
+        pickup_default:     tds[1]?.innerText.trim() || '',
+        dropoff_default:    tds[2]?.innerText.trim() || '',
+        pickup_time_default:tds[3]?.innerText.trim() || '',
+        ds_in_am_default:   parseInt(tds[4]?.innerText.trim() || '0', 10),
+        ns_out_am_default:  parseInt(tds[5]?.innerText.trim() || '0', 10),
+        ds_out_pm_default:  parseInt(tds[6]?.innerText.trim() || '0', 10),
+        ns_in_pm_default:   parseInt(tds[7]?.innerText.trim() || '0', 10),
         position: ri
       });
     });
@@ -65,16 +59,22 @@ function buildPayloadFromDOM() {
 // ===== Loaders =====
 async function loadWorksheets() {
   const res = await fetch('/api/worksheets');
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`GET /api/worksheets failed: ${t}`);
+  }
   const worksheets = await res.json();
   const select = document.getElementById('worksheetSelect');
 
   select.innerHTML = worksheets.map(ws =>
-    `<option value="\${ws.id}" \${ws.is_default ? 'selected' : ''}>
-       \${ws.name}\${ws.is_default ? ' (Default)' : ''}
+    `<option value="${ws.id}" ${ws.is_default ? 'selected' : ''}>
+       ${ws.name}${ws.is_default ? ' (Default)' : ''}
      </option>`).join('');
 
-  if (!worksheets.length) { openModal('newWorksheetModal','newWorksheetName'); return; }
+  if (!worksheets.length) {
+    openModal('newWorksheetModal', 'newWorksheetName');
+    return;
+  }
 
   currentWorksheetId = worksheets.find(w => w.is_default)?.id || worksheets[0].id;
   select.value = currentWorksheetId;
@@ -83,7 +83,10 @@ async function loadWorksheets() {
 
 async function loadWorksheet(id) {
   const res = await fetch(`/api/worksheets?id=${id}`);
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`GET /api/worksheets?id=${id} failed: ${t}`);
+  }
   worksheetData = await res.json();
   renderSections();
 }
@@ -104,7 +107,7 @@ function renderSections() {
     sectionDiv.dataset.id = section.id || '';
     sectionDiv.innerHTML = `
       <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <input class="section-title" value="\${section.section_name || ''}" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;"/>
+        <input class="section-title" value="${section.section_name || ''}" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;"/>
         <button class="btn btn-ghost addRowBtn">+ Add Row</button>
       </div>
       <table class="table compact w-full">
@@ -123,15 +126,15 @@ function renderSections() {
         </thead>
         <tbody>
           ${(section.rows || []).map((r) => `
-            <tr data-id="\${r.id || ''}">
-              <td class="cell-locked">—</td>
-              <td contenteditable="true">\${r.pickup_default ?? ''}</td>
-              <td contenteditable="true">\${r.dropoff_default ?? ''}</td>
-              <td contenteditable="true">\${r.pickup_time_default ?? ''}</td>
-              <td class="cell-locked">0</td>
-              <td class="cell-locked">0</td>
-              <td class="cell-locked">0</td>
-              <td class="cell-locked">0</td>
+            <tr data-id="${r.id || ''}">
+              <td contenteditable="true">${r.bus_number_default ?? ''}</td>
+              <td contenteditable="true">${r.pickup_default ?? ''}</td>
+              <td contenteditable="true">${r.dropoff_default ?? ''}</td>
+              <td contenteditable="true">${r.pickup_time_default ?? ''}</td>
+              <td contenteditable="true">${r.ds_in_am_default ?? 0}</td>
+              <td contenteditable="true">${r.ns_out_am_default ?? 0}</td>
+              <td contenteditable="true">${r.ds_out_pm_default ?? 0}</td>
+              <td contenteditable="true">${r.ns_in_pm_default ?? 0}</td>
               <td><a href="#" class="btn-link-sm deleteRowBtn">Delete</a></td>
             </tr>
           `).join('')}
@@ -150,8 +153,10 @@ document.getElementById('cancelNewWorksheet').addEventListener('click', () => cl
 document.getElementById('confirmNewWorksheet').addEventListener('click', async () => {
   const name = document.getElementById('newWorksheetName').value.trim();
   if (!name) return alert('Enter a name');
-  const res = await fetch('/api/worksheets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
-  if (!res.ok) { alert('Create failed: ' + await res.text()); return; }
+  const res = await fetch('/api/worksheets', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+  });
+  if (!res.ok) { alert(`Create failed: ${await res.text()}`); return; }
   const newWs = await res.json();
   closeModal('newWorksheetModal');
   await loadWorksheets();
@@ -180,10 +185,8 @@ document.getElementById('sectionsContainer').addEventListener('click', (e) => {
     const secDiv = e.target.closest('.section');
     const index = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
     payload.sections[index].rows.push({
-      id: `new-${Date.now()}`,
-      pickup_default: '', dropoff_default: '', pickup_time_default: '',
-      // locked numeric defaults
-      ds_in_am_default: 0, ns_out_am_default: 0, ds_out_pm_default: 0, ns_in_pm_default: 0,
+      id: `new-${Date.now()}`, bus_number_default: '', pickup_default: '', dropoff_default: '',
+      pickup_time_default: '', ds_in_am_default: 0, ns_out_am_default: 0, ds_out_pm_default: 0, ns_in_pm_default: 0,
       position: payload.sections[index].rows.length
     });
     worksheetData = { ...worksheetData, sections: payload.sections };
