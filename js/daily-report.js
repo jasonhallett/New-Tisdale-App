@@ -1,5 +1,8 @@
 // /js/daily-report.js
-// MultiSelect + live Totals; robust date handling (no timezone shifts)
+// Daily Report with live header (no confirm button) and Supervisor picker.
+// - MultiSelect (blue-themed) for bus picking
+// - Header edits instantly flow into worksheet row Bus Number(s) options
+// - Totals rows per section compute live
 import { MultiSelect } from './controls/multiselect.js';
 
 (function(){
@@ -16,12 +19,16 @@ import { MultiSelect } from './controls/multiselect.js';
       id: null,
       report_date: null,
       worksheet_id: null,
-      header: { other: '' },
-      drivers: [],
+      header: { other: '', supervisor_id: null },
+      drivers: [], // [{driver_id, name, buses:[string], status_id}]
       sections: []
     };
 
-    let master = { drivers: [], buses: [] };
+    let master = {
+      drivers: [], // {id, name}
+      buses: [],   // {id, number}
+      supervisors: [] // {id, name}
+    };
 
     const $ = (sel, root=document) => root.querySelector(sel);
     const $all = (sel, root=document) => Array.from(root.querySelectorAll(sel));
@@ -63,6 +70,13 @@ import { MultiSelect } from './controls/multiselect.js';
         const def = list.find(w => w.is_default) || list[0];
         if (!reportState.worksheet_id) reportState.worksheet_id = def?.id || null;
         hint.textContent = def ? `Default: ${def.name}` : '';
+        select.addEventListener('change', async (e)=>{
+          reportState.worksheet_id = e.target.value;
+          // rerender template with same header context
+          await renderFromTemplate();
+          // refresh worksheet bus options under new template
+          refreshWorksheetBusOptions();
+        });
       }catch(err){
         select.innerHTML = '';
         hint.textContent = 'Failed to load worksheets';
@@ -72,26 +86,42 @@ import { MultiSelect } from './controls/multiselect.js';
     async function loadDrivers(){
       const res = await fetch('/api/drivers');
       if(!res.ok) throw new Error(await res.text());
-      const rows = await res.json();
+      const rows = await res.json(); // [{id, first_name, last_name}]
       master.drivers = rows.map(r => ({ id:r.id, name:[r.first_name, r.last_name].filter(Boolean).join(' ').trim() }))
                            .sort((a,b)=>a.name.localeCompare(b.name));
     }
     async function loadBuses(){
       const res = await fetch('/api/buses');
       if(!res.ok) throw new Error(await res.text());
-      const rows = await res.json();
+      const rows = await res.json(); // [{id, unit_number}]
       master.buses = rows.map(b => ({ id:b.id, number:String(b.unit_number) }))
                          .sort((a,b)=>a.number.localeCompare(b.number));
     }
-    async function loadStatuses(){
-      const res = await fetch('/api/workday-status');
-      if(!res.ok) throw new Error(await res.text());
-      return await res.json();
+    async function loadSupervisors(){
+      try{
+        const res = await fetch('/api/supervisors');
+        if(!res.ok) throw new Error(await res.text());
+        const rows = await res.json(); // e.g., [{id, first_name,last_name}] or [{id,name}]
+        master.supervisors = rows.map(s => ({
+          id: s.id,
+          name: s.name || [s.first_name, s.last_name].filter(Boolean).join(' ').trim() || 'Supervisor'
+        })).sort((a,b)=>a.name.localeCompare(b.name));
+        const sel = $('#supervisorSelect');
+        sel.innerHTML = `<option value="">— Select —</option>` + master.supervisors.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        sel.addEventListener('change', (e)=>{ reportState.header.supervisor_id = e.target.value || null; });
+      }catch(err){
+        console.warn('supervisors load failed', err);
+        const sel = $('#supervisorSelect');
+        if (sel) sel.innerHTML = `<option value="">(none)</option>`;
+      }
     }
 
+    // ----- Custom control builders -----
     function buildHeaderBusMulti(container, preselected){
       const opts = master.buses.map(b => ({ value:b.number, label:b.number }));
       const ms = new MultiSelect(container, { options: opts, selected: preselected||[], placeholder:'Bus #' });
+      // live sync: any change to header buses recomputes allowed set
+      ms.onChange(()=> refreshWorksheetBusOptions());
       return ms;
     }
     function buildWorksheetBusMulti(container, preselected){
@@ -101,6 +131,7 @@ import { MultiSelect } from './controls/multiselect.js';
       return ms;
     }
 
+    // Header grid
     function driverOptionsHTML(selectedId){
       return master.drivers.map(d => `<option value="${d.id}" ${String(selectedId)===String(d.id)?'selected':''}>${d.name}</option>`).join('');
     }
@@ -133,23 +164,48 @@ import { MultiSelect } from './controls/multiselect.js';
       } else {
         tbody.insertAdjacentHTML('beforeend', driverRowHTML(statuses, {}));
       }
+      // hydrate MultiSelects
       $all('.drv-buses', tbody).forEach((cell, idx) => {
         const pre = prefillDrivers?.[idx]?.buses || [];
         const ms = buildHeaderBusMulti(cell, pre);
         cell._ms = ms;
       });
 
+      // header live events
+      tbody.addEventListener('input', (e)=>{
+        // driver or status change -> update reportState and refresh options
+        if (e.target.classList.contains('drv-id') || e.target.classList.contains('drv-status')){
+          snapshotDrivers();
+          refreshWorksheetBusOptions();
+        }
+      });
+      tbody.addEventListener('change', (e)=>{
+        if (e.target.classList.contains('drv-id') || e.target.classList.contains('drv-status')){
+          snapshotDrivers();
+          refreshWorksheetBusOptions();
+        }
+      });
       tbody.addEventListener('click', (e)=>{
         if(e.target.classList.contains('delDrv')){
           e.preventDefault();
           e.target.closest('tr').remove();
+          snapshotDrivers();
+          refreshWorksheetBusOptions();
         }
       });
       $('#addDriverRowBtn')?.addEventListener('click', ()=>{
         tbody.insertAdjacentHTML('beforeend', driverRowHTML(statuses, {}));
         const cell = tbody.lastElementChild.querySelector('.drv-buses');
         cell._ms = buildHeaderBusMulti(cell, []);
+        snapshotDrivers();
+        refreshWorksheetBusOptions();
       });
+    }
+
+    async function loadStatuses(){
+      const res = await fetch('/api/workday-status');
+      if(!res.ok) throw new Error(await res.text());
+      return await res.json(); // [{id,name}]
     }
 
     function snapshotDrivers(){
@@ -168,6 +224,7 @@ import { MultiSelect } from './controls/multiselect.js';
       }).filter(d => d.driver_id || (d.buses && d.buses.length));
     }
 
+    // ===== Totals helpers (per section) =====
     function computeSectionTotals(card){
       const rows = $all('tbody tr', card);
       let s1=0, s2=0, s3=0, s4=0;
@@ -202,10 +259,12 @@ import { MultiSelect } from './controls/multiselect.js';
       });
     }
 
+    // Worksheet rendering
     function rowInputHTML(r, entry){
       const t24 = to24h(r.pickup_time_default||''); const [hh0,mm0]=(t24||'00:00').split(':');
       const hh = entry?.pickup_time?.split(':')[0] ?? hh0 ?? '00';
       const mm = entry?.pickup_time?.split(':')[1] ?? mm0 ?? '00';
+      const pre = entry?.bus_numbers || (Array.isArray(entry?.buses)?entry.buses:null) || String(r.bus_number_default||'').split(',').map(s=>s.trim()).filter(Boolean);
       return `<tr>
         <td><div class="ws-buses" data-ms></div></td>
         <td contenteditable="true" class="inp-pickup">${entry?.pickup ?? r.pickup_default ?? ''}</td>
@@ -278,6 +337,7 @@ import { MultiSelect } from './controls/multiselect.js';
         const ws = await res.json();
         reportState.sections = ws.sections || [];
         area.innerHTML = reportState.sections.map(sectionInputHTML).join('');
+        // hydrate row bus multiselects
         let secIdx=0;
         $all('.card', area).forEach((card) => {
           const tbody = card.querySelector('tbody');
@@ -292,6 +352,8 @@ import { MultiSelect } from './controls/multiselect.js';
           bindSectionTotals(card);
           secIdx++;
         });
+        // After rendering, ensure options reflect header
+        refreshWorksheetBusOptions();
       }catch(err){
         area.innerHTML = `<div class="muted">Failed to load worksheet: ${err.message}</div>`;
       }
@@ -314,18 +376,25 @@ import { MultiSelect } from './controls/multiselect.js';
         bindSectionTotals(card);
         secIdx++;
       });
+      refreshWorksheetBusOptions();
     }
 
-    $('#confirmHeaderBtn')?.addEventListener('click', async () => {
-      reportState.report_date = $('#reportDate')?.value || null;
-      reportState.worksheet_id = $('#worksheetSelect')?.value || null;
-      reportState.header.other = $('#otherHeader')?.value || '';
+    function refreshWorksheetBusOptions(){
+      // compute allowed set from current header UI
       snapshotDrivers();
-      setStatus('Header confirmed');
-      if (reportState.id){ await renderFromReport(); } else { await renderFromTemplate(); }
-    });
+      const allowed = Array.from(allowedBusSet()).sort((a,b)=>a.localeCompare(b));
+      const opts = allowed.map(n => ({ value:String(n), label:String(n) }));
+      const setAllowed = new Set(allowed.map(String));
 
-    $('#worksheetSelect')?.addEventListener('change', (e)=>{ reportState.worksheet_id = e.target.value; });
+      // update every worksheet multiselect's options and prune selections
+      $all('.ws-buses').forEach(cell => {
+        const ms = cell._ms;
+        if (!ms) return;
+        const current = ms.get().map(String).filter(v => setAllowed.has(v)); // prune invalid
+        ms.updateOptions(opts);
+        ms.set(current); // will emit and re-render
+      });
+    }
 
     function snapshotWorksheetInputs(){
       const area = $('#worksheetArea');
@@ -354,54 +423,32 @@ import { MultiSelect } from './controls/multiselect.js';
       });
     }
 
-    function normalizeStateForSave(){
-      // Normalize date to YYYY-MM-DD for <input type="date"> and DB
-      const raw = $('#reportDate')?.value || reportState.report_date || '';
-      reportState.report_date = String(raw).slice(0,10); // avoid timezone issues
-      reportState.worksheet_id = $('#worksheetSelect')?.value || reportState.worksheet_id;
-      reportState.header = typeof reportState.header === 'string' ? safeParse(reportState.header, {}) : (reportState.header || {});
-      reportState.drivers = Array.isArray(reportState.drivers) ? reportState.drivers
-                           : (typeof reportState.drivers === 'string' ? safeParse(reportState.drivers, []) : []);
-      reportState.sections = Array.isArray(reportState.sections) ? reportState.sections
-                           : (typeof reportState.sections === 'string' ? safeParse(reportState.sections, []) : []);
-    }
-    function safeParse(s, fallback){
-      try{ const v = JSON.parse(s); return v==null?fallback:v; }catch{ return fallback; }
-    }
-
     async function saveReport(submit=false){
+      // live — always read straight from UI
+      reportState.report_date = String($('#reportDate')?.value || '').slice(0,10);
+      reportState.worksheet_id = $('#worksheetSelect')?.value || null;
+      reportState.header.other = $('#otherHeader')?.value || '';
+      reportState.header.supervisor_id = $('#supervisorSelect')?.value || null;
       snapshotDrivers();
       snapshotWorksheetInputs();
-      normalizeStateForSave();
 
-      if (!reportState.report_date){
-        alert('Missing Date'); return;
-      }
-      if (!reportState.worksheet_id){
-        alert('Missing Worksheet'); return;
-      }
+      if (!reportState.report_date){ alert('Missing Date'); return; }
+      if (!reportState.worksheet_id){ alert('Missing Worksheet'); return; }
 
       const payload = {
         id: reportState.id,
-        report_date: reportState.report_date, // YYYY-MM-DD
+        report_date: reportState.report_date,
         worksheet_id: reportState.worksheet_id,
         header: reportState.header,
         drivers: reportState.drivers,
         sections: reportState.sections,
         submitted: !!submit
       };
-
       const method = reportState.id ? 'PUT' : 'POST';
       const res = await fetch('/api/daily-report', {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
-      if(!res.ok){
-        const msg = await res.text().catch(()=>String(res.status));
-        alert(msg);
-        return;
-      }
+      if(!res.ok){ alert(await res.text()); return; }
       const out = await res.json();
       reportState.id = out.id;
       setStatus(submit ? 'Submitted' : 'Saved');
@@ -413,30 +460,31 @@ import { MultiSelect } from './controls/multiselect.js';
 
     (async function init(){
       try{
-        await Promise.all([loadDrivers(), loadBuses(), loadWorksheets()]);
+        await Promise.all([loadDrivers(), loadBuses(), loadWorksheets(), loadSupervisors()]);
         const params = qs();
         const today = new Date(); const yyyy=today.getFullYear(); const mm=String(today.getMonth()+1).padStart(2,'0'); const dd=String(today.getDate()).padStart(2,'0');
-        const dateEl = $('#reportDate'); 
-        if (dateEl) dateEl.value = params.date || `${yyyy}-${mm}-${dd}`;
+        const dateEl = $('#reportDate'); if (dateEl) dateEl.value = params.date || `${yyyy}-${mm}-${dd}`;
 
         if (params.id){
           const res = await fetch(`/api/daily-report?id=${params.id}`);
           if (res.ok){
             const r = await res.json();
-            reportState = { id:r.id, report_date:r.report_date, worksheet_id:r.worksheet_id, header:r.header||{other:''}, drivers:r.drivers||[], sections:r.sections||[] };
-            // Normalize to YYYY-MM-DD for the input control (avoid TZ)
+            reportState = { id:r.id, report_date:r.report_date, worksheet_id:r.worksheet_id, header:r.header||{other:'',supervisor_id:null}, drivers:r.drivers||[], sections:r.sections||[] };
             if (dateEl) dateEl.value = String(r.report_date || '').slice(0,10);
             const wsSel = $('#worksheetSelect'); if (wsSel) wsSel.value = String(r.worksheet_id);
+            const supSel = $('#supervisorSelect'); if (supSel) supSel.value = String(r.header?.supervisor_id || '');
             const other = $('#otherHeader'); if (other) other.value = r.header?.other || '';
             await initDriversTable(reportState.drivers);
             await renderFromReport();
             setStatus('Loaded for edit');
           }else{
             await initDriversTable([]);
+            await renderFromTemplate();
             setStatus('Failed to load report');
           }
         }else{
           await initDriversTable([]);
+          await renderFromTemplate();
         }
       }catch(err){
         bootError('Failed to initialize Daily Report. Check console and API routes.');
