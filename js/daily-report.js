@@ -1,6 +1,6 @@
 // /js/daily-report.js
-// Supervisor in header, compact MultiSelect height, smoother scrolling,
-// and the previous fixes (phantom panel, 24h time, section totals).
+// Supervisor in header, compact MultiSelect height handled via global CSS,
+// smoother scrolling, phantom dropdown fix, 24h time, and section totals.
 import { MultiSelect } from './controls/multiselect.js';
 
 (function(){
@@ -133,7 +133,7 @@ import { MultiSelect } from './controls/multiselect.js';
     function buildHeaderBusMulti(container, preselected){
       const opts = master.buses.map(b => ({ value:b.number, label:b.number }));
       const ms = new MultiSelect(container, { options: opts, selected: preselected||[], placeholder:'Bus #' });
-      closeMS(ms);
+      closeMS(ms); // avoid phantom panel on load
       return ms;
     }
     function buildWorksheetBusMulti(container, preselected){
