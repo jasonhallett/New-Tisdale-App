@@ -1,100 +1,65 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Daily Report</title>
-  <link rel="stylesheet" href="../css/tisdale-app.css"/>
-  <style>
-    .app.editor-standalone{ display:grid; grid-template-columns:1fr; grid-template-rows:auto 1fr; grid-template-areas:"main"; min-height:100vh; }
-    .card{ padding:14px; }
-    .grid-3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
-    .stack{ display:flex; flex-direction:column; gap:6px; }
-    .toolbar{ display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:12px; }
-    .table.compact{ border-collapse:collapse; width:100%; }
-    .table.compact th, .table.compact td{ padding:6px 8px; font-size:14px; line-height:1.2; }
-    .btn-link-sm{ font-size:12px; text-decoration:underline; cursor:pointer; }
-    .invalid{ outline:2px solid #dc2626; background:#fef2f2; }
-    .muted{ color:#64748b; }
-    .pill{ display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:999px; background:#f1f5f9; }
-    .time24{ display:inline-flex; align-items:center; gap:2px; }
-    .time-select { width:58px; min-width:54px; padding:4px 6px; font:inherit; }
-    .time-sep{ opacity:.6; }
-    #bootError{ color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; padding:8px 10px; border-radius:8px; display:none; margin-bottom:10px; }
-  </style>
+  <link rel="stylesheet" href="./tisdale-app.css"/>
 </head>
-<body>
-  <div class="app editor-standalone">
-    <main class="main" style="background:none;">
-      <section class="container" style="padding:14px 16px 18px;">
-        <div class="card">
-          <div id="bootError"></div>
-          <div class="toolbar">
-            <h2>Daily Report</h2>
-            <div class="pill"><span id="statusText" class="muted">Not saved</span></div>
-          </div>
+<body class="container">
+  <header style="margin:16px 0 8px;">
+    <h2 class="page-title">Daily Report</h2>
+    <div id="bootError" class="hidden"></div>
+    <div id="statusText" class="muted"></div>
+  </header>
 
-          <!-- Header / Top Section -->
-          <div class="grid-3" style="margin-bottom:12px;">
-            <div class="stack">
-              <label for="reportDate">Date</label>
-              <input id="reportDate" type="date"/>
-            </div>
-            <div class="stack">
-              <label for="worksheetSelect">Worksheet</label>
-              <select id="worksheetSelect"></select>
-              <div class="muted" id="defaultWorksheetHint"></div>
-            </div>
-            <div class="stack">
-              <label for="otherHeader">Other Header Info (draft)</label>
-              <input id="otherHeader" type="text" placeholder="e.g., Dispatcher, Weather, Notes"/>
-            </div>
-          </div>
+  <!-- Header (live) -->
+  <section class="card" style="padding:14px; margin-bottom:14px;">
+    <div style="display:grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap:12px; align-items:end;">
+      <div>
+        <label for="reportDate">Date</label>
+        <input type="date" id="reportDate"/>
+      </div>
+      <div>
+        <label for="supervisorSelect">Supervisor</label>
+        <select id="supervisorSelect"></select>
+      </div>
+      <div>
+        <label for="worksheetSelect">Worksheet</label>
+        <select id="worksheetSelect"></select>
+        <div id="defaultWorksheetHint" class="muted" style="font-size:.8rem;margin-top:4px;"></div>
+      </div>
+      <div>
+        <label for="otherHeader">Notes</label>
+        <input type="text" id="otherHeader" placeholder="Optional notes for the day"/>
+      </div>
+    </div>
 
-          <!-- Drivers Grid -->
-          <div class="stack" style="margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <h3>Drivers on Duty</h3>
-              <button class="btn btn-ghost" id="addDriverRowBtn">+ Add Driver</button>
-            </div>
-            <table class="table compact" id="driversTable">
-              <colgroup>
-                <col style="width:40%"/>
-                <col style="width:30%"/>
-                <col style="width:20%"/>
-                <col style="width:10%"/>
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Driver Name</th>
-                  <th>Bus Number(s) (comma-separated)</th>
-                  <th>Workday Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
+    <h3 style="margin:14px 0 8px;">Drivers Working</h3>
+    <table id="driversTable" class="table compact">
+      <thead>
+        <tr>
+          <th>Driver</th>
+          <th>Bus Number(s)</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div style="margin-top:8px;">
+      <button id="addDriverRowBtn" class="btn-ghost">Add Driver</button>
+    </div>
+  </section>
 
-          <!-- Lock-in & Load Worksheet -->
-          <div class="toolbar" style="margin:12px 0;">
-            <button class="btn" id="confirmHeaderBtn">Confirm Header</button>
-            <div class="muted">Once confirmed, inputs below unlock and bus entries will be limited to assigned buses.</div>
-          </div>
+  <!-- Worksheet area -->
+  <section id="worksheetArea"></section>
 
-          <!-- Worksheet Input Area -->
-          <div id="worksheetArea"></div>
+  <footer style="display:flex; gap:8px; margin:16px 0;">
+    <button id="saveDraftBtn" class="btn">Save Draft</button>
+    <button id="saveSubmitBtn" class="btn primary">Save & Submit</button>
+  </footer>
 
-          <div style="margin-top:14px; display:flex; gap:10px; justify-content:flex-end;">
-            <button class="btn" id="saveDraftBtn">Save Draft</button>
-            <button class="btn primary" id="saveSubmitBtn">Save & Submit</button>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <!-- Use /js/ path to match the rest of the app -->
-  <script type="module" src="../js/daily-report.js"></script>
+  <script type="module" src="./js/daily-report.js"></script>
 </body>
 </html>
