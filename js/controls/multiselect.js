@@ -1,34 +1,42 @@
 // /js/controls/multiselect.js
-// Lightweight reusable token-based multi-select with a searchable dropdown.
-// Usage:
-//   import { MultiSelect } from './controls/multiselect.js'
-//   const ms = new MultiSelect(container, { options:[{value:'106', label:'106'}, ...], selected:['105','255'], placeholder:'Vehicle #' });
-//   ms.get();           // -> ['105','255']
-//   ms.set(['107']);    // programmatic set
-//   ms.onChange(fn);    // subscribe to changes
-//   ms.updateOptions([{value:'1',label:'1'}]); // replace option list
+// Reusable token-based multi-select with searchable dropdown.
+// Blue-themed; dropdown chevron on the right; chips have individual X removal.
+// API:
+//   const ms = new MultiSelect(container, { options:[{value:'106',label:'106'}], selected:['105'], placeholder:'Bus #' });
+//   ms.get();                // -> ['105']
+//   ms.set(['107']);         // programmatic set
+//   ms.updateOptions([...]); // replace list
+//   ms.onChange(fn);         // subscribe to changes
 //
-// The control injects its own minimal styles once per page.
+// Notes:
+// - Click the field OR the chevron to open/close.
+// - Selecting an option clears the search input but keeps dropdown open for multi-pick.
+// - Keyboard: ↑/↓ navigate, Enter selects, Esc closes, Backspace removes last chip when search empty.
 
 const STYLE_ID = 'ms-token-select-styles';
 function injectStyles(){
   if (document.getElementById(STYLE_ID)) return;
   const css = `
-  .ms{ position:relative; display:flex; flex-wrap:wrap; gap:6px; padding:6px 8px; border:1px solid #CBD5E1; border-radius:10px; background:#fff; min-height:38px; cursor:text; }
-  .ms:focus-within{ outline:2px solid #2563EB22; border-color:#2563EB; }
-  .ms-token{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; background:#E6F4EA; border-radius:999px; font-size:13px; }
+  .ms{ position:relative; display:flex; flex-wrap:wrap; gap:6px; padding:6px 40px 6px 8px; border:1px solid #cbd5e1; border-radius:10px; background:#fff; min-height:38px; cursor:text; }
+  .ms:focus-within{ outline:2px solid rgba(59,130,246,.18); border-color:#3b82f6; }
+  .ms-token{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; background:#e0f2fe; border-radius:999px; font-size:13px; }
   .ms-x{ border:none; background:none; cursor:pointer; line-height:1; font-size:14px; padding:0 2px; opacity:.7; }
   .ms-x:hover{ opacity:1; }
   .ms-input{ flex:1 1 120px; min-width:120px; border:none; outline:none; font:inherit; padding:4px 2px; }
-  .ms-clear{ position:absolute; top:6px; right:6px; width:24px; height:24px; display:flex; align-items:center; justify-content:center; border:none; background:#F1F5F9; border-radius:999px; cursor:pointer; }
-  .ms-clear:hover{ background:#E2E8F0; }
-  .ms-dd{ position:absolute; left:0; right:0; top:calc(100% + 6px); background:#fff; border:1px solid #CBD5E1; border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.08); max-height:260px; overflow:auto; z-index:30; }
+  .ms-toggle{ position:absolute; top:6px; right:6px; width:26px; height:26px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .ms-toggle:hover{ background:#eef2f7; }
+  .ms-toggle svg{ width:14px; height:14px; transition:transform .15s ease; fill:#334155; }
+  .ms.open .ms-toggle svg{ transform:rotate(180deg); }
+  .ms-dd{ position:absolute; left:0; right:0; top:calc(100% + 6px); background:#fff; border:1px solid #cbd5e1; border-radius:10px; box-shadow:0 10px 30px rgba(2,6,23,.08); max-height:260px; overflow:auto; z-index:30; }
   .ms-opt{ display:flex; align-items:center; gap:8px; padding:10px 12px; cursor:pointer; }
-  .ms-opt:hover, .ms-opt[aria-selected="true"]{ background:#F1F5F9; }
-  .ms-dot{ width:8px; height:8px; background:#10B981; border-radius:999px; }
+  .ms-opt:hover, .ms-opt[aria-selected="true"]{ background:#eff6ff; }
+  .ms-dot{ width:8px; height:8px; background:#3b82f6; border-radius:999px; }
   .ms-empty{ padding:10px 12px; color:#64748b; }
   `;
-  const style = document.createElement('style'); style.id = STYLE_ID; style.textContent = css; document.head.appendChild(style);
+  const style = document.createElement('style');
+  style.id = STYLE_ID;
+  style.textContent = css;
+  document.head.appendChild(style);
 }
 
 export class MultiSelect{
@@ -40,6 +48,7 @@ export class MultiSelect{
     this.placeholder = placeholder;
     this.maxChips = maxChips;
     this.onChangeHandlers = [];
+    this.isOpen = false;
 
     this.build();
     this.render();
@@ -47,28 +56,43 @@ export class MultiSelect{
 
   build(){
     this.el.classList.add('ms');
+
     this.chipsWrap = document.createElement('div');
     this.chipsWrap.className = 'ms-chips';
+
     this.input = document.createElement('input');
     this.input.className = 'ms-input';
     this.input.setAttribute('placeholder', this.placeholder);
-    this.clearBtn = document.createElement('button');
-    this.clearBtn.className = 'ms-clear';
-    this.clearBtn.type = 'button';
-    this.clearBtn.title = 'Clear';
-    this.clearBtn.innerHTML = '×';
+
+    this.toggleBtn = document.createElement('button');
+    this.toggleBtn.className = 'ms-toggle';
+    this.toggleBtn.type = 'button';
+    this.toggleBtn.title = 'Open';
+    this.toggleBtn.innerHTML = `
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.8 7.5a1 1 0 0 1 1.4 0L10 10.3l2.8-2.8a1 1 0 1 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L5.8 8.9a1 1 0 0 1 0-1.4z"/></svg>
+    `;
 
     this.dd = document.createElement('div');
-    this.dd.className = 'ms-dd'; this.dd.style.display = 'none';
+    this.dd.className = 'ms-dd';
+    this.dd.style.display = 'none';
 
     this.el.appendChild(this.chipsWrap);
     this.el.appendChild(this.input);
-    this.el.appendChild(this.clearBtn);
+    this.el.appendChild(this.toggleBtn);
     this.el.appendChild(this.dd);
 
     // events
-    this.el.addEventListener('click', () => this.input.focus());
-    this.clearBtn.addEventListener('click', (e)=>{ e.stopPropagation(); this.set([]); });
+    this.el.addEventListener('click', (e) => {
+      if (e.target === this.toggleBtn) return; // handled below
+      this.open();
+      this.input.focus();
+    });
+    this.toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.isOpen ? this.close() : this.open(true);
+      if (this.isOpen) this.input.focus();
+    });
+
     this.input.addEventListener('input', () => this.renderDropdown());
     this.input.addEventListener('keydown', (e)=>{
       if (e.key === 'Backspace' && !this.input.value && this.selected.size){
@@ -83,14 +107,16 @@ export class MultiSelect{
         const focused = this.dd.querySelector('.ms-opt[tabindex="0"]');
         if (focused){ e.preventDefault(); focused.click(); }
       } else if (e.key === 'Escape'){
-        this.hideDropdown();
+        this.close();
       }
     });
+
     document.addEventListener('click', (e)=>{
-      if (!this.el.contains(e.target)) this.hideDropdown();
+      if (!this.el.contains(e.target)) this.close();
     });
   }
 
+  // public API
   updateOptions(options){ this.options = Array.isArray(options) ? options : []; this.renderDropdown(true); }
   onChange(fn){ if (typeof fn === 'function') this.onChangeHandlers.push(fn); }
   emit(){ this.onChangeHandlers.forEach(fn => fn(this.get())); }
@@ -102,8 +128,38 @@ export class MultiSelect{
     this.render();
     this.emit();
   }
-  add(v){ v=String(v); if (this.selected.has(v)) return; this.selected.add(v); this.render(); this.emit(); }
-  remove(v){ v=String(v); if (!this.selected.has(v)) return; this.selected.delete(v); this.render(); this.emit(); }
+  add(v){
+    v = String(v);
+    if (this.selected.has(v)) return;
+    this.selected.add(v);
+    // Clear the search text after selecting an option
+    this.input.value = '';
+    this.render();
+    this.emit();
+    // keep dropdown open for multi-select flow
+    this.open();
+  }
+  remove(v){
+    v = String(v);
+    if (!this.selected.has(v)) return;
+    this.selected.delete(v);
+    this.render();
+    this.emit();
+  }
+
+  // internals
+  filterOptions(){
+    const q = this.input.value.trim().toLowerCase();
+    const sel = this.selected;
+    const base = this.options.filter(o => !sel.has(String(o.value)));
+    if (!q) return base.slice(0, 250);
+    return base
+      .filter(o =>
+        String(o.label ?? o.value).toLowerCase().includes(q) ||
+        String(o.value).toLowerCase().includes(q)
+      )
+      .slice(0, 250);
+  }
 
   render(){
     // chips
@@ -117,23 +173,18 @@ export class MultiSelect{
       chip.querySelector('.ms-x').addEventListener('click', (e)=>{ e.stopPropagation(); this.remove(v); });
       this.chipsWrap.appendChild(chip);
     });
-    this.renderDropdown();
-  }
 
-  filterOptions(){
-    const q = this.input.value.trim().toLowerCase();
-    const sel = this.selected;
-    const base = this.options.filter(o => !sel.has(String(o.value)));
-    if (!q) return base.slice(0, 250);
-    return base.filter(o => String(o.label).toLowerCase().includes(q) || String(o.value).toLowerCase().includes(q)).slice(0, 250);
+    // dropdown
+    if (this.isOpen) this.renderDropdown(true);
   }
 
   renderDropdown(forceOpen=false){
     const list = this.filterOptions();
-    if (!forceOpen && !this.input.matches(':focus')){ this.hideDropdown(); return; }
+    if (!forceOpen && !this.isOpen) return;
+
     if (!list.length){
       this.dd.innerHTML = `<div class="ms-empty">No matches</div>`;
-    }else{
+    } else {
       this.dd.innerHTML = list.map(o => `
         <div class="ms-opt" role="option" data-value="${String(o.value)}" tabindex="-1">
           <div class="ms-dot"></div>
@@ -144,15 +195,19 @@ export class MultiSelect{
       this.dd.querySelectorAll('.ms-opt').forEach(el => {
         el.addEventListener('click', (e)=>{
           const v = el.getAttribute('data-value');
-          this.add(v);
-          this.input.focus();
+          this.add(v);        // this will also clear the input
+          this.input.focus(); // keep focus for subsequent picks
         });
       });
     }
-    this.showDropdown();
-    // Set initial focus
+
+    // Set first focusable option
+    const prev = this.dd.querySelector('.ms-opt[tabindex="0"]');
+    if (prev) prev.setAttribute('tabindex','-1');
     const first = this.dd.querySelector('.ms-opt');
     if (first){ first.setAttribute('tabindex', '0'); }
+
+    this.showDropdown();
   }
 
   focusNextOption(step){
@@ -168,6 +223,17 @@ export class MultiSelect{
     opts[next].focus();
   }
 
+  open(force=false){
+    this.isOpen = true;
+    this.el.classList.add('open');
+    this.showDropdown();
+    if (force) this.renderDropdown(true);
+  }
+  close(){
+    this.isOpen = false;
+    this.el.classList.remove('open');
+    this.hideDropdown();
+  }
   showDropdown(){ this.dd.style.display = 'block'; }
   hideDropdown(){ this.dd.style.display = 'none'; }
 }
