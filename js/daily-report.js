@@ -1,20 +1,7 @@
 // /js/daily-report.js
-// Daily Report UI wired to your existing API schemas.
-// Uses:
-//   GET /api/drivers  -> [{ id, first_name, last_name, ... }]
-//   GET /api/buses    -> [{ id, unit_number, ... }]
-//   GET/POST/PUT /api/daily-report (unchanged from previous draft)
-// Behavior updates:
-// - Header grid:
-//    • Driver: <select> built from drivers.first_name + ' ' + last_name
-//    • Bus Number(s): multi-select built from buses.unit_number
-//    • Status: from /api/workday-status (unchanged)
-// - Worksheet:
-//    • Removes the old "Buses (allowed)" column.
-//    • "Bus Number(s)" column is now EDITABLE via multi-select.
-//      Options are the union of bus numbers assigned to drivers in header.
-// - Save: each row stores entry.bus_numbers (and mirrors to entry.buses for back-compat).
-// - New/Edit flows still supported via ?date=YYYY-MM-DD and ?id=<reportId>.
+// Integrates MultiSelect for bus picking in header and worksheet.
+// Assumes this file is loaded with type="module".
+import { MultiSelect } from './controls/multiselect.js';
 
 (function(){
   const bootError = (msg) => {
@@ -26,68 +13,49 @@
   };
 
   const start = () => {
-    // State
     let reportState = {
       id: null,
       report_date: null,
       worksheet_id: null,
       header: { other: '' },
-      drivers: [], // [{driver_id, name, buses:[string unit_number], status_id}]
+      drivers: [], // [{driver_id, name, buses:[string], status_id}]
       sections: []
     };
 
-    // Master data (mapped to what the UI needs)
     let master = {
-      drivers: [], // { id, name }
-      buses: []    // { id, number } where number = String(unit_number)
+      drivers: [], // {id, name}
+      buses: []    // {id, number}
     };
 
-    // DOM helpers
     const $ = (sel, root=document) => root.querySelector(sel);
     const $all = (sel, root=document) => Array.from(root.querySelectorAll(sel));
     const setStatus = (msg) => { const s = $('#statusText'); if (s) s.textContent = msg; };
     const qs = () => { const p=new URLSearchParams(location.search); const o={}; p.forEach((v,k)=>o[k]=v); return o; };
 
-    // Time utils
     function to24h(value){
       if(!value) return '';
       let s = String(value).trim();
       const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
       if(m24){
-        let h = parseInt(m24[1],10);
-        let m = parseInt(m24[2],10);
+        let h = parseInt(m24[1],10), m=parseInt(m24[2],10);
         if(Number.isNaN(h) || Number.isNaN(m)) return '';
-        h = (h+24)%24;
-        m = Math.min(Math.max(m,0),59);
-        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+        h = (h+24)%24; m = (m+60)%60; return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
       }
       const m12 = s.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
       if(m12){
-        let h = parseInt(m12[1],10);
-        let m = parseInt(m12[2],10);
-        const ap = m12[3].toUpperCase();
-        if(ap === 'AM'){ if(h===12) h = 0; } else { if(h!==12) h += 12; }
+        let h = parseInt(m12[1],10), m=parseInt(m12[2],10); const ap=m12[3].toUpperCase();
+        if(ap==='AM'){ if(h===12) h=0; } else { if(h!==12) h+=12; }
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
       }
       const mh = s.match(/^(\d{1,2})$/);
-      if(mh){
-        let h = parseInt(mh[1],10);
-        h = (h+24)%24;
-        return `${String(h).padStart(2,'0')}:00`;
-      }
+      if(mh){ let h=parseInt(mh[1],10); h=(h+24)%24; return `${String(h).padStart(2,'0')}:00`; }
       return s;
     }
     const hourOptions = (selected) => { let out=''; for(let h=0; h<=23; h++){ const v=String(h).padStart(2,'0'); out+=`<option value="${v}" ${v===selected?'selected':''}>${v}</option>`;} return out; };
     const minuteOptions = (selected) => { let out=''; for(let m=0; m<=59; m++){ const v=String(m).padStart(2,'0'); out+=`<option value="${v}" ${v===selected?'selected':''}>${v}</option>`;} return out; };
 
-    // Allowed bus list (union of buses assigned above)
-    const allowedBusSet = () => {
-      const set = new Set();
-      reportState.drivers.forEach(d => (d.buses||[]).forEach(b => set.add(String(b))));
-      return set;
-    };
+    const allowedBusSet = () => { const set = new Set(); reportState.drivers.forEach(d => (d.buses||[]).forEach(b => set.add(String(b)))); return set; };
 
-    // Data loaders
     async function loadWorksheets(){
       const select = $('#worksheetSelect'); const hint = $('#defaultWorksheetHint');
       try{
@@ -105,43 +73,45 @@
         console.error(err);
       }
     }
-
-    // NOTE: adapts to your existing endpoints
     async function loadDrivers(){
       const res = await fetch('/api/drivers');
       if(!res.ok) throw new Error(await res.text());
-      const rows = await res.json(); // [{id, first_name, last_name, ...}]
-      master.drivers = rows.map(r => ({
-        id: r.id,
-        name: [r.first_name, r.last_name].filter(Boolean).join(' ').trim()
-      })).sort((a,b)=>a.name.localeCompare(b.name));
+      const rows = await res.json(); // [{id, first_name, last_name}]
+      master.drivers = rows.map(r => ({ id:r.id, name:[r.first_name, r.last_name].filter(Boolean).join(' ').trim() }))
+                           .sort((a,b)=>a.name.localeCompare(b.name));
     }
-
     async function loadBuses(){
       const res = await fetch('/api/buses');
       if(!res.ok) throw new Error(await res.text());
-      const rows = await res.json(); // [{id, unit_number, ...}]
-      master.buses = rows.map(b => ({
-        id: b.id,
-        number: String(b.unit_number) // normalize to string
-      })).sort((a,b)=>a.number.localeCompare(b.number));
+      const rows = await res.json(); // [{id, unit_number}]
+      master.buses = rows.map(b => ({ id:b.id, number:String(b.unit_number) }))
+                         .sort((a,b)=>a.number.localeCompare(b.number));
     }
-
     async function loadStatuses(){
       const res = await fetch('/api/workday-status');
       if(!res.ok) throw new Error(await res.text());
-      return await res.json(); // [{id, name, ...}]
+      return await res.json(); // [{id,name}]
+    }
+
+    // ----- Custom control builders -----
+    function buildHeaderBusMulti(container, preselected){
+      const opts = master.buses.map(b => ({ value:b.number, label:b.number }));
+      const ms = new MultiSelect(container, { options: opts, selected: preselected||[], placeholder:'Bus #' });
+      return ms;
+    }
+    function buildWorksheetBusMulti(container, preselected){
+      const allowed = Array.from(allowedBusSet()).sort((a,b)=>a.localeCompare(b));
+      const opts = allowed.map(n => ({ value:n, label:n }));
+      const ms = new MultiSelect(container, { options: opts, selected: preselected||[], placeholder:'Bus #' });
+      return ms;
     }
 
     // Header grid
     function driverOptionsHTML(selectedId){
       return master.drivers.map(d => `<option value="${d.id}" ${String(selectedId)===String(d.id)?'selected':''}>${d.name}</option>`).join('');
     }
-    function busOptionsHTML(selectedNumbers){
-      const sel = new Set((selectedNumbers||[]).map(String));
-      return master.buses.map(b => `<option value="${b.number}" ${sel.has(String(b.number))?'selected':''}>${b.number}</option>`).join('');
-    }
     function driverRowHTML(statuses, driver){
+      const pre = (driver?.buses)||[];
       return `<tr>
         <td>
           <select class="drv-id">
@@ -149,9 +119,7 @@
           </select>
         </td>
         <td>
-          <select class="drv-buses" multiple size="3" title="Select buses">
-            ${busOptionsHTML(driver?.buses)}
-          </select>
+          <div class="drv-buses" data-ms></div>
         </td>
         <td>
           <select class="drv-status">
@@ -172,6 +140,13 @@
       } else {
         tbody.insertAdjacentHTML('beforeend', driverRowHTML(statuses, {}));
       }
+      // hydrate MultiSelects
+      $all('.drv-buses', tbody).forEach((cell, idx) => {
+        const pre = prefillDrivers?.[idx]?.buses || [];
+        const ms = buildHeaderBusMulti(cell, pre);
+        cell._ms = ms;
+      });
+
       tbody.addEventListener('click', (e)=>{
         if(e.target.classList.contains('delDrv')){
           e.preventDefault();
@@ -180,6 +155,8 @@
       });
       $('#addDriverRowBtn')?.addEventListener('click', ()=>{
         tbody.insertAdjacentHTML('beforeend', driverRowHTML(statuses, {}));
+        const cell = tbody.lastElementChild.querySelector('.drv-buses');
+        cell._ms = buildHeaderBusMulti(cell, []);
       });
     }
 
@@ -187,9 +164,9 @@
       const rows = $all('#driversTable tbody tr');
       reportState.drivers = rows.map(tr => {
         const id = tr.querySelector('.drv-id')?.value || null;
-        const buses = Array.from(tr.querySelector('.drv-buses')?.selectedOptions || []).map(o => String(o.value));
         const status_id = tr.querySelector('.drv-status')?.value || null;
         const driver = master.drivers.find(d => String(d.id)===String(id));
+        const buses = tr.querySelector('.drv-buses')._ms?.get() || [];
         return {
           driver_id: id ? Number(id) : null,
           name: driver?.name || '',
@@ -200,24 +177,13 @@
     }
 
     // Worksheet rendering
-    function busesSelectHTML(preselected){
-      const allowed = Array.from(allowedBusSet()).sort((a,b)=>a.localeCompare(b));
-      const sel = new Set((preselected||[]).map(String));
-      return `<select class="ws-buses" multiple size="3" title="Select from assigned buses only">
-        ${allowed.map(n => `<option value="${n}" ${sel.has(String(n))?'selected':''}>${n}</option>`).join('')}
-      </select>`;
-    }
-
     function rowInputHTML(r, entry){
       const t24 = to24h(r.pickup_time_default||''); const [hh0,mm0]=(t24||'00:00').split(':');
       const hh = entry?.pickup_time?.split(':')[0] ?? hh0 ?? '00';
       const mm = entry?.pickup_time?.split(':')[1] ?? mm0 ?? '00';
-      // Preselect: entry.bus_numbers OR entry.buses OR parse row default
-      const pre = entry?.bus_numbers
-        || (Array.isArray(entry?.buses) ? entry.buses : null)
-        || String(r.bus_number_default||'').split(',').map(s=>s.trim()).filter(Boolean);
+      const pre = entry?.bus_numbers || (Array.isArray(entry?.buses)?entry.buses:null) || String(r.bus_number_default||'').split(',').map(s=>s.trim()).filter(Boolean);
       return `<tr>
-        <td>${busesSelectHTML(pre)}</td>
+        <td><div class="ws-buses" data-ms></div></td>
         <td contenteditable="true" class="inp-pickup">${entry?.pickup ?? r.pickup_default ?? ''}</td>
         <td contenteditable="true" class="inp-dropoff">${entry?.dropoff ?? r.dropoff_default ?? ''}</td>
         <td>
@@ -241,7 +207,7 @@
         <h4 style="margin-bottom:6px;">${section.section_name || ''}</h4>
         <table class="table compact">
           <colgroup>
-            <col style="width:12%"/><col style="width:19%"/><col style="width:19%"/><col style="width:9%"/>
+            <col style="width:16%"/><col style="width:19%"/><col style="width:19%"/><col style="width:9%"/>
             <col style="width:12%"/><col style="width:8%"/><col style="width:8%"/><col style="width:8%"/><col style="width:8%"/>
           </colgroup>
           <thead>
@@ -274,6 +240,25 @@
         const ws = await res.json();
         reportState.sections = ws.sections || [];
         area.innerHTML = reportState.sections.map(sectionInputHTML).join('');
+        // hydrate row bus multiselects with allowed options
+        $all('.ws-buses', area).forEach((cell, idx) => {
+          const entry = reportState.sections.flatMap(s=>s.entries||[])[idx]; // rough map; per-row map handled in snapshot
+          const pre = undefined; // allow control to default; we set during snapshot render loop below
+        });
+        // build controls row-by-row
+        let secIdx=0;
+        $all('.card', area).forEach((card) => {
+          const tbody = card.querySelector('tbody');
+          const rows = $all('tr', tbody);
+          rows.forEach((tr, i) => {
+            const cell = tr.querySelector('.ws-buses');
+            const entries = (reportState.sections[secIdx]?.entries)||[];
+            const entry = entries[i] || {};
+            const pre = entry.bus_numbers || entry.buses || [];
+            cell._ms = buildWorksheetBusMulti(cell, pre);
+          });
+          secIdx++;
+        });
       }catch(err){
         area.innerHTML = `<div class="muted">Failed to load worksheet: ${err.message}</div>`;
       }
@@ -282,6 +267,20 @@
     async function renderFromReport(){
       const area = $('#worksheetArea');
       area.innerHTML = (reportState.sections||[]).map(sectionInputHTML).join('');
+      // hydrate controls with existing selections
+      let secIdx=0;
+      $all('.card', area).forEach((card) => {
+        const tbody = card.querySelector('tbody');
+        const rows = $all('tr', tbody);
+        rows.forEach((tr, i) => {
+          const cell = tr.querySelector('.ws-buses');
+          const entries = (reportState.sections[secIdx]?.entries)||[];
+          const entry = entries[i] || {};
+          const pre = entry.bus_numbers || entry.buses || [];
+          cell._ms = buildWorksheetBusMulti(cell, pre);
+        });
+        secIdx++;
+      });
     }
 
     // Header confirm
@@ -294,7 +293,6 @@
       if (reportState.id){ await renderFromReport(); } else { await renderFromTemplate(); }
     });
 
-    // Worksheet select change
     $('#worksheetSelect')?.addEventListener('change', (e)=>{ reportState.worksheet_id = e.target.value; });
 
     function snapshotWorksheetInputs(){
@@ -306,7 +304,8 @@
         sec.entries = rows.map((tr) => {
           const hh = tr.querySelector('.inp-hh')?.value || '00';
           const mm = tr.querySelector('.inp-mm')?.value || '00';
-          const busNumbers = Array.from(tr.querySelector('.ws-buses')?.selectedOptions || []).map(o => String(o.value));
+          const cell = tr.querySelector('.ws-buses');
+          const busNumbers = cell?._ms?.get() || [];
           return {
             pickup: tr.querySelector('.inp-pickup')?.innerText?.trim() || '',
             dropoff: tr.querySelector('.inp-dropoff')?.innerText?.trim() || '',
@@ -317,7 +316,7 @@
             ds_out_pm: parseInt(tr.querySelector('.inp-dsoutp')?.value || '0',10),
             ns_in_pm: parseInt(tr.querySelector('.inp-nsinp')?.value || '0',10),
             bus_numbers: busNumbers,
-            buses: busNumbers // mirror for back-compat if your API expects "buses"
+            buses: busNumbers
           };
         });
       });
@@ -326,7 +325,6 @@
     async function saveReport(submit=false){
       snapshotDrivers();
       snapshotWorksheetInputs();
-
       const payload = {
         id: reportState.id,
         report_date: reportState.report_date,
@@ -347,37 +345,21 @@
       alert(submit ? 'Daily Report submitted ✅' : 'Daily Report saved ✅');
     }
 
-    // Wire save
     $('#saveDraftBtn')?.addEventListener('click', ()=>saveReport(false));
     $('#saveSubmitBtn')?.addEventListener('click', ()=>saveReport(true));
 
-    // Init
     (async function init(){
       try{
-        // Preload masters to build selects with your existing API shapes
         await Promise.all([loadDrivers(), loadBuses(), loadWorksheets()]);
-
-        // Init date
         const params = qs();
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth()+1).padStart(2,'0');
-        const dd = String(today.getDate()).padStart(2,'0');
-        const dateEl = $('#reportDate');
-        if (dateEl) dateEl.value = params.date || `${yyyy}-${mm}-${dd}`;
+        const today = new Date(); const yyyy=today.getFullYear(); const mm=String(today.getMonth()+1).padStart(2,'0'); const dd=String(today.getDate()).padStart(2,'0');
+        const dateEl = $('#reportDate'); if (dateEl) dateEl.value = params.date || `${yyyy}-${mm}-${dd}`;
 
         if (params.id){
           const res = await fetch(`/api/daily-report?id=${params.id}`);
           if (res.ok){
             const r = await res.json();
-            reportState = {
-              id: r.id,
-              report_date: r.report_date,
-              worksheet_id: r.worksheet_id,
-              header: r.header || { other: '' },
-              drivers: r.drivers || [],
-              sections: r.sections || []
-            };
+            reportState = { id:r.id, report_date:r.report_date, worksheet_id:r.worksheet_id, header:r.header||{other:''}, drivers:r.drivers||[], sections:r.sections||[] };
             if (dateEl) dateEl.value = r.report_date;
             const wsSel = $('#worksheetSelect'); if (wsSel) wsSel.value = String(r.worksheet_id);
             const other = $('#otherHeader'); if (other) other.value = r.header?.other || '';
