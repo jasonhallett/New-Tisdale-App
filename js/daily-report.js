@@ -26,49 +26,7 @@ import { MultiSelect } from './controls/multiselect.js';
     };
   };
 
-  // Inject page-local styles so we don’t touch global CSS
-  function injectPageStyles(){
-    if (document.getElementById('daily-report-local-css')) return;
-    const css = `
-      /* Compact table rows for worksheet */
-      .table.compact { contain: paint; transform: translateZ(0); }
-      .table.compact th,
-      .table.compact td { padding: 6px 8px; vertical-align: middle; }
-
-      /* Inputs/selects consistent short height */
-      .table.compact input[type="number"],
-      .table.compact input[type="text"],
-      .table.compact select { height: 28px; line-height: 26px; font-size: 14px; }
-
-      /* Time field: readable but tight */
-      .time24 { display: flex; align-items: center; gap: 2px; }
-      .time24 .time-select { width: 4.2ch !important; min-width: 4.2ch; text-align: center; padding: 2px 4px; height: 28px; line-height: 26px; }
-      .time24 .time-sep { padding: 0 2px; }
-
-      /* --- MultiSelect tune-up (height + density) --- */
-      .table.compact .ms-root { min-height: 28px; height: 28px; }
-      .table.compact .ms-input { min-height: 28px; height: 28px; padding: 2px 6px; }
-      .table.compact .ms-input input { height: 24px; line-height: 24px; padding: 0 2px; }
-      .table.compact .ms-chips { gap: 4px; }
-      .table.compact .ms-chip { padding: 0 6px; font-size: 12px; border-radius: 10px; }
-      .table.compact .ms-toggle { height: 28px; width: 28px; min-width: 28px; }
-
-      /* Panel: smaller and never occupying space when closed */
-      .ms-panel { max-height: 180px; overflow: auto; }
-      .ms-panel[aria-hidden="true"] { display: none !important; }
-
-      /* Reduce heavy shadows during scroll (helps low-end GPUs) */
-      .card { will-change: transform; }
-    `;
-    const style = document.createElement('style');
-    style.id = 'daily-report-local-css';
-    style.textContent = css;
-    document.head.appendChild(style);
-  }
-
   const start = () => {
-    injectPageStyles();
-
     let reportState = {
       id: null,
       report_date: null,

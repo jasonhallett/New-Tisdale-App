@@ -136,8 +136,6 @@ a:hover{ text-decoration: underline; }
   border-color: color-mix(in srgb, var(--primary) 28%, var(--line));
 }
 
-
-
 /* Topbar */
 .topbar{
   grid-area: topbar;
@@ -422,3 +420,31 @@ td[contenteditable="true"]:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(
     padding-right: 12px;
   }
 }
+
+/* ================================================================
+   Daily Report / Worksheet tuning (global + reusable)
+   - Keep controls short & consistent inside compact tables
+   - Make MultiSelect height match inputs
+   - Clean 24h time selects
+   ================================================================ */
+
+/* Inputs/selects inside compact tables: consistent short height */
+.table.compact input[type="number"],
+.table.compact input[type="text"],
+.table.compact select {
+  height: 28px;
+  line-height: 26px;
+  font-size: 14px;
+}
+
+/* 24-hour time pair (HH : MM) */
+.time24 { display: flex; align-items: center; gap: 2px; }
+.time24 .time-select {
+  width: 6.2ch;          /* two digits + breathing room */
+  min-width: 6.2ch;
+  text-align: center;
+  padding: 2px 4px;
+  height: 28px;
+  line-height: 26px;
+}
+.time24 .time-sep { padding: 0 2px; }
