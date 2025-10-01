@@ -1,6 +1,5 @@
 // /js/daily-report.js
-// Integrates MultiSelect for bus picking in header and worksheet.
-// Assumes this file is loaded with type="module".
+// Integrates MultiSelect & live Totals; FIX: stringify JSON fields for API.
 import { MultiSelect } from './controls/multiselect.js';
 
 (function(){
@@ -111,7 +110,6 @@ import { MultiSelect } from './controls/multiselect.js';
       return master.drivers.map(d => `<option value="${d.id}" ${String(selectedId)===String(d.id)?'selected':''}>${d.name}</option>`).join('');
     }
     function driverRowHTML(statuses, driver){
-      const pre = (driver?.buses)||[];
       return `<tr>
         <td>
           <select class="drv-id">
@@ -176,6 +174,41 @@ import { MultiSelect } from './controls/multiselect.js';
       }).filter(d => d.driver_id || (d.buses && d.buses.length));
     }
 
+    // ===== Totals helpers (per section) =====
+    function computeSectionTotals(card){
+      const rows = $all('tbody tr', card);
+      let s1=0, s2=0, s3=0, s4=0;
+      rows.forEach(tr => {
+        const v1 = parseInt(tr.querySelector('.inp-dsina')?.value || '0', 10) || 0;
+        const v2 = parseInt(tr.querySelector('.inp-nsouta')?.value || '0', 10) || 0;
+        const v3 = parseInt(tr.querySelector('.inp-dsoutp')?.value || '0', 10) || 0;
+        const v4 = parseInt(tr.querySelector('.inp-nsinp')?.value || '0', 10) || 0;
+        s1 += v1; s2 += v2; s3 += v3; s4 += v4;
+      });
+      const tds = {
+        dsin: card.querySelector('.totals-dsina'),
+        nsout: card.querySelector('.totals-nsouta'),
+        dsout: card.querySelector('.totals-dsoutp'),
+        nsin: card.querySelector('.totals-nsinp'),
+        grand: card.querySelector('.totals-grand')
+      };
+      if (tds.dsin)  tds.dsin.textContent  = String(s1);
+      if (tds.nsout) tds.nsout.textContent = String(s2);
+      if (tds.dsout) tds.dsout.textContent = String(s3);
+      if (tds.nsin)  tds.nsin.textContent  = String(s4);
+      if (tds.grand) tds.grand.textContent = String(s1+s2+s3+s4);
+    }
+
+    function bindSectionTotals(card){
+      computeSectionTotals(card);
+      card.addEventListener('input', (e) => {
+        const t = e.target;
+        if (t.classList && (t.classList.contains('inp-dsina') || t.classList.contains('inp-nsouta') || t.classList.contains('inp-dsoutp') || t.classList.contains('inp-nsinp'))){
+          computeSectionTotals(card);
+        }
+      });
+    }
+
     // Worksheet rendering
     function rowInputHTML(r, entry){
       const t24 = to24h(r.pickup_time_default||''); const [hh0,mm0]=(t24||'00:00').split(':');
@@ -203,8 +236,9 @@ import { MultiSelect } from './controls/multiselect.js';
 
     function sectionInputHTML(section){
       const entries = section.entries || [];
+      const secName = section.section_name || 'Section';
       return `<div class="card" style="margin-bottom:12px;">
-        <h4 style="margin-bottom:6px;">${section.section_name || ''}</h4>
+        <h4 style="margin-bottom:6px;">${secName}</h4>
         <table class="table compact">
           <colgroup>
             <col style="width:16%"/><col style="width:19%"/><col style="width:19%"/><col style="width:9%"/>
@@ -226,6 +260,19 @@ import { MultiSelect } from './controls/multiselect.js';
           <tbody>
             ${(section.rows||[]).map((r,i)=>rowInputHTML(r, entries[i])).join('')}
           </tbody>
+          <tfoot>
+            <tr class="row-totals">
+              <td colspan="5" class="totals-label"><strong>Totals</strong></td>
+              <td class="totals-dsina">0</td>
+              <td class="totals-nsouta">0</td>
+              <td class="totals-dsoutp">0</td>
+              <td class="totals-nsinp">0</td>
+            </tr>
+            <tr class="row-grand">
+              <td colspan="8" class="totals-grand-label"><strong>${secName} Grand Total</strong></td>
+              <td class="totals-grand">0</td>
+            </tr>
+          </tfoot>
         </table>
       </div>`;
     }
@@ -240,12 +287,7 @@ import { MultiSelect } from './controls/multiselect.js';
         const ws = await res.json();
         reportState.sections = ws.sections || [];
         area.innerHTML = reportState.sections.map(sectionInputHTML).join('');
-        // hydrate row bus multiselects with allowed options
-        $all('.ws-buses', area).forEach((cell, idx) => {
-          const entry = reportState.sections.flatMap(s=>s.entries||[])[idx]; // rough map; per-row map handled in snapshot
-          const pre = undefined; // allow control to default; we set during snapshot render loop below
-        });
-        // build controls row-by-row
+        // hydrate row bus multiselects with allowed options and bind totals
         let secIdx=0;
         $all('.card', area).forEach((card) => {
           const tbody = card.querySelector('tbody');
@@ -257,6 +299,7 @@ import { MultiSelect } from './controls/multiselect.js';
             const pre = entry.bus_numbers || entry.buses || [];
             cell._ms = buildWorksheetBusMulti(cell, pre);
           });
+          bindSectionTotals(card);
           secIdx++;
         });
       }catch(err){
@@ -267,7 +310,7 @@ import { MultiSelect } from './controls/multiselect.js';
     async function renderFromReport(){
       const area = $('#worksheetArea');
       area.innerHTML = (reportState.sections||[]).map(sectionInputHTML).join('');
-      // hydrate controls with existing selections
+      // hydrate controls with existing selections and bind totals
       let secIdx=0;
       $all('.card', area).forEach((card) => {
         const tbody = card.querySelector('tbody');
@@ -279,6 +322,7 @@ import { MultiSelect } from './controls/multiselect.js';
           const pre = entry.bus_numbers || entry.buses || [];
           cell._ms = buildWorksheetBusMulti(cell, pre);
         });
+        bindSectionTotals(card);
         secIdx++;
       });
     }
@@ -325,20 +369,29 @@ import { MultiSelect } from './controls/multiselect.js';
     async function saveReport(submit=false){
       snapshotDrivers();
       snapshotWorksheetInputs();
+
+      // >>> FIX: stringify JSON fields for API that casts with ::json/jsonb
       const payload = {
         id: reportState.id,
         report_date: reportState.report_date,
         worksheet_id: reportState.worksheet_id,
-        header: reportState.header,
-        drivers: reportState.drivers,
-        sections: reportState.sections,
+        header: JSON.stringify(reportState.header ?? {}),     // <—
+        drivers: JSON.stringify(reportState.drivers ?? []),   // <—
+        sections: JSON.stringify(reportState.sections ?? []), // <—
         submitted: !!submit
       };
+
       const method = reportState.id ? 'PUT' : 'POST';
       const res = await fetch('/api/daily-report', {
-        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
-      if(!res.ok){ alert(await res.text()); return; }
+      if(!res.ok){
+        const msg = await res.text().catch(()=>String(res.status));
+        alert(msg);
+        return;
+      }
       const out = await res.json();
       reportState.id = out.id;
       setStatus(submit ? 'Submitted' : 'Saved');
