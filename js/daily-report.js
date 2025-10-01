@@ -1,5 +1,8 @@
 // /js/daily-report.js
-// Integrates MultiSelect & live Totals; FIX: stringify JSON fields for API.
+// MultiSelect + live Totals; FIXES:
+// - Save Draft works even before "Confirm Header" (reads UI directly)
+// - Send raw objects/arrays to API (no JSON.stringify on header/drivers/sections)
+// - Defensive normalization if fields somehow arrive as strings
 import { MultiSelect } from './controls/multiselect.js';
 
 (function(){
@@ -366,18 +369,40 @@ import { MultiSelect } from './controls/multiselect.js';
       });
     }
 
+    function normalizeStateForSave(){
+      // Fill from UI even if header wasn't confirmed
+      reportState.report_date = $('#reportDate')?.value || reportState.report_date;
+      reportState.worksheet_id = $('#worksheetSelect')?.value || reportState.worksheet_id;
+      reportState.header = typeof reportState.header === 'string' ? safeParse(reportState.header, {}) : (reportState.header || {});
+      reportState.drivers = Array.isArray(reportState.drivers) ? reportState.drivers
+                           : (typeof reportState.drivers === 'string' ? safeParse(reportState.drivers, []) : []);
+      reportState.sections = Array.isArray(reportState.sections) ? reportState.sections
+                           : (typeof reportState.sections === 'string' ? safeParse(reportState.sections, []) : []);
+    }
+    function safeParse(s, fallback){
+      try{ const v = JSON.parse(s); return v==null?fallback:v; }catch{ return fallback; }
+    }
+
     async function saveReport(submit=false){
+      // Always capture latest UI
       snapshotDrivers();
       snapshotWorksheetInputs();
+      normalizeStateForSave();
 
-      // >>> FIX: stringify JSON fields for API that casts with ::json/jsonb
+      if (!reportState.report_date){
+        alert('Missing Date'); return;
+      }
+      if (!reportState.worksheet_id){
+        alert('Missing Worksheet'); return;
+      }
+
       const payload = {
         id: reportState.id,
         report_date: reportState.report_date,
         worksheet_id: reportState.worksheet_id,
-        header: JSON.stringify(reportState.header ?? {}),     // <—
-        drivers: JSON.stringify(reportState.drivers ?? []),   // <—
-        sections: JSON.stringify(reportState.sections ?? []), // <—
+        header: reportState.header,     // RAW object
+        drivers: reportState.drivers,   // RAW array
+        sections: reportState.sections, // RAW array
         submitted: !!submit
       };
 
