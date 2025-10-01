@@ -22,8 +22,8 @@ function rowHTML(r){
     <td>${fmtDate(r.report_date)}</td>
     <td>${r.bus_driver_only ?? '-'}</td>
     <td>${r.bus_driver_bus ?? '-'}</td>
-    <td align="center"><a href="pages/daily-report.html?id=${r.id}" class="btn-link">View</a></td>
-    <td align="center"><a href="pages/daily-report.html?id=${r.id}" class="btn-link">Edit</a></td>
+    <td align="center"><a href="./daily-report.html?id=${r.id}" class="btn-link">View</a></td>
+    <td align="center"><a href="./daily-report.html?id=${r.id}" class="btn-link">Edit</a></td>
     <td align="center"><button class="btn btn-ghost delBtn">Delete</button></td>
     <td align="center"><button class="btn btn-ghost emailBtn">Email</button></td>
   </tr>`;
@@ -64,7 +64,7 @@ async function load(){
 
 newBtn?.addEventListener('click', () => {
   const today = new Date(); const yyyy=today.getFullYear(); const mm=String(today.getMonth()+1).padStart(2,'0'); const dd=String(today.getDate()).padStart(2,'0');
-  location.href = `pages/daily-report.html?date=${yyyy}-${mm}-${dd}`;
+  location.href = `./daily-report.html?date=${yyyy}-${mm}-${dd}`;
 });
 
 load();
