@@ -1,65 +1,73 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Daily Report</title>
-  <link rel="stylesheet" href="./tisdale-app.css"/>
+  <!-- Match other pages’ stylesheet location -->
+  <link rel="stylesheet" href="./css/tisdale-app.css" />
 </head>
-<body class="container">
-  <header style="margin:16px 0 8px;">
-    <h2 class="page-title">Daily Report</h2>
-    <div id="bootError" class="hidden"></div>
-    <div id="statusText" class="muted"></div>
-  </header>
+<body>
+  <section class="container" style="padding:14px 16px 18px;">
+    <div class="card">
+      <header style="margin-bottom:12px;">
+        <h2 class="page-title">Daily Report</h2>
+        <div id="bootError" class="hidden"></div>
+        <div id="statusText" class="muted"></div>
+      </header>
 
-  <!-- Header (live) -->
-  <section class="card" style="padding:14px; margin-bottom:14px;">
-    <div style="display:grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap:12px; align-items:end;">
-      <div>
-        <label for="reportDate">Date</label>
-        <input type="date" id="reportDate"/>
+      <!-- Header -->
+      <div class="grid" style="display:grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap:12px; align-items:end;">
+        <div>
+          <label for="reportDate">Date</label>
+          <input type="date" id="reportDate" />
+        </div>
+
+        <div>
+          <label for="worksheetSelect">Worksheet</label>
+          <select id="worksheetSelect"></select>
+          <div id="defaultWorksheetHint" class="muted" style="font-size:.8rem;margin-top:4px;"></div>
+        </div>
+
+        <div style="grid-column: span 2;">
+          <label for="otherHeader">Notes</label>
+          <input type="text" id="otherHeader" placeholder="Optional notes for the day" />
+        </div>
       </div>
-      <div>
-        <label for="supervisorSelect">Supervisor</label>
-        <select id="supervisorSelect"></select>
+
+      <div style="display:flex; gap:8px; margin:12px 0 0;">
+        <button id="confirmHeaderBtn" class="btn">Confirm Header</button>
       </div>
-      <div>
-        <label for="worksheetSelect">Worksheet</label>
-        <select id="worksheetSelect"></select>
-        <div id="defaultWorksheetHint" class="muted" style="font-size:.8rem;margin-top:4px;"></div>
-      </div>
-      <div>
-        <label for="otherHeader">Notes</label>
-        <input type="text" id="otherHeader" placeholder="Optional notes for the day"/>
+
+      <!-- Drivers -->
+      <h3 style="margin:16px 0 8px;">Drivers Working</h3>
+      <table id="driversTable" class="table compact">
+        <thead>
+          <tr>
+            <th>Driver</th>
+            <th>Bus Number(s)</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div style="margin-top:8px;">
+        <button id="addDriverRowBtn" class="btn-ghost">Add Driver</button>
       </div>
     </div>
 
-    <h3 style="margin:14px 0 8px;">Drivers Working</h3>
-    <table id="driversTable" class="table compact">
-      <thead>
-        <tr>
-          <th>Driver</th>
-          <th>Bus Number(s)</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-    <div style="margin-top:8px;">
-      <button id="addDriverRowBtn" class="btn-ghost">Add Driver</button>
+    <!-- Worksheet -->
+    <div id="worksheetArea" style="margin-top:14px;"></div>
+
+    <!-- Footer actions -->
+    <div class="card" style="margin-top:14px; padding:12px; display:flex; gap:8px;">
+      <button id="saveDraftBtn" class="btn">Save Draft</button>
+      <button id="saveSubmitBtn" class="btn primary">Save & Submit</button>
     </div>
   </section>
 
-  <!-- Worksheet area -->
-  <section id="worksheetArea"></section>
-
-  <footer style="display:flex; gap:8px; margin:16px 0;">
-    <button id="saveDraftBtn" class="btn">Save Draft</button>
-    <button id="saveSubmitBtn" class="btn primary">Save & Submit</button>
-  </footer>
-
+  <!-- Scripts -->
   <script type="module" src="./js/daily-report.js"></script>
 </body>
 </html>
