@@ -116,7 +116,7 @@ function getTimeFromCell(td){
   return `${h}:${m}`;
 }
 
-// Build payload purely from DOM (reads time from the 24h selects)
+// Build payload purely from DOM (reads time and note from cells)
 function buildPayloadFromDOM() {
   const select = document.getElementById('worksheetSelect');
   const selectedOption = select?.options?.[select.selectedIndex];
@@ -134,10 +134,11 @@ function buildPayloadFromDOM() {
         pickup_default:     tds[1]?.innerText.trim() || '',
         dropoff_default:    tds[2]?.innerText.trim() || '',
         pickup_time_default: getTimeFromCell(tds[3]),
-        ds_in_am_default:   parseInt(tds[4]?.innerText.trim() || '0', 10),
-        ns_out_am_default:  parseInt(tds[5]?.innerText.trim() || '0', 10),
-        ds_out_pm_default:  parseInt(tds[6]?.innerText.trim() || '0', 10),
-        ns_in_pm_default:   parseInt(tds[7]?.innerText.trim() || '0', 10),
+        note_default:       tds[4]?.innerText.trim() || '',
+        ds_in_am_default:   parseInt(tds[5]?.innerText.trim() || '0', 10),
+        ns_out_am_default:  parseInt(tds[6]?.innerText.trim() || '0', 10),
+        ds_out_pm_default:  parseInt(tds[7]?.innerText.trim() || '0', 10),
+        ns_in_pm_default:   parseInt(tds[8]?.innerText.trim() || '0', 10),
         position: ri
       });
     });
@@ -203,15 +204,16 @@ function renderSections() {
       </div>
       <table class="table compact w-full">
         <colgroup>
-          <col style="width:10%"/>   <!-- Bus Number(s) (narrower) -->
-          <col style="width:18%"/>   <!-- Pickup (wider) -->
-          <col style="width:18%"/>   <!-- Dropoff (wider) -->
-          <col style="width:10%"/>   <!-- Time (narrower) -->
-          <col style="width:9%"/>    <!-- D/S IN AM -->
-          <col style="width:9%"/>    <!-- N/S OUT AM -->
-          <col style="width:9%"/>    <!-- D/S OUT PM -->
-          <col style="width:9%"/>    <!-- N/S IN PM -->
-          <col style="width:8%"/>    <!-- Action -->
+          <col style="width:9%"/>    <!-- Bus Number(s) (narrower) -->
+          <col style="width:17%"/>   <!-- Pickup (wider) -->
+          <col style="width:17%"/>   <!-- Dropoff (wider) -->
+          <col style="width:9%"/>    <!-- Time (narrower) -->
+          <col style="width:12%"/>   <!-- Note -->
+          <col style="width:8%"/>    <!-- D/S IN AM -->
+          <col style="width:8%"/>    <!-- N/S OUT AM -->
+          <col style="width:8%"/>    <!-- D/S OUT PM -->
+          <col style="width:8%"/>    <!-- N/S IN PM -->
+          <col style="width:4%"/>    <!-- Action -->
         </colgroup>
         <thead>
           <tr>
@@ -219,6 +221,7 @@ function renderSections() {
             <th>Pickup</th>
             <th>Dropoff</th>
             <th>Pickup Time (24h)</th>
+            <th>Note</th>
             <th>D/S IN AM</th>
             <th>N/S OUT AM</th>
             <th>D/S OUT PM</th>
@@ -242,6 +245,7 @@ function renderSections() {
                   <select class="time-select time-mm" aria-label="Minute (00-59)">${makeMinuteOptions(m)}</select>
                 </div>
               </td>
+              <td contenteditable="true">${r.note_default ?? ''}</td>
               <td class="locked" tabindex="-1">${r.ds_in_am_default ?? 0}</td>
               <td class="locked" tabindex="-1">${r.ns_out_am_default ?? 0}</td>
               <td class="locked" tabindex="-1">${r.ds_out_pm_default ?? 0}</td>
@@ -296,8 +300,16 @@ document.getElementById('sectionsContainer').addEventListener('click', (e) => {
     const secDiv = e.target.closest('.section');
     const index = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
     payload.sections[index].rows.push({
-      id: `new-${Date.now()}`, bus_number_default: '', pickup_default: '', dropoff_default: '',
-      pickup_time_default: '00:00', ds_in_am_default: 0, ns_out_am_default: 0, ds_out_pm_default: 0, ns_in_pm_default: 0,
+      id: `new-${Date.now()}`,
+      bus_number_default: '',
+      pickup_default: '',
+      dropoff_default: '',
+      pickup_time_default: '00:00',
+      note_default: '',
+      ds_in_am_default: 0,
+      ns_out_am_default: 0,
+      ds_out_pm_default: 0,
+      ns_in_pm_default: 0,
       position: payload.sections[index].rows.length
     });
     worksheetData = { ...worksheetData, sections: payload.sections };
