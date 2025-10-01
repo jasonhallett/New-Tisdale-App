@@ -1,5 +1,6 @@
 // /js/daily-report.js
-// Restore stable layout; add Supervisor; fix MultiSelect phantom dropdown; narrow time selects.
+// Supervisor in header, compact row height, comfortable time widths,
+// and force-close MultiSelect panels to avoid phantom "No matches" boxes.
 import { MultiSelect } from './controls/multiselect.js';
 
 (function(){
@@ -11,7 +12,43 @@ import { MultiSelect } from './controls/multiselect.js';
     console.error(msg);
   };
 
+  // Inject page-local styles so we don't touch global CSS
+  function injectPageStyles(){
+    if (document.getElementById('daily-report-local-css')) return;
+    const css = `
+      /* Compact table rows for worksheet */
+      .table.compact th,
+      .table.compact td { padding: 6px 8px; vertical-align: middle; }
+
+      /* Keep inputs/selects short and consistent */
+      .table.compact input[type="number"],
+      .table.compact input[type="text"],
+      .table.compact select { height: 32px; line-height: 30px; }
+
+      /* Time field: readable yet tight */
+      .time24 { display: flex; align-items: center; gap: 2px; }
+      .time24 .time-select { width: 3.8ch !important; min-width: 3.8ch; text-align: center; padding: 2px 4px; }
+      .time24 .time-sep { padding: 0 2px; }
+
+      /* MultiSelect sizing inside table rows */
+      .table.compact .ms-root,
+      .table.compact .ms-input { min-height: 32px; height: 32px; }
+      .table.compact .ms-chips { gap: 4px; }
+      .table.compact .ms-chip { padding: 1px 6px; }
+
+      /* Make sure a closed panel never occupies space */
+      .ms-panel { max-height: 220px; overflow: auto; }
+      .ms-panel[aria-hidden="true"] { display: none !important; }
+    `;
+    const style = document.createElement('style');
+    style.id = 'daily-report-local-css';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
   const start = () => {
+    injectPageStyles();
+
     let reportState = {
       id: null,
       report_date: null,
@@ -93,39 +130,51 @@ import { MultiSelect } from './controls/multiselect.js';
           name: s.name || [s.first_name, s.last_name].filter(Boolean).join(' ').trim() || 'Supervisor'
         })).sort((a,b)=>a.name.localeCompare(b.name));
         const sel = $('#supervisorSelect');
-        sel.innerHTML = `<option value="">— Select —</option>` + master.supervisors.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+        if (sel) sel.innerHTML = `<option value="">— Select —</option>` + master.supervisors.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
       }catch(err){
-        const sel = $('#supervisorSelect');
-        if (sel) sel.innerHTML = `<option value="">(none)</option>`;
+        const sel = $('#supervisorSelect'); if (sel) sel.innerHTML = `<option value="">(none)</option>`;
         console.warn('supervisors load failed', err);
       }
     }
+    async function loadStatuses(){
+      const res = await fetch('/api/workday-status');
+      if(!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
 
-    // ----- Custom control builders -----
+    // ----- MultiSelect helpers -----
+    function closeMS(ms){
+      try{ ms?.close?.(); }catch{}
+      // Also mark the panel hidden if our control uses aria-hidden
+      const root = ms?.root || null;
+      if (root){
+        const panel = root.querySelector?.('.ms-panel');
+        if (panel) panel.setAttribute('aria-hidden','true');
+      }
+    }
+
     function buildHeaderBusMulti(container, preselected){
       const opts = master.buses.map(b => ({ value:b.number, label:b.number }));
       const ms = new MultiSelect(container, { options: opts, selected: preselected||[], placeholder:'Bus #' });
-      // Ensure closed on init (prevents "No matches" phantom panel)
-      if (ms.close) ms.close();
+      closeMS(ms); // avoid phantom panel on load
       return ms;
     }
     function buildWorksheetBusMulti(container, preselected){
       const allowed = Array.from(allowedBusSet()).sort((a,b)=>a.localeCompare(b));
       const opts = allowed.map(n => ({ value:n, label:n }));
       const ms = new MultiSelect(container, { options: opts, selected: preselected||[], placeholder:'Bus #' });
-      if (ms.close) ms.close();
+      closeMS(ms);
       return ms;
     }
 
+    // Header grid
     function driverOptionsHTML(selectedId){
       return master.drivers.map(d => `<option value="${d.id}" ${String(selectedId)===String(d.id)?'selected':''}>${d.name}</option>`).join('');
     }
     function driverRowHTML(statuses, driver){
       return `<tr>
         <td>
-          <select class="drv-id">
-            ${driverOptionsHTML(driver?.driver_id)}
-          </select>
+          <select class="drv-id">${driverOptionsHTML(driver?.driver_id)}</select>
         </td>
         <td>
           <div class="drv-buses" data-ms></div>
@@ -139,12 +188,6 @@ import { MultiSelect } from './controls/multiselect.js';
       </tr>`;
     }
 
-    async function loadStatuses(){
-      const res = await fetch('/api/workday-status');
-      if(!res.ok) throw new Error(await res.text());
-      return await res.json();
-    }
-
     async function initDriversTable(prefillDrivers){
       const statuses = await loadStatuses();
       const tbody = $('#driversTable tbody');
@@ -155,6 +198,7 @@ import { MultiSelect } from './controls/multiselect.js';
       } else {
         tbody.insertAdjacentHTML('beforeend', driverRowHTML(statuses, {}));
       }
+      // hydrate MultiSelects
       $all('.drv-buses', tbody).forEach((cell, idx) => {
         const pre = prefillDrivers?.[idx]?.buses || [];
         const ms = buildHeaderBusMulti(cell, pre);
@@ -237,9 +281,9 @@ import { MultiSelect } from './controls/multiselect.js';
         <td contenteditable="true" class="inp-dropoff">${entry?.dropoff ?? r.dropoff_default ?? ''}</td>
         <td>
           <div class="time24">
-            <select class="time-select inp-hh" style="width:3.2ch; text-align:center;">${hourOptions(hh)}</select>
+            <select class="time-select inp-hh">${hourOptions(hh)}</select>
             <span class="time-sep">:</span>
-            <select class="time-select inp-mm" style="width:3.2ch; text-align:center;">${minuteOptions(mm)}</select>
+            <select class="time-select inp-mm">${minuteOptions(mm)}</select>
           </div>
         </td>
         <td><input type="text" class="inp-note" value="${entry?.note ?? r.note_default ?? ''}"/></td>
@@ -314,12 +358,11 @@ import { MultiSelect } from './controls/multiselect.js';
             const pre = entry.bus_numbers || entry.buses || [];
             const ms = buildWorksheetBusMulti(cell, pre);
             cell._ms = ms;
+            closeMS(ms);
           });
           bindSectionTotals(card);
           secIdx++;
         });
-        // ensure worksheet options are in sync with current header (even if empty)
-        refreshWorksheetBusOptions();
       }catch(err){
         area.innerHTML = `<div class="muted">Failed to load worksheet: ${err.message}</div>`;
       }
@@ -339,27 +382,10 @@ import { MultiSelect } from './controls/multiselect.js';
           const pre = entry.bus_numbers || entry.buses || [];
           const ms = buildWorksheetBusMulti(cell, pre);
           cell._ms = ms;
+          closeMS(ms);
         });
         bindSectionTotals(card);
         secIdx++;
-      });
-      refreshWorksheetBusOptions();
-    }
-
-    function refreshWorksheetBusOptions(){
-      // recompute allowed; update each worksheet MultiSelect's options; prune selections
-      snapshotDrivers();
-      const allowed = Array.from(allowedBusSet()).sort((a,b)=>a.localeCompare(b));
-      const opts = allowed.map(n => ({ value:String(n), label:String(n) }));
-      const setAllowed = new Set(allowed.map(String));
-
-      $all('.ws-buses').forEach(cell => {
-        const ms = cell._ms;
-        if (!ms) return;
-        const current = (ms.get ? ms.get() : []).map(String).filter(v => setAllowed.has(v));
-        if (ms.updateOptions) ms.updateOptions(opts);
-        if (ms.set) ms.set(current);
-        if (ms.close) ms.close();
       });
     }
 
@@ -371,8 +397,6 @@ import { MultiSelect } from './controls/multiselect.js';
       snapshotDrivers();
       setStatus('Header confirmed');
       if (reportState.id){ await renderFromReport(); } else { await renderFromTemplate(); }
-      // After rendering, make sure options are aligned and dropdowns closed
-      refreshWorksheetBusOptions();
     });
 
     $('#worksheetSelect')?.addEventListener('change', (e)=>{ reportState.worksheet_id = e.target.value; });
@@ -485,6 +509,10 @@ import { MultiSelect } from './controls/multiselect.js';
           await initDriversTable([]);
           await renderFromTemplate();
         }
+
+        // Final safety: close any panels that might have opened during hydration
+        $all('.ws-buses').forEach(cell => cell._ms && closeMS(cell._ms));
+        $all('.drv-buses').forEach(cell => cell._ms && closeMS(cell._ms));
       }catch(err){
         bootError('Failed to initialize Daily Report. Check console and API routes.');
         console.error(err);
