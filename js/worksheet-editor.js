@@ -1,11 +1,12 @@
 // /js/worksheet-editor.js
 // Adds:
+//  - Delete Section (per-section button with confirm)
+// Keeps:
 //  - Inline row duplication (Action → "Dup")
 //  - Drag-to-reorder rows within a section (HTML5 DnD)
-// Keeps:
 //  - Strict 24h time selects (HH/MM)
 //  - Locked columns (Bus #, D/S & N/S)
-//  - "Note" column persisted as note_default
+//  - “Note” column persisted as note_default
 //  - Compact table styling + column widths
 
 // ===== Inline compact + DnD styles =====
@@ -29,12 +30,17 @@
     /* Drag visuals */
     tbody tr[draggable="true"] { cursor: grab; }
     tbody tr.dragging { opacity: .45; }
-    tbody tr.drop-before { box-shadow: 0 -2px 0 0 #3b82f6 inset; } /* top blue line */
-    tbody tr.drop-after  { box-shadow: 0  2px 0 0 #3b82f6 inset; } /* bottom blue line */
+    tbody tr.drop-before { box-shadow: 0 -2px 0 0 #3b82f6 inset; }
+    tbody tr.drop-after  { box-shadow: 0  2px 0 0 #3b82f6 inset; }
 
     /* Action links */
     .btn-link-sm { font-size: 12px; text-decoration: underline; cursor: pointer; }
     .action-cell { display:flex; gap:8px; align-items:center; justify-content:flex-start; }
+
+    /* Section header buttons */
+    .section-actions { display:flex; gap:8px; align-items:center; }
+    .btn-ghost-danger { color:#dc2626; }
+    .btn-ghost-danger:hover { color:#b91c1c; }
   `;
   const style = document.createElement('style');
   style.id = id;
@@ -244,7 +250,10 @@ function renderSections() {
     sectionDiv.innerHTML = `
       <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <input class="section-title" value="${section.section_name || ''}" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;"/>
-        <button class="btn btn-ghost addRowBtn">+ Add Row</button>
+        <div class="section-actions">
+          <button class="btn btn-ghost addRowBtn">+ Add Row</button>
+          <button class="btn btn-ghost btn-ghost-danger deleteSectionBtn" title="Delete this section">Delete Section</button>
+        </div>
       </div>
       <table class="table compact w-full">
         <colgroup>
@@ -337,6 +346,23 @@ sectionsEl.addEventListener('click', (e) => {
       ns_in_pm_default: 0,
       position: payload.sections[index].rows.length
     });
+    worksheetData = { ...worksheetData, sections: payload.sections };
+    renderSections();
+    return;
+  }
+
+  // Delete Section
+  if (e.target.classList.contains('deleteSectionBtn')) {
+    const secDiv = e.target.closest('.section');
+    const index = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
+    const secName = secDiv.querySelector('.section-title')?.value?.trim() || `Section ${index+1}`;
+    if (!confirm(`Delete section "${secName}" and all its rows? This cannot be undone.`)) return;
+
+    const payload = buildPayloadFromDOM();
+    payload.sections.splice(index, 1);
+    // reindex section positions
+    payload.sections.forEach((s, i) => s.position = i);
+
     worksheetData = { ...worksheetData, sections: payload.sections };
     renderSections();
     return;
