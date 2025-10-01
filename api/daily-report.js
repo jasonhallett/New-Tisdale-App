@@ -1,4 +1,5 @@
 // /api/daily-report.js
+// Updated to validate entries.bus_numbers (or entries.buses for backward compat)
 import { Pool } from 'pg';
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl:{ rejectUnauthorized:false } });
 function ok(res, body, status=200){ res.setHeader('Content-Type','application/json'); res.status(status).end(JSON.stringify(body)); }
@@ -27,11 +28,12 @@ export default async function handler(req, res){
       if (!report_date) return bad(res, 'Missing report_date');
       if (!worksheet_id) return bad(res, 'Missing worksheet_id');
 
+      // Validation: allowed = union of drivers[].buses
       const driverBusSet = new Set();
       (drivers || []).forEach(d => (d.buses||[]).forEach(b => driverBusSet.add(String(b))));
       const badCells = [];
       (sections || []).forEach((s, si) => (s.entries||[]).forEach((r, ri) => {
-        const buses = (r.buses || []).map(String);
+        const buses = (r.bus_numbers && Array.isArray(r.bus_numbers) ? r.bus_numbers : (r.buses || [])).map(String);
         const invalid = buses.filter(b => !driverBusSet.has(b));
         if (invalid.length) badCells.push({ si, ri, invalid });
       }));
@@ -40,8 +42,7 @@ export default async function handler(req, res){
       if (req.method === 'POST'){
         const r = await q(`
           insert into daily_reports (report_date, worksheet_id, header, drivers, sections, submitted)
-          values ($1,$2,$3,$4,$5,$6)
-          returning id
+          values ($1,$2,$3,$4,$5,$6) returning id
         `,[report_date, worksheet_id, header||{}, drivers||[], sections||[], !!submitted]);
         return ok(res, { id: r.rows[0].id }, 201);
       } else {
