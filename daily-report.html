@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Daily Report</title>
-  <!-- Match other pages’ stylesheet location -->
   <link rel="stylesheet" href="./css/tisdale-app.css" />
 </head>
 <body>
@@ -24,12 +23,17 @@
         </div>
 
         <div>
+          <label for="supervisorSelect">Supervisor</label>
+          <select id="supervisorSelect"></select>
+        </div>
+
+        <div>
           <label for="worksheetSelect">Worksheet</label>
           <select id="worksheetSelect"></select>
           <div id="defaultWorksheetHint" class="muted" style="font-size:.8rem;margin-top:4px;"></div>
         </div>
 
-        <div style="grid-column: span 2;">
+        <div>
           <label for="otherHeader">Notes</label>
           <input type="text" id="otherHeader" placeholder="Optional notes for the day" />
         </div>
@@ -67,7 +71,6 @@
     </div>
   </section>
 
-  <!-- Scripts -->
   <script type="module" src="./js/daily-report.js"></script>
 </body>
 </html>
