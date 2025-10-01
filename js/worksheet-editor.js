@@ -1,8 +1,35 @@
+// /js/worksheet-editor.js
+
+// ===== Inline compact styles (keeps the table tight across pages) =====
+(function ensureCompactStyles(){
+  const id = 'worksheet-editor-compact-styles';
+  if (document.getElementById(id)) return;
+  const css = `
+    table.compact { border-collapse: collapse; }
+    table.compact th, table.compact td { padding: 6px 8px; font-size: 14px; line-height: 1.2; }
+    td.locked { background: #f3f4f6; color: #334155; cursor: not-allowed; }
+    td.locked:focus { outline: none; box-shadow: none; }
+
+    /* Time selects */
+    .time24 { display: inline-flex; align-items: center; gap: 2px; }
+    .time-select { width: 58px; min-width: 54px; padding: 4px 6px; font: inherit; }
+    .time-sep { opacity: .6; }
+
+    /* Make the whole card tighter */
+    .section.card { padding: 10px 12px; }
+    .section-header { margin-bottom: 6px !important; }
+  `;
+  const style = document.createElement('style');
+  style.id = id;
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+
 // ===== State =====
 let currentWorksheetId = null;
 let worksheetData = { id: null, name: '', sections: [] };
 
-// ===== Modal helpers (now using global CSS: .modal + .open) =====
+// ===== Modal helpers =====
 function openModal(id, focusId) {
   const modal = document.getElementById(id);
   if (!modal) return;
@@ -23,13 +50,10 @@ function closeModal(id) {
 });
 
 // ===== Utilities =====
-function assert(ok, msg) { if (!ok) throw new Error(msg); }
-
-// Convert many time formats to 24h "HH:MM"
 function to24h(value){
   if(!value) return '';
   let s = String(value).trim();
-  // If already HH:MM 24h, normalize zero padding
+  // If already HH:MM 24h
   const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
   if(m24){
     let h = parseInt(m24[1],10);
@@ -47,22 +71,52 @@ function to24h(value){
     const ap = m12[3].toUpperCase();
     if(ap === 'AM'){
       if(h===12) h = 0;
-    } else { // PM
+    } else {
       if(h!==12) h += 12;
     }
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   }
-  // If only hour given like "7" or "19"
   const mh = s.match(/^(\d{1,2})$/);
   if(mh){
     let h = parseInt(mh[1],10);
     h = (h+24)%24;
     return `${String(h).padStart(2,'0')}:00`;
   }
-  return s; // last resort
+  return s;
 }
 
-// Build payload purely from DOM
+function hhmmParts(hhmm){
+  const x = to24h(hhmm || '') || '00:00';
+  const [h,m] = x.split(':');
+  return { h: h.padStart(2,'0'), m: m.padStart(2,'0') };
+}
+
+function makeHourOptions(selected){
+  let out = '';
+  for(let h=0; h<=23; h++){
+    const v = String(h).padStart(2,'0');
+    out += `<option value="${v}" ${v===selected?'selected':''}>${v}</option>`;
+  }
+  return out;
+}
+function makeMinuteOptions(selected){
+  let out = '';
+  for(let m=0; m<=59; m++){
+    const v = String(m).padStart(2,'0');
+    out += `<option value="${v}" ${v===selected?'selected':''}>${v}</option>`;
+  }
+  return out;
+}
+function getTimeFromCell(td){
+  const hSel = td.querySelector('.time-hh');
+  const mSel = td.querySelector('.time-mm');
+  if (!hSel || !mSel) return '';
+  const h = (hSel.value || '00').padStart(2,'0');
+  const m = (mSel.value || '00').padStart(2,'0');
+  return `${h}:${m}`;
+}
+
+// Build payload purely from DOM (reads time from the 24h selects)
 function buildPayloadFromDOM() {
   const select = document.getElementById('worksheetSelect');
   const selectedOption = select?.options?.[select.selectedIndex];
@@ -74,13 +128,12 @@ function buildPayloadFromDOM() {
     const rows = [];
     secDiv.querySelectorAll('tbody tr').forEach((tr, ri) => {
       const tds = tr.querySelectorAll('td');
-      const timeInput = tds[3]?.querySelector('input[type="time"]');
       rows.push({
         id: tr.dataset.id || `new-${Date.now()}-${ri}`,
         bus_number_default: tds[0]?.innerText.trim() || '',
         pickup_default:     tds[1]?.innerText.trim() || '',
         dropoff_default:    tds[2]?.innerText.trim() || '',
-        pickup_time_default: timeInput ? to24h(timeInput.value) : to24h(tds[3]?.innerText.trim() || ''),
+        pickup_time_default: getTimeFromCell(tds[3]),
         ds_in_am_default:   parseInt(tds[4]?.innerText.trim() || '0', 10),
         ns_out_am_default:  parseInt(tds[5]?.innerText.trim() || '0', 10),
         ds_out_pm_default:  parseInt(tds[6]?.innerText.trim() || '0', 10),
@@ -141,7 +194,7 @@ function renderSections() {
   worksheetData.sections.forEach((section) => {
     const sectionDiv = document.createElement('div');
     sectionDiv.className = 'section card';
-    sectionDiv.style.marginBottom = '16px';
+    sectionDiv.style.marginBottom = '12px';
     sectionDiv.dataset.id = section.id || '';
     sectionDiv.innerHTML = `
       <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -149,6 +202,17 @@ function renderSections() {
         <button class="btn btn-ghost addRowBtn">+ Add Row</button>
       </div>
       <table class="table compact w-full">
+        <colgroup>
+          <col style="width:10%"/>   <!-- Bus Number(s) (narrower) -->
+          <col style="width:18%"/>   <!-- Pickup (wider) -->
+          <col style="width:18%"/>   <!-- Dropoff (wider) -->
+          <col style="width:10%"/>   <!-- Time (narrower) -->
+          <col style="width:9%"/>    <!-- D/S IN AM -->
+          <col style="width:9%"/>    <!-- N/S OUT AM -->
+          <col style="width:9%"/>    <!-- D/S OUT PM -->
+          <col style="width:9%"/>    <!-- N/S IN PM -->
+          <col style="width:8%"/>    <!-- Action -->
+        </colgroup>
         <thead>
           <tr>
             <th>Bus Number(s)</th>
@@ -165,12 +229,19 @@ function renderSections() {
         <tbody>
           ${(section.rows || []).map((r) => {
             const t24 = to24h(r.pickup_time_default ?? '');
+            const { h, m } = hhmmParts(t24);
             return `
             <tr data-id="${r.id || ''}">
               <td class="locked" tabindex="-1">${r.bus_number_default ?? ''}</td>
               <td contenteditable="true">${r.pickup_default ?? ''}</td>
               <td contenteditable="true">${r.dropoff_default ?? ''}</td>
-              <td><input type="time" class="time24" value="${t24}"></td>
+              <td>
+                <div class="time24">
+                  <select class="time-select time-hh" aria-label="Hour (00-23)">${makeHourOptions(h)}</select>
+                  <span class="time-sep">:</span>
+                  <select class="time-select time-mm" aria-label="Minute (00-59)">${makeMinuteOptions(m)}</select>
+                </div>
+              </td>
               <td class="locked" tabindex="-1">${r.ds_in_am_default ?? 0}</td>
               <td class="locked" tabindex="-1">${r.ns_out_am_default ?? 0}</td>
               <td class="locked" tabindex="-1">${r.ds_out_pm_default ?? 0}</td>
@@ -226,7 +297,7 @@ document.getElementById('sectionsContainer').addEventListener('click', (e) => {
     const index = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
     payload.sections[index].rows.push({
       id: `new-${Date.now()}`, bus_number_default: '', pickup_default: '', dropoff_default: '',
-      pickup_time_default: '', ds_in_am_default: 0, ns_out_am_default: 0, ds_out_pm_default: 0, ns_in_pm_default: 0,
+      pickup_time_default: '00:00', ds_in_am_default: 0, ns_out_am_default: 0, ds_out_pm_default: 0, ns_in_pm_default: 0,
       position: payload.sections[index].rows.length
     });
     worksheetData = { ...worksheetData, sections: payload.sections };
