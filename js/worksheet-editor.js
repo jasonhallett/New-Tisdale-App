@@ -1,9 +1,8 @@
 // /js/worksheet-editor.js
 // Adds:
-//  - Section drag-to-reorder (HTML5 DnD on section cards)
-//  - Copy Section (duplicates entire section + rows)
-//  - Row "Copy" (wording) + drag-to-reorder (kept)
-//  - Delete Section (kept)
+//  - Drag handles for sections (≡ in header) and rows (≡ in Action column)
+//  - Section drag-to-reorder + copy/delete
+//  - Row drag-to-reorder (handle-driven), copy/delete
 // Keeps:
 //  - Strict 24h time selects (HH/MM)
 //  - Locked columns (Bus #, D/S & N/S)
@@ -32,23 +31,28 @@
     .btn-ghost-danger:hover { color:#b91c1c; }
 
     /* Row drag visuals */
-    tbody tr[draggable="true"] { cursor: grab; }
     tbody tr.dragging { opacity: .45; }
     tbody tr.drop-before { box-shadow: 0 -2px 0 0 #3b82f6 inset; }
     tbody tr.drop-after  { box-shadow: 0  2px 0 0 #3b82f6 inset; }
 
     /* Section drag visuals */
-    .section[draggable="true"] { cursor: grab; }
     .section.dragging-sec { opacity:.6; }
     .section.drop-before-sec { outline: 2px solid #3b82f6; outline-offset: -2px; box-shadow: 0 -2px 0 0 #3b82f6 inset; }
     .section.drop-after-sec  { outline: 2px solid #3b82f6; outline-offset: -2px; box-shadow: 0  2px 0 0 #3b82f6 inset; }
 
     /* Action links */
     .btn-link-sm { font-size: 12px; text-decoration: underline; cursor: pointer; }
-    .action-cell { display:flex; gap:8px; align-items:center; justify-content:flex-start; }
+    .action-cell { display:flex; gap:10px; align-items:center; justify-content:flex-start; }
 
-    /* Section drag handle (title input doubles as handle) */
-    .section-title { cursor: grab; }
+    /* Drag handles */
+    .row-handle, .section-handle {
+      display:inline-flex; align-items:center; justify-content:center;
+      width:22px; height:22px; border-radius:6px;
+      font-size:14px; line-height:1; user-select:none;
+      cursor:grab; color:#64748b; background:#f1f5f9;
+    }
+    .row-handle:hover, .section-handle:hover { background:#e2e8f0; color:#334155; }
+    .row-handle:active, .section-handle:active { cursor:grabbing; }
   `;
   const style = document.createElement('style');
   style.id = id;
@@ -61,7 +65,7 @@ let currentWorksheetId = null;
 let worksheetData = { id: null, name: '', sections: [] };
 
 // Track row drag state
-const dragRow = { srcSecIdx: null, srcRowIdx: null, overTR: null, overPos: null };
+const dragRow = { srcSecIdx: null, srcRowIdx: null, overTR: null, overPos: null }; // 'before' | 'after'
 // Track section drag state
 const dragSec = { srcSecIdx: null, overSecDiv: null, overPos: null }; // 'before' | 'after'
 
@@ -216,7 +220,7 @@ function rowHTML(r){
   const t24 = to24h(r.pickup_time_default ?? '');
   const { h, m } = hhmmParts(t24);
   return `
-    <tr data-id="${r.id || ''}" draggable="true">
+    <tr data-id="${r.id || ''}">
       <td class="locked" tabindex="-1">${r.bus_number_default ?? ''}</td>
       <td contenteditable="true">${r.pickup_default ?? ''}</td>
       <td contenteditable="true">${r.dropoff_default ?? ''}</td>
@@ -233,6 +237,7 @@ function rowHTML(r){
       <td class="locked" tabindex="-1">${r.ds_out_pm_default ?? 0}</td>
       <td class="locked" tabindex="-1">${r.ns_in_pm_default ?? 0}</td>
       <td class="action-cell">
+        <span class="row-handle" title="Drag row" draggable="true" aria-label="Drag row">≡</span>
         <a href="#" class="btn-link-sm copyRowBtn" title="Copy row">Copy</a>
         <a href="#" class="btn-link-sm deleteRowBtn" title="Delete row">Delete</a>
       </td>
@@ -241,10 +246,11 @@ function rowHTML(r){
 
 function sectionHTML(section){
   return `
-    <div class="section card" data-id="${section.id || ''}" draggable="true">
+    <div class="section card" data-id="${section.id || ''}">
       <div class="section-header">
         <input class="section-title" value="${section.section_name || ''}" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;"/>
         <div class="section-actions">
+          <span class="section-handle" title="Drag section" draggable="true" aria-label="Drag section">≡</span>
           <button class="btn btn-ghost addRowBtn">+ Add Row</button>
           <button class="btn btn-ghost copySectionBtn" title="Copy this section">Copy Section</button>
           <button class="btn btn-ghost btn-ghost-danger deleteSectionBtn" title="Delete this section">Delete Section</button>
@@ -438,7 +444,7 @@ sectionsEl.addEventListener('click', (e) => {
   }
 });
 
-// ---- Row Drag & Drop within a section ----
+// ---- Drag & Drop (handle-driven) ----
 function clearRowDropIndicators() {
   document.querySelectorAll('tbody tr').forEach(tr => {
     tr.classList.remove('drop-before', 'drop-after');
@@ -446,9 +452,10 @@ function clearRowDropIndicators() {
 }
 
 sectionsEl.addEventListener('dragstart', (e) => {
-  // Row drag?
-  const tr = e.target.closest('tr[draggable="true"]');
-  if (tr) {
+  // Row handle?
+  const rowHandle = e.target.closest('.row-handle');
+  if (rowHandle) {
+    const tr = rowHandle.closest('tr');
     const secDiv = tr.closest('.section');
     dragRow.srcSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
     dragRow.srcRowIdx = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
@@ -458,9 +465,10 @@ sectionsEl.addEventListener('dragstart', (e) => {
     return;
   }
 
-  // Section drag?
-  const sec = e.target.closest('.section[draggable="true"]');
-  if (sec) {
+  // Section handle?
+  const secHandle = e.target.closest('.section-handle');
+  if (secHandle) {
+    const sec = secHandle.closest('.section');
     dragSec.srcSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(sec);
     sec.classList.add('dragging-sec');
     e.dataTransfer.effectAllowed = 'move';
@@ -470,10 +478,8 @@ sectionsEl.addEventListener('dragstart', (e) => {
 });
 
 sectionsEl.addEventListener('dragend', (e) => {
-  const tr = e.target.closest('tr[draggable="true"]');
-  if (tr) tr.classList.remove('dragging');
-  const sec = e.target.closest('.section[draggable="true"]');
-  if (sec) sec.classList.remove('dragging-sec');
+  document.querySelectorAll('tbody tr.dragging').forEach(tr => tr.classList.remove('dragging'));
+  document.querySelectorAll('.section.dragging-sec').forEach(sec => sec.classList.remove('dragging-sec'));
 
   clearRowDropIndicators();
   document.querySelectorAll('.section').forEach(s => s.classList.remove('drop-before-sec','drop-after-sec'));
@@ -488,10 +494,10 @@ sectionsEl.addEventListener('dragend', (e) => {
 sectionsEl.addEventListener('dragover', (e) => {
   // Row reordering (within same section)
   const tr = e.target.closest('tbody tr');
-  if (tr) {
+  if (tr && dragRow.srcSecIdx != null) {
     const secDiv = tr.closest('.section');
     const overSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
-    if (dragRow.srcSecIdx == null || overSecIdx !== dragRow.srcSecIdx) return;
+    if (overSecIdx !== dragRow.srcSecIdx) return;
 
     e.preventDefault();
     const rect = tr.getBoundingClientRect();
@@ -509,8 +515,7 @@ sectionsEl.addEventListener('dragover', (e) => {
 
   // Section reordering (entire cards)
   const secDiv = e.target.closest('.section');
-  if (secDiv) {
-    if (dragSec.srcSecIdx == null) return;
+  if (secDiv && dragSec.srcSecIdx != null) {
     e.preventDefault();
     const rect = secDiv.getBoundingClientRect();
     const y = e.clientY - rect.top;
@@ -543,7 +548,6 @@ sectionsEl.addEventListener('drop', (e) => {
     if (dragRow.overPos === 'after') insertIdx = targetIdx + 1;
 
     const [moved] = rows.splice(dragRow.srcRowIdx, 1);
-
     if (dragRow.srcRowIdx < targetIdx) insertIdx -= 1;
     rows.splice(insertIdx, 0, moved);
 
