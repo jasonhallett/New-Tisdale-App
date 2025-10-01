@@ -394,3 +394,31 @@ input:focus, select:focus, textarea:focus{
 /* Contenteditable grid cell hint */
 td[contenteditable="true"] { background: #fffef7; outline: none; }
 td[contenteditable="true"]:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 35%, transparent); }
+
+/* ====== Layout width constraints for pages with .container ====== */
+/* Keep content readable on desktop/tablet; still full-bleed on phones. */
+:root { --content-max: 1180px; }
+
+.container {
+  max-width: var(--content-max);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* Optional utility for even tighter sections (apply as needed) */
+.narrow {
+  max-width: 980px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Phones: allow full width with a bit less padding */
+@media (max-width: 768px) {
+  .container {
+    max-width: 100%;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
