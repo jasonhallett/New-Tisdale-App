@@ -1,9 +1,10 @@
 // /js/worksheet-editor.js
 // Adds:
-//  - Delete Section (per-section button with confirm)
+//  - Section drag-to-reorder (HTML5 DnD on section cards)
+//  - Copy Section (duplicates entire section + rows)
+//  - Row "Copy" (wording) + drag-to-reorder (kept)
+//  - Delete Section (kept)
 // Keeps:
-//  - Inline row duplication (Action → "Dup")
-//  - Drag-to-reorder rows within a section (HTML5 DnD)
 //  - Strict 24h time selects (HH/MM)
 //  - Locked columns (Bus #, D/S & N/S)
 //  - “Note” column persisted as note_default
@@ -25,22 +26,29 @@
     .time-sep { opacity:.6; }
 
     .section.card { padding: 10px 12px; }
-    .section-header { margin-bottom: 6px !important; }
+    .section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px !important; gap:10px; }
+    .section-actions { display:flex; gap:8px; align-items:center; }
+    .btn-ghost-danger { color:#dc2626; }
+    .btn-ghost-danger:hover { color:#b91c1c; }
 
-    /* Drag visuals */
+    /* Row drag visuals */
     tbody tr[draggable="true"] { cursor: grab; }
     tbody tr.dragging { opacity: .45; }
     tbody tr.drop-before { box-shadow: 0 -2px 0 0 #3b82f6 inset; }
     tbody tr.drop-after  { box-shadow: 0  2px 0 0 #3b82f6 inset; }
 
+    /* Section drag visuals */
+    .section[draggable="true"] { cursor: grab; }
+    .section.dragging-sec { opacity:.6; }
+    .section.drop-before-sec { outline: 2px solid #3b82f6; outline-offset: -2px; box-shadow: 0 -2px 0 0 #3b82f6 inset; }
+    .section.drop-after-sec  { outline: 2px solid #3b82f6; outline-offset: -2px; box-shadow: 0  2px 0 0 #3b82f6 inset; }
+
     /* Action links */
     .btn-link-sm { font-size: 12px; text-decoration: underline; cursor: pointer; }
     .action-cell { display:flex; gap:8px; align-items:center; justify-content:flex-start; }
 
-    /* Section header buttons */
-    .section-actions { display:flex; gap:8px; align-items:center; }
-    .btn-ghost-danger { color:#dc2626; }
-    .btn-ghost-danger:hover { color:#b91c1c; }
+    /* Section drag handle (title input doubles as handle) */
+    .section-title { cursor: grab; }
   `;
   const style = document.createElement('style');
   style.id = id;
@@ -52,13 +60,10 @@
 let currentWorksheetId = null;
 let worksheetData = { id: null, name: '', sections: [] };
 
-// Track drag state
-const dragState = {
-  srcSecIdx: null,
-  srcRowIdx: null,
-  overTR: null,
-  overPos: null, // 'before' | 'after'
-};
+// Track row drag state
+const dragRow = { srcSecIdx: null, srcRowIdx: null, overTR: null, overPos: null };
+// Track section drag state
+const dragSec = { srcSecIdx: null, overSecDiv: null, overPos: null }; // 'before' | 'after'
 
 // ===== Modal helpers =====
 function openModal(id, focusId) {
@@ -228,30 +233,20 @@ function rowHTML(r){
       <td class="locked" tabindex="-1">${r.ds_out_pm_default ?? 0}</td>
       <td class="locked" tabindex="-1">${r.ns_in_pm_default ?? 0}</td>
       <td class="action-cell">
-        <a href="#" class="btn-link-sm duplicateRowBtn" title="Duplicate row">Dup</a>
+        <a href="#" class="btn-link-sm copyRowBtn" title="Copy row">Copy</a>
         <a href="#" class="btn-link-sm deleteRowBtn" title="Delete row">Delete</a>
       </td>
     </tr>`;
 }
 
-function renderSections() {
-  const container = document.getElementById('sectionsContainer');
-  container.innerHTML = '';
-
-  if (!worksheetData || !Array.isArray(worksheetData.sections)) {
-    worksheetData = { id: currentWorksheetId, name: worksheetData?.name || '', sections: [] };
-  }
-
-  worksheetData.sections.forEach((section) => {
-    const sectionDiv = document.createElement('div');
-    sectionDiv.className = 'section card';
-    sectionDiv.style.marginBottom = '12px';
-    sectionDiv.dataset.id = section.id || '';
-    sectionDiv.innerHTML = `
-      <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+function sectionHTML(section){
+  return `
+    <div class="section card" data-id="${section.id || ''}" draggable="true">
+      <div class="section-header">
         <input class="section-title" value="${section.section_name || ''}" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;"/>
         <div class="section-actions">
           <button class="btn btn-ghost addRowBtn">+ Add Row</button>
+          <button class="btn btn-ghost copySectionBtn" title="Copy this section">Copy Section</button>
           <button class="btn btn-ghost btn-ghost-danger deleteSectionBtn" title="Delete this section">Delete Section</button>
         </div>
       </div>
@@ -286,8 +281,22 @@ function renderSections() {
           ${(section.rows || []).map(rowHTML).join('')}
         </tbody>
       </table>
-    `;
-    container.appendChild(sectionDiv);
+    </div>
+  `;
+}
+
+function renderSections() {
+  const container = document.getElementById('sectionsContainer');
+  container.innerHTML = '';
+
+  if (!worksheetData || !Array.isArray(worksheetData.sections)) {
+    worksheetData = { id: currentWorksheetId, name: worksheetData?.name || '', sections: [] };
+  }
+
+  worksheetData.sections.forEach((section) => {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = sectionHTML(section);
+    container.appendChild(wrapper.firstElementChild);
   });
 }
 
@@ -360,7 +369,32 @@ sectionsEl.addEventListener('click', (e) => {
 
     const payload = buildPayloadFromDOM();
     payload.sections.splice(index, 1);
-    // reindex section positions
+    payload.sections.forEach((s, i) => s.position = i);
+
+    worksheetData = { ...worksheetData, sections: payload.sections };
+    renderSections();
+    return;
+  }
+
+  // Copy Section
+  if (e.target.classList.contains('copySectionBtn')) {
+    const secDiv = e.target.closest('.section');
+    const index = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
+    const payload = buildPayloadFromDOM();
+
+    const src = payload.sections[index];
+    const copy = {
+      ...src,
+      id: `new-${Date.now()}`,
+      section_name: (src.section_name || `Section ${index+1}`) + ' (Copy)',
+      rows: (src.rows || []).map((r, i) => ({
+        ...r,
+        id: `new-${Date.now()}-${i}`,
+        position: i
+      }))
+    };
+
+    payload.sections.splice(index + 1, 0, copy);
     payload.sections.forEach((s, i) => s.position = i);
 
     worksheetData = { ...worksheetData, sections: payload.sections };
@@ -383,8 +417,8 @@ sectionsEl.addEventListener('click', (e) => {
     return;
   }
 
-  // Duplicate Row
-  if (e.target.classList.contains('duplicateRowBtn')) {
+  // Copy Row
+  if (e.target.classList.contains('copyRowBtn')) {
     e.preventDefault();
     const payload = buildPayloadFromDOM();
     const secDiv = e.target.closest('.section');
@@ -396,7 +430,6 @@ sectionsEl.addEventListener('click', (e) => {
     const copy = { ...src, id: `new-${Date.now()}`, position: rowIndex + 1 };
     payload.sections[secIndex].rows.splice(rowIndex + 1, 0, copy);
 
-    // reindex positions
     payload.sections[secIndex].rows.forEach((r, i) => r.position = i);
 
     worksheetData = { ...worksheetData, sections: payload.sections };
@@ -405,82 +438,144 @@ sectionsEl.addEventListener('click', (e) => {
   }
 });
 
-// ---- Drag & Drop within a section ----
-function clearDropIndicators() {
+// ---- Row Drag & Drop within a section ----
+function clearRowDropIndicators() {
   document.querySelectorAll('tbody tr').forEach(tr => {
     tr.classList.remove('drop-before', 'drop-after');
   });
 }
 
 sectionsEl.addEventListener('dragstart', (e) => {
+  // Row drag?
   const tr = e.target.closest('tr[draggable="true"]');
-  if (!tr) return;
-  const secDiv = tr.closest('.section');
-  dragState.srcSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
-  dragState.srcRowIdx = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
+  if (tr) {
+    const secDiv = tr.closest('.section');
+    dragRow.srcSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
+    dragRow.srcRowIdx = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
+    tr.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', 'row'); } catch {}
+    return;
+  }
 
-  tr.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-  try { e.dataTransfer.setData('text/plain', 'row'); } catch {}
+  // Section drag?
+  const sec = e.target.closest('.section[draggable="true"]');
+  if (sec) {
+    dragSec.srcSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(sec);
+    sec.classList.add('dragging-sec');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', 'section'); } catch {}
+    return;
+  }
 });
 
 sectionsEl.addEventListener('dragend', (e) => {
   const tr = e.target.closest('tr[draggable="true"]');
   if (tr) tr.classList.remove('dragging');
-  clearDropIndicators();
-  dragState.srcSecIdx = dragState.srcRowIdx = null;
-  dragState.overTR = dragState.overPos = null;
+  const sec = e.target.closest('.section[draggable="true"]');
+  if (sec) sec.classList.remove('dragging-sec');
+
+  clearRowDropIndicators();
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('drop-before-sec','drop-after-sec'));
+
+  dragRow.srcSecIdx = dragRow.srcRowIdx = null;
+  dragRow.overTR = dragRow.overPos = null;
+
+  dragSec.srcSecIdx = null;
+  dragSec.overSecDiv = dragSec.overPos = null;
 });
 
 sectionsEl.addEventListener('dragover', (e) => {
+  // Row reordering (within same section)
   const tr = e.target.closest('tbody tr');
-  if (!tr) return;
-  const secDiv = tr.closest('.section');
+  if (tr) {
+    const secDiv = tr.closest('.section');
+    const overSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
+    if (dragRow.srcSecIdx == null || overSecIdx !== dragRow.srcSecIdx) return;
 
-  // Only allow reordering within same section
-  const overSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
-  if (dragState.srcSecIdx == null || overSecIdx !== dragState.srcSecIdx) return;
+    e.preventDefault();
+    const rect = tr.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const pos = y < rect.height / 2 ? 'before' : 'after';
 
-  e.preventDefault(); // allow drop
-  const rect = tr.getBoundingClientRect();
-  const y = e.clientY - rect.top;
-  const pos = y < rect.height / 2 ? 'before' : 'after';
+    if (dragRow.overTR !== tr || dragRow.overPos !== pos) {
+      clearRowDropIndicators();
+      tr.classList.add(pos === 'before' ? 'drop-before' : 'drop-after');
+      dragRow.overTR = tr;
+      dragRow.overPos = pos;
+    }
+    return;
+  }
 
-  if (dragState.overTR !== tr || dragState.overPos !== pos) {
-    clearDropIndicators();
-    tr.classList.add(pos === 'before' ? 'drop-before' : 'drop-after');
-    dragState.overTR = tr;
-    dragState.overPos = pos;
+  // Section reordering (entire cards)
+  const secDiv = e.target.closest('.section');
+  if (secDiv) {
+    if (dragSec.srcSecIdx == null) return;
+    e.preventDefault();
+    const rect = secDiv.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const pos = y < rect.height / 2 ? 'before' : 'after';
+
+    if (dragSec.overSecDiv !== secDiv || dragSec.overPos !== pos) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('drop-before-sec','drop-after-sec'));
+      secDiv.classList.add(pos === 'before' ? 'drop-before-sec' : 'drop-after-sec');
+      dragSec.overSecDiv = secDiv;
+      dragSec.overPos = pos;
+    }
   }
 });
 
 sectionsEl.addEventListener('drop', (e) => {
+  // Row drop within same section
   const tr = e.target.closest('tbody tr');
-  if (!tr) return;
-  const secDiv = tr.closest('.section');
-  const overSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
-  if (dragState.srcSecIdx == null || overSecIdx !== dragState.srcSecIdx) return;
+  if (tr && dragRow.srcSecIdx != null) {
+    const secDiv = tr.closest('.section');
+    const overSecIdx = Array.from(document.querySelectorAll('#sectionsContainer .section')).indexOf(secDiv);
+    if (overSecIdx !== dragRow.srcSecIdx) return;
 
-  e.preventDefault();
+    e.preventDefault();
 
-  const payload = buildPayloadFromDOM();
-  const rows = payload.sections[overSecIdx].rows;
+    const payload = buildPayloadFromDOM();
+    const rows = payload.sections[overSecIdx].rows;
 
-  const targetIdx = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
-  let insertIdx = targetIdx;
-  if (dragState.overPos === 'after') insertIdx = targetIdx + 1;
+    const targetIdx = Array.from(secDiv.querySelectorAll('tbody tr')).indexOf(tr);
+    let insertIdx = targetIdx;
+    if (dragRow.overPos === 'after') insertIdx = targetIdx + 1;
 
-  const [moved] = rows.splice(dragState.srcRowIdx, 1);
+    const [moved] = rows.splice(dragRow.srcRowIdx, 1);
 
-  // Adjust insert index if we removed a row above the target
-  if (dragState.srcRowIdx < targetIdx) insertIdx -= 1;
-  rows.splice(insertIdx, 0, moved);
+    if (dragRow.srcRowIdx < targetIdx) insertIdx -= 1;
+    rows.splice(insertIdx, 0, moved);
 
-  // reindex positions
-  rows.forEach((r, i) => r.position = i);
+    rows.forEach((r, i) => r.position = i);
 
-  worksheetData = { ...worksheetData, sections: payload.sections };
-  renderSections();
+    worksheetData = { ...worksheetData, sections: payload.sections };
+    renderSections();
+    return;
+  }
+
+  // Section drop (reorder sections)
+  const secDiv = e.target.closest('.section');
+  if (secDiv && dragSec.srcSecIdx != null) {
+    e.preventDefault();
+
+    const container = document.getElementById('sectionsContainer');
+    const targetIdx = Array.from(container.querySelectorAll('.section')).indexOf(secDiv);
+
+    const payload = buildPayloadFromDOM();
+    const sections = payload.sections;
+
+    let insertIdx = dragSec.overPos === 'after' ? targetIdx + 1 : targetIdx;
+
+    const [moved] = sections.splice(dragSec.srcSecIdx, 1);
+    if (dragSec.srcSecIdx < targetIdx) insertIdx -= 1;
+
+    sections.splice(insertIdx, 0, moved);
+    sections.forEach((s, i) => s.position = i);
+
+    worksheetData = { ...worksheetData, sections };
+    renderSections();
+  }
 });
 
 // Save All
