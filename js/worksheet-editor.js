@@ -204,15 +204,15 @@ function renderSections() {
       </div>
       <table class="table compact w-full">
         <colgroup>
-          <col style="width:9%"/>    <!-- Bus Number(s) (narrower) -->
-          <col style="width:17%"/>   <!-- Pickup (wider) -->
-          <col style="width:17%"/>   <!-- Dropoff (wider) -->
-          <col style="width:9%"/>    <!-- Time (narrower) -->
-          <col style="width:12%"/>   <!-- Note -->
-          <col style="width:8%"/>    <!-- D/S IN AM -->
-          <col style="width:8%"/>    <!-- N/S OUT AM -->
-          <col style="width:8%"/>    <!-- D/S OUT PM -->
-          <col style="width:8%"/>    <!-- N/S IN PM -->
+          <col style="width:8%"/>    <!-- Bus Number(s) (narrower) -->
+          <col style="width:15%"/>   <!-- Pickup (wider) -->
+          <col style="width:15%"/>   <!-- Dropoff (wider) -->
+          <col style="width:8%"/>    <!-- Time (narrower) -->
+          <col style="width:8%"/>   <!-- Note -->
+          <col style="width:6%"/>    <!-- D/S IN AM -->
+          <col style="width:6%"/>    <!-- N/S OUT AM -->
+          <col style="width:6%"/>    <!-- D/S OUT PM -->
+          <col style="width:6%"/>    <!-- N/S IN PM -->
           <col style="width:4%"/>    <!-- Action -->
         </colgroup>
         <thead>
