@@ -1,5 +1,5 @@
-// dev-config.js - Local development configuration for Live Server
-// This file provides mock API responses when using Live Server (port 5500)
+// dev-config.example.js - Template for local development configuration
+// Copy this to dev-config.js and customize for your needs
 
 (function() {
   'use strict';
@@ -16,13 +16,14 @@
   
   console.log('🔧 Live Server development mode detected - Using mock API responses');
   
+  // CUSTOMIZE THESE FOR YOUR PROJECT:
   // Mock user data for Live Server testing
   const mockUsers = {
-    'admin@tisdale.com': {
-      password: 'admin123',
+    'admin@yourcompany.com': {
+      password: 'your-admin-password-here',
       user: {
         id: 1,
-        email: 'admin@tisdale.com',
+        email: 'admin@yourcompany.com',
         name: 'Admin User',
         role: 'ADMIN',
         technician: {
@@ -32,25 +33,25 @@
         }
       }
     },
-    'jason@tisdalebus.com': {
-      password: '12345',
+    'your-email@yourcompany.com': {
+      password: 'your-password-here',
       user: {
         id: 2,
-        email: 'jason@tisdalebus.com', 
-        name: 'Jason Hallett',
+        email: 'your-email@yourcompany.com', 
+        name: 'Your Name',
         role: 'ADMIN',
         technician: {
           id: 2,
-          name: 'Jason Hallett',
+          name: 'Your Name',
           signature: null
         }
       }
     },
-    'tech@tisdale.com': {
-      password: 'tech123',
+    'tech@yourcompany.com': {
+      password: 'tech-password-here',
       user: {
         id: 3,
-        email: 'tech@tisdale.com', 
+        email: 'tech@yourcompany.com', 
         name: 'Technician User',
         role: 'TECHNICIAN',
         technician: {
@@ -66,7 +67,7 @@
   let currentUser = localStorage.getItem('mockCurrentUser') ? 
     JSON.parse(localStorage.getItem('mockCurrentUser')) : null;
   
-  // Mock API responses
+  // Mock API responses - customize these for your endpoints
   const mockApiHandlers = {
     'POST /api/auth/login': async (data) => {
       const { email, password } = data;
@@ -99,131 +100,9 @@
       return { ok: true };
     },
     
-    'GET /api/schedule4s/list': async () => {
-      return {
-        ok: true,
-        items: [
-          {
-            id: 1,
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-            unit: '1234',
-            unit_number: '1234',
-            odometer: 45678,
-            technician_name: 'John Smith',
-            location: 'Main Depot'
-          },
-          {
-            id: 2,
-            created_at: new Date(Date.now() - 172800000).toISOString(),
-            unit: '5678',
-            unit_number: '5678', 
-            odometer: 23456,
-            technician_name: 'Jane Doe',
-            location: 'North Terminal'
-          },
-          {
-            id: 3,
-            created_at: new Date().toISOString(),
-            unit: '9012',
-            unit_number: '9012',
-            odometer: 67890,
-            technician_name: 'Bob Johnson',
-            location: 'South Garage'
-          }
-        ]
-      };
-    },
-    
-    'GET /api/buses': async () => {
-      return {
-        ok: true,
-        buses: [
-          { id: 1, unit_number: '1234', make: 'Blue Bird', model: 'Vision', year: 2020 },
-          { id: 2, unit_number: '5678', make: 'Thomas', model: 'C2', year: 2019 },
-          { id: 3, unit_number: '9012', make: 'IC Bus', model: 'CE', year: 2021 }
-        ]
-      };
-    },
-    
-    'GET /api/drivers': async () => {
-      return {
-        ok: true,
-        drivers: [
-          { id: 1, name: 'Alice Driver', license: 'D123456' },
-          { id: 2, name: 'Bob Driver', license: 'D789012' },
-          { id: 3, name: 'Carol Driver', license: 'D345678' }
-        ]
-      };
-    },
-    
-    'GET /api/supervisors': async () => {
-      return {
-        ok: true,
-        supervisors: [
-          { id: 1, name: 'Manager One', department: 'Operations' },
-          { id: 2, name: 'Manager Two', department: 'Maintenance' }
-        ]
-      };
-    },
-    
-    'GET /api/worksheets': async (data, url) => {
-      const urlParams = new URLSearchParams(url.split('?')[1] || '');
-      const id = urlParams.get('id');
-      
-      if (id) {
-        return {
-          ok: true,
-          worksheet: {
-            id: parseInt(id),
-            name: `Worksheet ${id}`,
-            is_default: id === '1',
-            sections: [
-              {
-                id: 1,
-                name: 'Pre-Trip Inspection',
-                rows: [
-                  { id: 1, item: 'Check mirrors' },
-                  { id: 2, item: 'Check lights' },
-                  { id: 3, item: 'Check tires' }
-                ]
-              }
-            ]
-          }
-        };
-      } else {
-        return {
-          ok: true,
-          worksheets: [
-            { id: 1, name: 'Default Worksheet', is_default: true },
-            { id: 2, name: 'Custom Worksheet', is_default: false }
-          ]
-        };
-      }
-    },
-    
-    'GET /api/daily-report': async (data, url) => {
-      const urlParams = new URLSearchParams(url.split('?')[1] || '');
-      const id = urlParams.get('id');
-      
-      if (id) {
-        return {
-          ok: true,
-          report: {
-            id: parseInt(id),
-            date: new Date().toISOString().split('T')[0],
-            supervisor: 'John Manager',
-            notes: 'Sample daily report'
-          }
-        };
-      } else {
-        return {
-          ok: true,
-          reports: [
-            { id: 1, date: '2025-10-05', supervisor: 'John Manager' },
-            { id: 2, date: '2025-10-04', supervisor: 'Jane Manager' }
-          ]
-        };
-      }
+    // Add more API endpoints as needed for your project
+    'GET /api/your-endpoint': async () => {
+      return { ok: true, data: 'your mock data here' };
     }
   };
   
@@ -336,15 +215,7 @@
         <details style="margin-top: 5px;">
           <summary style="cursor: pointer;">Test Accounts</summary>
           <div style="margin-top: 5px; font-size: 11px;">
-            <strong>Your Account:</strong><br>
-            Email: jason@tisdalebus.com<br>
-            Password: 12345<br><br>
-            <strong>Admin:</strong><br>
-            Email: admin@tisdale.com<br>
-            Password: admin123<br><br>
-            <strong>Technician:</strong><br>
-            Email: tech@tisdale.com<br>
-            Password: tech123
+            Check dev-config.js for available test accounts
           </div>
         </details>
       </div>

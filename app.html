@@ -9,7 +9,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./css/tisdale-app.css" />
-  <script src="./dev-config.js"></script>
+  <script>
+    // Only load dev-config.js if it exists (for local development)
+    const script = document.createElement('script');
+    script.src = './dev-config.js';
+    script.onerror = () => console.log('dev-config.js not found - using production mode');
+    document.head.appendChild(script);
+  </script>
   <script defer src="auth-guard.js"></script>
 </head>
 <body>

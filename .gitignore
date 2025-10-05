@@ -5,6 +5,9 @@
 .env.production
 .env.*.local
 
+# Development configuration with mock credentials
+dev-config.js
+
 # Node modules
 node_modules/
 
