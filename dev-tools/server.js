@@ -2,12 +2,17 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { WebSocketServer } from 'ws';
+import chokidar from 'chokidar';
+import { createServer } from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 5500;
+const PORT = process.env.PORT || 3000;
+const server = createServer(app);
+const wss = new WebSocketServer({ server });
 
 // Load environment variables from .env file if it exists
 const envPath = path.join(__dirname, '..', '.env');
@@ -146,20 +151,84 @@ app.use((err, req, res, next) => {
   });
 });
 
+// WebSocket connections for live reload
+const clients = new Set();
+
+wss.on('connection', (ws) => {
+  clients.add(ws);
+  ws.on('close', () => clients.delete(ws));
+});
+
+// File watcher for live reload
+const publicPath = path.join(__dirname, '..', 'public');
+const watcher = chokidar.watch([publicPath, path.join(__dirname, '..', 'api')], {
+  ignored: /node_modules/,
+  persistent: true
+});
+
+watcher.on('change', (filePath) => {
+  console.log(`📁 File changed: ${path.relative(path.join(__dirname, '..'), filePath)}`);
+  // Notify all connected clients to reload
+  clients.forEach(client => {
+    if (client.readyState === 1) { // WebSocket.OPEN
+      client.send('reload');
+    }
+  });
+});
+
+// Inject live reload script into HTML files
+app.use((req, res, next) => {
+  if (req.path.endsWith('.html') || req.path === '/') {
+    const originalSend = res.send;
+    res.send = function(data) {
+      if (typeof data === 'string' && data.includes('</body>')) {
+        const liveReloadScript = `
+<script>
+(function() {
+  const ws = new WebSocket('ws://localhost:${PORT}');
+  ws.onmessage = function(event) {
+    if (event.data === 'reload') {
+      console.log('🔄 Live reload: File changed, refreshing...');
+      window.location.reload();
+    }
+  };
+  ws.onopen = function() {
+    console.log('🔗 Live reload connected');
+  };
+  ws.onerror = function() {
+    console.log('❌ Live reload connection failed');
+  };
+})();
+</script>`;
+        data = data.replace('</body>', liveReloadScript + '</body>');
+      }
+      originalSend.call(this, data);
+    };
+  }
+  next();
+});
+
 // Start the server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log('');
-  console.log('🚀 Development Server Started (Live Server Compatible)!');
+  console.log('🚀 Enhanced Development Server Started!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`📱 Server URL:    http://localhost:${PORT}`);
   console.log('🔧 API endpoints: Connected to your real database');
+  console.log('🔄 Live reload:   Enabled (auto-refresh on file changes)');
   console.log('�️  Database:     Using your Neon database (from .env)');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
-  console.log('🎯 How to use:');
-  console.log('   • Run this server: npm run dev');
-  console.log('   • Open browser: http://localhost:5500');
-  console.log('   • Login with your real database credentials');
-  console.log('🛑 Press Ctrl+C to stop the server');
+  console.log('✨ Features:');
+  console.log('   • Static file serving (HTML, CSS, JS, images)');
+  console.log('   • API endpoint handling with real database');
+  console.log('   • Auto-refresh when files change');
+  console.log('   • WebSocket live reload connection');
+  console.log('');
+  console.log('🎯 Usage:');
+  console.log('   • Open browser: http://localhost:' + PORT);
+  console.log('   • Edit any file and watch it auto-refresh!');
+  console.log('   • Login works with real database credentials');
+  console.log('🛑 Press Ctrl+C to stop');
   console.log('');
 });

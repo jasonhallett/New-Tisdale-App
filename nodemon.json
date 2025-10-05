@@ -1,0 +1,6 @@
+{
+  "watch": ["dev-tools/", "api/", "auth.js"],
+  "ext": "js,json",
+  "ignore": ["node_modules/", "public/"],
+  "delay": "500"
+}
