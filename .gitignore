@@ -1,8 +1,9 @@
-# Add .env to .gitignore to keep secrets safe
+# Environment files - NEVER commit these!
 .env
 .env.local
 .env.development
 .env.production
+.env.*.local
 
 # Node modules
 node_modules/
@@ -15,3 +16,14 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Other potentially sensitive files
+.vercel
+*.pem
+*.key
+config.json
+secrets.json
+
+# IDE files
+.vscode/settings.json
+.idea/
