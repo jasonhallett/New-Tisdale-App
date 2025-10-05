@@ -6,10 +6,11 @@ A web application for managing bus fleet operations, daily reports, inspections,
 
 ```
 ├── api/                 # Vercel serverless API functions (production)
-├── assets/              # Static assets (logos, icons)
-├── css/                 # Stylesheets
-├── js/                  # Client-side JavaScript
-├── *.html               # Application pages
+├── public/              # Web application files (served to browsers)
+│   ├── assets/          # Static assets (logos, icons)
+│   ├── css/             # Stylesheets
+│   ├── js/              # Client-side JavaScript
+│   └── *.html           # Application pages
 ├── dev-tools/           # Local development tools (excluded from deployment)
 ├── docs/                # Project documentation (excluded from deployment)
 ├── package.json         # Node.js dependencies and scripts
