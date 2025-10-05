@@ -1,8 +1,9 @@
 {
   "version": 2,
-  "public": "public",
+  "buildCommand": "echo 'No build needed'",
   "routes": [
     { "src": "/api/inspections", "dest": "/api/inspections.js" },
-    { "src": "/api/fleetio/create-work-order", "dest": "/api/fleetio/create-work-order.js" }
+    { "src": "/api/fleetio/create-work-order", "dest": "/api/fleetio/create-work-order.js" },
+    { "src": "/(.*)", "dest": "/public/$1" }
   ]
 }
