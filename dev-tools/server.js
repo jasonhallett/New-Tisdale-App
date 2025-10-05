@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 5500;
 
 // Load environment variables from .env file if it exists
-const envPath = path.join(__dirname, '.env');
+const envPath = path.join(__dirname, '..', '.env');
 if (fs.existsSync(envPath)) {
   console.log('📄 Loading environment variables from .env file...');
   const envContent = fs.readFileSync(envPath, 'utf8');
@@ -31,15 +31,10 @@ if (fs.existsSync(envPath)) {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files (HTML, CSS, JS, etc.)
-app.use(express.static('.', {
-  index: ['index.html']
-}));
-
 // Enhanced error handling for API routes
 const handleApiRoute = async (routePath, req, res) => {
   try {
-    const filePath = path.join(__dirname, 'api', routePath + '.js');
+    const filePath = path.join(__dirname, '..', 'api', routePath + '.js');
     
     if (!fs.existsSync(filePath)) {
       console.log(`❌ API endpoint not found: ${routePath}`);
@@ -135,6 +130,11 @@ app.all('/api/*', (req, res) => {
   const routePath = req.path.replace('/api/', '');
   handleApiRoute(routePath, req, res);
 });
+
+// Serve static files from public directory (after API routes)
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  index: ['index.html']
+}));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
