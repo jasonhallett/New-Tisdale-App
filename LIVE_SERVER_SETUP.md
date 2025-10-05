@@ -1,30 +1,38 @@
-# Live Server Setup
+# Simplified Development Setup
 
-To use Live Server with mock APIs:
+## 🚀 One Simple Workflow
 
-1. **Copy the template**:
+1. **Start the development server**:
    ```bash
-   cp dev-config.example.js dev-config.js
+   npm run dev
    ```
 
-2. **Edit `dev-config.js`** and customize:
-   - Your email addresses and passwords
-   - Mock API endpoints for your project
-   - Any test data you need
+2. **Open your browser**:
+   Go to `http://localhost:5500`
 
-3. **Use Live Server**:
-   - Right-click `index.html` → "Open with Live Server"
-   - Login with the credentials you set in `dev-config.js`
+3. **Login with your real credentials**:
+   Use your actual database user accounts (like `jason@tisdalebus.com`)
 
-## Security
+## ✅ What This Gives You
 
-- `dev-config.js` is git-ignored and never committed
-- Only the safe template `dev-config.example.js` is in the repository
-- Production deployments ignore these files completely
-- Use any passwords you want for local testing
+- **Real database connection** - No mock data needed
+- **All API endpoints working** - Connected to your Neon database  
+- **Actual user authentication** - Login with real accounts
+- **Live reload friendly** - Restart server to see API changes
+- **Port 5500** - Standard development port, no conflicts
 
-## Production vs Development
+## 🔧 How It Works
 
-- **Live Server (dev)**: Uses `dev-config.js` mock APIs
-- **Local Server (dev)**: `npm run dev` uses real database  
-- **Production**: Uses Vercel environment variables, ignores dev-config files
+- **Server**: Runs your Vercel API functions locally on port 5500
+- **Database**: Connects to your real Neon database using `.env` credentials
+- **Authentication**: Uses your actual user accounts from the database
+- **Development**: Make changes, restart server, refresh browser
+
+## 🌐 Production Deployment
+
+- **Git commit/push** works normally - only production code is deployed
+- **Vercel ignores** server.js and other development files  
+- **Environment variables** come from Vercel dashboard in production
+- **No mock data** or development files reach production
+
+Simple and clean! 🎉

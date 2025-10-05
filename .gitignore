@@ -5,8 +5,7 @@
 .env.production
 .env.*.local
 
-# Development configuration with mock credentials
-dev-config.js
+# No longer needed - removed mock system
 
 # Node modules
 node_modules/

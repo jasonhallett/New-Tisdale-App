@@ -1,7 +1,5 @@
 # Files to exclude from Vercel deployment
 server.js
-dev-config.js
-dev-config.example.js
 live-server-dev.js
 LOCAL_DEVELOPMENT.md
 DEVELOPMENT_GUIDE.md

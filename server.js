@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5500;
 
 // Load environment variables from .env file if it exists
 const envPath = path.join(__dirname, '.env');
@@ -149,15 +149,17 @@ app.use((err, req, res, next) => {
 // Start the server
 app.listen(PORT, () => {
   console.log('');
-  console.log('🚀 Local Development Server Started!');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`📱 Local URL:     http://localhost:${PORT}`);
-  console.log(`🌐 Network URL:   http://localhost:${PORT}`);
-  console.log('🔧 API endpoints: Available at /api/*');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🚀 Development Server Started (Live Server Compatible)!');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`📱 Server URL:    http://localhost:${PORT}`);
+  console.log('🔧 API endpoints: Connected to your real database');
+  console.log('�️  Database:     Using your Neon database (from .env)');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
-  console.log('✨ Your Vercel API functions are now running locally!');
-  console.log('📄 Make sure to set up your .env file with database credentials');
+  console.log('🎯 How to use:');
+  console.log('   • Run this server: npm run dev');
+  console.log('   • Open browser: http://localhost:5500');
+  console.log('   • Login with your real database credentials');
   console.log('🛑 Press Ctrl+C to stop the server');
   console.log('');
 });
