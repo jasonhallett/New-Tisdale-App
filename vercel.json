@@ -8,11 +8,5 @@
     "api/**/*.js": {
       "runtime": "nodejs20.x"
     }
-  },
-  "excludeFiles": [
-    "server.js",
-    ".env*",
-    "LOCAL_DEVELOPMENT.md",
-    "node_modules/**"
-  ]
+  }
 }
