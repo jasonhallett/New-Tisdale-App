@@ -6,11 +6,10 @@ A web application for managing bus fleet operations, daily reports, inspections,
 
 ```
 ├── api/                 # Vercel serverless API functions (production)
-├── public/              # Web application files (served to browsers)
-│   ├── assets/          # Static assets (logos, icons)
-│   ├── css/             # Stylesheets
-│   ├── js/              # Client-side JavaScript
-│   └── *.html           # Application pages
+├── assets/              # Static assets (logos, icons)
+├── css/                 # Stylesheets
+├── js/                  # Client-side JavaScript
+├── *.html               # Application pages
 ├── dev-tools/           # Local development tools (excluded from deployment)
 ├── docs/                # Project documentation (excluded from deployment)
 ├── package.json         # Node.js dependencies and scripts
@@ -41,8 +40,8 @@ For local development with Live Server:
    ```
 
 4. **Open with Live Server:**
-   - Use VS Code Live Server extension on port 5500
-   - The local server serves files from `public/` directory
+   - Use VS Code Live Server extension on port 5500, OR
+   - Use the built-in development server: `npm run dev`
    - API requests are handled on the same port
 
 ## Environment Variables

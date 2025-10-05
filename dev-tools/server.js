@@ -131,8 +131,8 @@ app.all('/api/*', (req, res) => {
   handleApiRoute(routePath, req, res);
 });
 
-// Serve static files from public directory (after API routes)
-app.use(express.static(path.join(__dirname, '..', 'public'), {
+// Serve static files from root directory (after API routes)
+app.use(express.static(path.join(__dirname, '..'), {
   index: ['index.html']
 }));
 
