@@ -35,9 +35,7 @@ vercel deploy  # Uses Vercel dashboard settings ✅
 ```bash
 # Core files to copy:
 ├── server.js              # Local development server
-├── dev-config.example.js  # Template for Live Server mock APIs  
 ├── live-server-dev.js     # Generic Live Server helper
-├── .env.example           # Template with placeholders
 ├── .gitignore             # Protects secrets
 └── package.json           # Dependencies
 ```
@@ -45,15 +43,13 @@ vercel deploy  # Uses Vercel dashboard settings ✅
 ### Quick setup for new projects:
 
 1. **Copy the template files** from this project
-2. **Update `.env.example`** with your new project's variables
-3. **Copy `.env.example` → `.env`** and fill in real values
-4. **Copy `dev-config.example.js` → `dev-config.js`** and customize mock data
-5. **HTML files** will automatically load `dev-config.js` if it exists
+2. **Create your `.env`** file with your real environment variables
+3. **Customize as needed** for your project
 
 ### Security Notes:
-- `dev-config.js` is git-ignored (contains mock credentials)
-- `dev-config.example.js` is committed (safe template)
-- Production ignores both files and uses Vercel environment variables
+- `.env` is git-ignored (contains real credentials) 
+- Production uses Vercel environment variables from dashboard
+- No template files needed since this is your personal setup
 
 ## 🔧 Development Options
 

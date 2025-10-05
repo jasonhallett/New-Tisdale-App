@@ -5,8 +5,6 @@
 .env.production
 .env.*.local
 
-# No longer needed - removed mock system
-
 # Node modules
 node_modules/
 
