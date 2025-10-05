@@ -3,10 +3,5 @@
   "routes": [
     { "src": "/api/inspections", "dest": "/api/inspections.js" },
     { "src": "/api/fleetio/create-work-order", "dest": "/api/fleetio/create-work-order.js" }
-  ],
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs20.x"
-    }
-  }
+  ]
 }
