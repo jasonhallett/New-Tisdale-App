@@ -47,6 +47,7 @@ const handleApiRoute = async (routePath, req, res) => {
     }
 
     console.log(`🔄 Handling API request: ${req.method} ${req.url}`);
+    console.log(`📝 Request body:`, req.body);
 
     // Import the API handler with cache busting for development
     const moduleUrl = `file://${filePath}?t=${Date.now()}`;
@@ -56,6 +57,30 @@ const handleApiRoute = async (routePath, req, res) => {
     if (typeof handler !== 'function') {
       console.log(`❌ Invalid API handler for: ${routePath}`);
       return res.status(500).json({ ok: false, error: 'Invalid API handler' });
+    }
+
+    // Adapt Express request for Vercel handler compatibility
+    // Vercel handlers expect to read body manually, but Express has already parsed it
+    if (req.body && typeof req.body === 'object') {
+      // Create a readable stream from the parsed body for handlers that expect to read manually
+      const bodyString = JSON.stringify(req.body);
+      let bodyConsumed = false;
+      
+      // Override the request methods that Vercel handlers might use
+      const originalOn = req.on.bind(req);
+      req.on = function(event, callback) {
+        if (event === 'data' && !bodyConsumed) {
+          bodyConsumed = true;
+          callback(bodyString);
+          return req;
+        } else if (event === 'end' && bodyConsumed) {
+          callback();
+          return req;
+        }
+        return originalOn(event, callback);
+      };
+      
+      req.setEncoding = () => {}; // No-op since we're providing the string directly
     }
 
     // Call the Vercel function handler
